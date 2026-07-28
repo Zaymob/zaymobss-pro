@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <rect width="512" height="512" fill="#000000" rx="96"/>
+  <!-- Orbit Ring -->
+  <g transform="translate(256, 256) rotate(-22)">
+    <ellipse cx="0" cy="0" rx="220" ry="65" fill="none" stroke="#FFFFFF" stroke-width="14"/>
+    <!-- Orbit Accent Dots Top Right -->
+    <circle cx="195" cy="-32" r="7" fill="#FFFFFF"/>
+    <circle cx="212" cy="-18" r="9" fill="#FFFFFF"/>
+    <circle cx="225" cy="-2" r="5" fill="#FFFFFF"/>
+    <!-- Orbit Accent Stars Bottom Left -->
+    <path d="M-200,30 L-196,34 L-200,38 L-204,34 Z" fill="#FFFFFF" transform="scale(1.5)"/>
+    <path d="M-180,45 L-177,48 L-180,51 L-183,48 Z" fill="#FFFFFF" transform="scale(1.2)"/>
+  </g>
+  <!-- Stylized YUNØ Text in White -->
+  <text x="256" y="285" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="120" font-weight="900" fill="#FFFFFF" text-anchor="middle" letter-spacing="2">YUNØ</text>
+</svg>

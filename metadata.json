@@ -1,0 +1,6 @@
+{
+  "name": "Yunø",
+  "description": "Yunø - Personal workspace and media portal featuring AI Hub, playable browser games, movie & show browser, music vault, and community chat.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

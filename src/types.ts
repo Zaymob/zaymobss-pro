@@ -1,4 +1,4 @@
-export type NavTab = 'home' | 'movies' | 'games' | 'youtube' | 'ai' | 'community' | 'music' | 'settings' | 'proxy' | 'private_chat';
+export type NavTab = 'home' | 'movies' | 'games' | 'youtube' | 'ai' | 'community' | 'music' | 'settings' | 'proxy' | 'private_chat' | 'halo';
 
 export interface ProxyBrowserTab {
   id: string;

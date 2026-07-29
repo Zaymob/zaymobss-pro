@@ -469,9 +469,10 @@ const FormattedMessage: React.FC<{ content: string }> = ({ content }) => {
 interface AiViewProps {
   onGrantAdmin?: () => void;
   onUnlockPrivateChat?: () => void;
+  onUnlockHalo?: () => void;
 }
 
-export const AiView: React.FC<AiViewProps> = ({ onGrantAdmin, onUnlockPrivateChat }) => {
+export const AiView: React.FC<AiViewProps> = ({ onGrantAdmin, onUnlockPrivateChat, onUnlockHalo }) => {
   const [selectedModel, setSelectedModel] = useState<AiModelOption>(AI_MODELS[0]);
   const [isModelModalOpen, setIsModelModalOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState('All Models');
@@ -534,6 +535,20 @@ export const AiView: React.FC<AiViewProps> = ({ onGrantAdmin, onUnlockPrivateCha
         id: (Date.now() + 1).toString(),
         role: 'model',
         content: '🔓 **VIP ACCESS GRANTED.** Secret Private Chatroom & Movie Watch Party tab has been unlocked! Check your navigation bar for "VIP Watch Party".',
+        modelUsed: selectedModel.name,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setMessages((prev) => [...prev, secretTurn]);
+      return;
+    }
+
+    // Check for secret Christian AI companion "Halo" unlock command
+    if (textToSend.trim().toLowerCase() === '/e jesus') {
+      if (onUnlockHalo) onUnlockHalo();
+      const secretTurn: ChatTurn = {
+        id: (Date.now() + 1).toString(),
+        role: 'model',
+        content: '✨ **HALO MODE UNLOCKED.** Welcome to **Halo** — your confidential, judgment-free Christian AI companion & Bible study mentor. Check your navigation bar for "Halo Faith AI" or speak by saying "Halo [your message]".',
         modelUsed: selectedModel.name,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };

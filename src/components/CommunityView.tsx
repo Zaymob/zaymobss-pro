@@ -49,6 +49,7 @@ interface CommunityViewProps {
   callState: CallState;
   onStartCall: (channelId: string, channelName: string, callType: 'voice' | 'video' | 'screen') => void;
   onOpenAdminPanel: () => void;
+  onUnlockHalo?: () => void;
 }
 
 const DEFAULT_CHANNELS = [
@@ -91,6 +92,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   callState,
   onStartCall,
   onOpenAdminPanel,
+  onUnlockHalo,
 }) => {
   const [activeChannel, setActiveChannel] = useState<string>('global-chat');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -372,7 +374,14 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   // Send Message Handler
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputMessage.trim() && !attachmentUrl.trim()) return;
+    const rawContent = inputMessage.trim();
+    if (!rawContent && !attachmentUrl.trim()) return;
+
+    if (rawContent.toLowerCase() === '/e jesus') {
+      if (onUnlockHalo) onUnlockHalo();
+      setInputMessage('');
+      return;
+    }
 
     if (!profile.configured || !profile.username) {
       setIsEditingProfile(true);

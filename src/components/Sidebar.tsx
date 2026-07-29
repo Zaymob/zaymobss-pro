@@ -17,6 +17,7 @@ import {
   PanelLeft,
   User,
   Shield,
+  Sparkles,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -33,6 +34,7 @@ interface SidebarProps {
   currentAvatar?: string;
   isPrivateChatUnlocked?: boolean;
   onUnlockPrivateChat?: () => void;
+  isHaloUnlocked?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -47,6 +49,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentUser,
   currentAvatar,
   isPrivateChatUnlocked = false,
+  isHaloUnlocked = false,
 }) => {
   const navItems = [
     { id: 'home' as NavTab, label: 'Home', icon: Home, badge: '' },
@@ -55,6 +58,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'games' as NavTab, label: 'Arcade Games', icon: Gamepad2, badge: 'HOT' },
     { id: 'youtube' as NavTab, label: 'Yunø Tube', icon: Tv, badge: 'NEW' },
     { id: 'ai' as NavTab, label: 'Yunø AI Studio', icon: Bot, badge: 'GEMINI' },
+    ...(isHaloUnlocked
+      ? [{ id: 'halo' as NavTab, label: 'Halo Faith AI', icon: Sparkles, badge: 'HOLY' }]
+      : []),
     { id: 'community' as NavTab, label: 'Community Chat', icon: MessageSquare, badge: 'LIVE' },
     ...(isPrivateChatUnlocked
       ? [{ id: 'private_chat' as NavTab, label: 'VIP Watch Party', icon: Shield, badge: 'VIP' }]

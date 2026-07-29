@@ -19,6 +19,7 @@ import { AdminPanelModal } from './components/AdminPanelModal';
 import { ProfileModal } from './components/ProfileModal';
 import { ProxyTab } from './components/ProxyTab';
 import { PrivateChatView } from './components/PrivateChatView';
+import { HaloView } from './components/HaloView';
 
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -69,6 +70,23 @@ export default function App() {
   const handleUnlockPrivateChat = () => {
     setIsPrivateChatUnlocked(true);
     setActiveTab('private_chat');
+  };
+
+  // Halo Christian AI Companion Unlock State (/e jesus command)
+  const [isHaloUnlocked, setIsHaloUnlocked] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('yuno_halo_unlocked') === 'true';
+    } catch (e) {
+      return false;
+    }
+  });
+
+  const handleUnlockHalo = () => {
+    setIsHaloUnlocked(true);
+    try {
+      localStorage.setItem('yuno_halo_unlocked', 'true');
+    } catch (e) {}
+    setActiveTab('halo');
   };
 
   // Admin Privilege State
@@ -536,6 +554,7 @@ export default function App() {
           currentUser={userProfile.username}
           currentAvatar={userProfile.avatar}
           isPrivateChatUnlocked={isPrivateChatUnlocked}
+          isHaloUnlocked={isHaloUnlocked}
         />
 
         {/* Content Area offset by Sidebar width */}
@@ -592,6 +611,14 @@ export default function App() {
                 <AiView
                   onGrantAdmin={handleGrantAdmin}
                   onUnlockPrivateChat={handleUnlockPrivateChat}
+                  onUnlockHalo={handleUnlockHalo}
+                />
+              )}
+
+              {activeTab === 'halo' && (
+                <HaloView
+                  userDisplayName={userProfile.displayName || userProfile.username}
+                  onNavigateHome={() => setActiveTab('home')}
                 />
               )}
 
@@ -610,6 +637,7 @@ export default function App() {
                   callState={callState}
                   onStartCall={handleStartCall}
                   onOpenAdminPanel={() => setIsAdminPanelOpen(true)}
+                  onUnlockHalo={handleUnlockHalo}
                 />
               )}
 

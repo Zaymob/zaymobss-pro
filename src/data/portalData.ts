@@ -19,22 +19,7 @@ export const DEFAULT_ANNOUNCEMENTS: AnnouncementItem[] = [
   },
 ];
 
-export const DEFAULT_PARTNERS: PartnerItem[] = [
-  {
-    id: 'part-1',
-    name: 'Gartic Phone',
-    logo: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80',
-    url: 'https://garticphone.com',
-    description: 'The Telephone Game - draw, guess & stream with friends in watch parties.',
-  },
-  {
-    id: 'part-2',
-    name: 'Vidsrc Network',
-    logo: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=150&auto=format&fit=crop&q=80',
-    url: 'https://vidsrc.me',
-    description: 'Ultra-fast 4K streaming decoders and global media distribution.',
-  },
-];
+export const DEFAULT_PARTNERS: PartnerItem[] = [];
 import autumnBg from '../assets/images/autumn_landscape_1785047200293.jpg';
 import mcSkylineBg from '../assets/images/mc_skyline_cherry_1785119205625.jpg';
 import knightStarlitBg from '../assets/images/knight_starlit_tree_1785119215571.jpg';

@@ -37,9 +37,12 @@ function loadPersistedData() {
         systemAnnouncements.length = 0;
         systemAnnouncements.push(...parsed.systemAnnouncements);
       }
-      if (Array.isArray(parsed.systemPartners) && parsed.systemPartners.length > 0) {
+      if (Array.isArray(parsed.systemPartners)) {
         systemPartners.length = 0;
-        systemPartners.push(...parsed.systemPartners);
+        const filteredPartners = parsed.systemPartners.filter(
+          (p: any) => p && p.id !== 'part-1' && p.id !== 'part-2' && !/gartic|vidsrc/i.test(p.name || '')
+        );
+        systemPartners.push(...filteredPartners);
       }
       if (Array.isArray(parsed.globalAnnouncements) && parsed.globalAnnouncements.length > 0) {
         globalAnnouncements.length = 0;
@@ -146,24 +149,7 @@ const systemAnnouncements: ServerAnnouncement[] = [
   },
 ];
 
-const systemPartners: ServerPartner[] = [
-  {
-    id: 'part-1',
-    name: 'Gartic Phone',
-    logo: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80',
-    url: 'https://garticphone.com',
-    description: 'The Telephone Game - draw, guess & stream with friends in watch parties.',
-    addedAt: 'Official',
-  },
-  {
-    id: 'part-2',
-    name: 'Vidsrc Network',
-    logo: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=150&auto=format&fit=crop&q=80',
-    url: 'https://vidsrc.me',
-    description: 'Ultra-fast 4K streaming decoders and global media distribution.',
-    addedAt: 'Official',
-  },
-];
+const systemPartners: ServerPartner[] = [];
 
 const globalAnnouncements: Array<{ id: string; content: string; createdAt: string; author: string }> = systemAnnouncements.map((a) => ({
   id: a.id,

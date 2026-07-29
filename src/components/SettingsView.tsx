@@ -81,7 +81,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       const localAnnRaw = localStorage.getItem('yuno_announcements');
       const localPartRaw = localStorage.getItem('yuno_partners');
       const clientAnnouncements = localAnnRaw ? JSON.parse(localAnnRaw) : [];
-      const clientPartners = localPartRaw ? JSON.parse(localPartRaw) : [];
+      const clientPartners = (localPartRaw ? JSON.parse(localPartRaw) : []).filter(
+        (p: any) => p && p.id !== 'part-1' && p.id !== 'part-2' && !/gartic|vidsrc/i.test(p.name || '')
+      );
 
       if (clientAnnouncements.length > 0 || clientPartners.length > 0) {
         await fetch('/api/sync-persisted-data', {
@@ -105,8 +107,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       if (partRes.ok) {
         const partData = await partRes.json();
         if (Array.isArray(partData.partners)) {
-          setPartners(partData.partners);
-          localStorage.setItem('yuno_partners', JSON.stringify(partData.partners));
+          const cleanPartners = partData.partners.filter(
+            (p: any) => p && p.id !== 'part-1' && p.id !== 'part-2' && !/gartic|vidsrc/i.test(p.name || '')
+          );
+          setPartners(cleanPartners);
+          localStorage.setItem('yuno_partners', JSON.stringify(cleanPartners));
         }
       }
     } catch (e) {

@@ -32,15 +32,104 @@ interface ProxyTabProps {
 }
 
 const DEFAULT_BOOKMARKS = [
-  { name: 'Roblox', url: 'https://nowgg.fun/apps/a/19900/b.html', icon: '🎮', color: 'from-purple-600 to-indigo-800' },
-  { name: 'DuckDuckGo', url: 'https://duckduckgo.com', icon: '🦆', color: 'from-orange-500 to-amber-600' },
-  { name: 'YouTube', url: 'https://www.youtube.com', icon: '▶️', color: 'from-red-600 to-red-800' },
-  { name: 'Wikipedia', url: 'https://www.wikipedia.org', icon: '🌐', color: 'from-zinc-500 to-zinc-700' },
-  { name: 'Bing Search', url: 'https://www.bing.com', icon: '🔍', color: 'from-blue-500 to-teal-600' },
-  { name: 'Reddit', url: 'https://www.reddit.com', icon: '💬', color: 'from-orange-600 to-red-600' },
-  { name: 'GitHub', url: 'https://github.com', icon: '🐙', color: 'from-zinc-700 to-zinc-900' },
-  { name: 'Minecraft Web', url: 'https://classic.minecraft.net', icon: '⛏️', color: 'from-emerald-600 to-green-800' },
-  { name: 'Twitch', url: 'https://www.twitch.tv', icon: '💜', color: 'from-purple-600 to-indigo-700' },
+  {
+    name: 'Roblox',
+    url: 'https://nowgg.fun/apps/a/19900/b.html',
+    iconUrl: 'https://www.google.com/s2/favicons?domain=roblox.com&sz=128',
+    category: 'Games',
+    color: 'from-purple-600 to-indigo-800',
+  },
+  {
+    name: 'YouTube',
+    url: 'https://www.youtube.com',
+    iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/0/09/YouTube_full-color_icon_%282017%29.svg',
+    category: 'Media',
+    color: 'from-red-600 to-red-800',
+  },
+  {
+    name: 'TikTok',
+    url: 'https://www.tiktok.com',
+    iconUrl: 'https://www.google.com/s2/favicons?domain=tiktok.com&sz=128',
+    category: 'Social',
+    color: 'from-cyan-600 to-pink-600',
+  },
+  {
+    name: 'Discord',
+    url: 'https://discord.com',
+    iconUrl: 'https://www.google.com/s2/favicons?domain=discord.com&sz=128',
+    category: 'Social',
+    color: 'from-indigo-600 to-blue-700',
+  },
+  {
+    name: 'Reddit',
+    url: 'https://www.reddit.com',
+    iconUrl: 'https://upload.wikimedia.org/wikipedia/en/b/bd/Reddit_Logo_Icon.svg',
+    category: 'Community',
+    color: 'from-orange-600 to-red-600',
+  },
+  {
+    name: 'GitHub',
+    url: 'https://github.com',
+    iconUrl: 'https://www.google.com/s2/favicons?domain=github.com&sz=128',
+    category: 'Code',
+    color: 'from-zinc-700 to-zinc-900',
+  },
+  {
+    name: 'Twitch',
+    url: 'https://www.twitch.tv',
+    iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/d/d3/Twitch_Glitch_Logo_Purple.svg',
+    category: 'Streaming',
+    color: 'from-purple-600 to-indigo-700',
+  },
+  {
+    name: 'Spotify',
+    url: 'https://open.spotify.com',
+    iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/1/19/Spotify_logo_without_text.svg',
+    category: 'Music',
+    color: 'from-emerald-600 to-green-800',
+  },
+  {
+    name: 'ChatGPT',
+    url: 'https://chat.openai.com',
+    iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/0/04/ChatGPT_logo.svg',
+    category: 'AI',
+    color: 'from-teal-600 to-emerald-700',
+  },
+  {
+    name: 'Instagram',
+    url: 'https://www.instagram.com',
+    iconUrl: 'https://www.google.com/s2/favicons?domain=instagram.com&sz=128',
+    category: 'Social',
+    color: 'from-pink-600 to-purple-700',
+  },
+  {
+    name: 'DuckDuckGo',
+    url: 'https://duckduckgo.com',
+    iconUrl: 'https://www.google.com/s2/favicons?domain=duckduckgo.com&sz=128',
+    category: 'Search',
+    color: 'from-orange-500 to-amber-600',
+  },
+  {
+    name: 'Wikipedia',
+    url: 'https://www.wikipedia.org',
+    iconUrl: 'https://www.google.com/s2/favicons?domain=wikipedia.org&sz=128',
+    category: 'Wiki',
+    color: 'from-zinc-500 to-zinc-700',
+  },
+  {
+    name: 'Bing Search',
+    url: 'https://www.bing.com',
+    iconUrl: 'https://www.google.com/s2/favicons?domain=bing.com&sz=128',
+    category: 'Search',
+    color: 'from-blue-500 to-teal-600',
+  },
+  {
+    name: 'Minecraft Web',
+    url: 'https://classic.minecraft.net',
+    iconUrl: 'https://www.google.com/s2/favicons?domain=minecraft.net&sz=128',
+    category: 'Games',
+    color: 'from-emerald-600 to-green-800',
+  },
 ];
 
 export const ProxyTab: React.FC<ProxyTabProps> = ({ initialUrl, onNavigateHome }) => {
@@ -404,21 +493,36 @@ export const ProxyTab: React.FC<ProxyTabProps> = ({ initialUrl, onNavigateHome }
                 <span>Click to Open</span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                 {DEFAULT_BOOKMARKS.map((bm) => (
                   <button
                     key={bm.name}
                     onClick={() => navigateActiveTab(bm.url)}
-                    className="flex items-center space-x-3 p-3 rounded-2xl bg-zinc-900/70 hover:bg-zinc-800 border border-zinc-800 hover:border-cyan-500/40 text-left transition-all group hover:scale-105 active:scale-95 shadow-md"
+                    className="flex items-center space-x-3 p-3 rounded-2xl bg-zinc-900/80 hover:bg-zinc-800/90 border border-zinc-800 hover:border-cyan-500/50 text-left transition-all group hover:scale-[1.03] active:scale-95 shadow-md hover:shadow-cyan-500/10"
                   >
-                    <div className="text-xl p-2 rounded-xl bg-zinc-800 group-hover:scale-110 transition-transform flex-shrink-0">
-                      {bm.icon}
+                    <div className="w-10 h-10 rounded-xl bg-zinc-950/80 border border-zinc-800 p-2 flex items-center justify-center group-hover:border-cyan-500/40 group-hover:scale-110 transition-all flex-shrink-0 shadow-inner overflow-hidden">
+                      <img
+                        src={bm.iconUrl}
+                        alt={bm.name}
+                        className="w-full h-full object-contain filter drop-shadow"
+                        onError={(e) => {
+                          const domain = bm.url.replace(/^https?:\/\//i, '').split('/')[0];
+                          e.currentTarget.src = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+                        }}
+                      />
                     </div>
-                    <div className="truncate">
-                      <div className="text-xs font-bold text-white group-hover:text-cyan-300 transition-colors truncate">
-                        {bm.name}
+                    <div className="truncate min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-xs font-bold text-white group-hover:text-cyan-300 transition-colors truncate">
+                          {bm.name}
+                        </span>
+                        {bm.category && (
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full bg-zinc-800/80 text-zinc-400 group-hover:text-cyan-400 border border-zinc-700/50 flex-shrink-0">
+                            {bm.category}
+                          </span>
+                        )}
                       </div>
-                      <div className="text-[10px] text-zinc-500 font-mono truncate">
+                      <div className="text-[10px] text-zinc-500 font-mono truncate mt-0.5">
                         {bm.url.replace(/^https?:\/\//i, '')}
                       </div>
                     </div>

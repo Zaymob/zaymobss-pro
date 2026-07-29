@@ -600,6 +600,8 @@ export default function App() {
                   userProfile={userProfile}
                   onStartCall={handleStartCall}
                   callState={callState}
+                  screenStream={screenStream}
+                  onToggleScreenShare={handleToggleScreenShare}
                 />
               )}
 

@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
@@ -10,6 +11,45 @@ const app = express();
 const PORT = 3000;
 
 app.use(express.json({ limit: "10mb" }));
+
+// Persistent File Storage Path
+const PERSIST_FILE_PATH = path.join(process.cwd(), "app_persisted_data.json");
+
+function savePersistedData() {
+  try {
+    const dataToSave = {
+      systemAnnouncements,
+      systemPartners,
+      globalAnnouncements,
+    };
+    fs.writeFileSync(PERSIST_FILE_PATH, JSON.stringify(dataToSave, null, 2), "utf-8");
+  } catch (err) {
+    console.warn("Failed to write persisted data to file:", err);
+  }
+}
+
+function loadPersistedData() {
+  try {
+    if (fs.existsSync(PERSIST_FILE_PATH)) {
+      const raw = fs.readFileSync(PERSIST_FILE_PATH, "utf-8");
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed.systemAnnouncements) && parsed.systemAnnouncements.length > 0) {
+        systemAnnouncements.length = 0;
+        systemAnnouncements.push(...parsed.systemAnnouncements);
+      }
+      if (Array.isArray(parsed.systemPartners) && parsed.systemPartners.length > 0) {
+        systemPartners.length = 0;
+        systemPartners.push(...parsed.systemPartners);
+      }
+      if (Array.isArray(parsed.globalAnnouncements) && parsed.globalAnnouncements.length > 0) {
+        globalAnnouncements.length = 0;
+        globalAnnouncements.push(...parsed.globalAnnouncements);
+      }
+    }
+  } catch (err) {
+    console.warn("Failed to load persisted data from file:", err);
+  }
+}
 
 // In-memory user profiles, friends, and chat storage
 interface ChatMessage {
@@ -62,14 +102,78 @@ const userProfiles: Record<string, UserProfile> = {
 const claimedAdminUsers = new Map<string, string>(); // username (normalized) -> clientKey
 const bannedUsers = new Set<string>();
 const userTimeouts = new Map<string, number>(); // username -> expiry timestamp
-const globalAnnouncements: Array<{ id: string; content: string; createdAt: string; author: string }> = [
+// Global System Announcements & Partners State
+interface ServerAnnouncement {
+  id: string;
+  iconEmoji?: string;
+  title?: string;
+  description?: string;
+  content?: string;
+  badge?: string;
+  createdAt?: string;
+  author?: string;
+}
+
+interface ServerPartner {
+  id: string;
+  name: string;
+  logo: string;
+  url: string;
+  description: string;
+  addedAt?: string;
+}
+
+const systemAnnouncements: ServerAnnouncement[] = [
   {
-    id: "a1",
-    content: "📢 Welcome to the official Yunø Community Hub! WebRTC voice, video, and screen sharing are active across all tabs.",
-    createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    author: "System Admin"
-  }
+    id: 'ann-1',
+    iconEmoji: '🚀',
+    title: 'v2.0 System Update:',
+    description: 'Upgraded desktop interface and smooth animations.',
+    content: 'v2.0 System Update: Upgraded desktop interface and smooth animations.',
+    badge: 'SYSTEM',
+    createdAt: 'Today',
+    author: 'System Admin',
+  },
+  {
+    id: 'ann-2',
+    iconEmoji: '⚡',
+    title: 'Performance Improvements:',
+    description: 'Faster loading times and better window management.',
+    content: 'Performance Improvements: Faster loading times and better window management.',
+    badge: 'OPTIMIZATION',
+    createdAt: 'Today',
+    author: 'System Admin',
+  },
 ];
+
+const systemPartners: ServerPartner[] = [
+  {
+    id: 'part-1',
+    name: 'Gartic Phone',
+    logo: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80',
+    url: 'https://garticphone.com',
+    description: 'The Telephone Game - draw, guess & stream with friends in watch parties.',
+    addedAt: 'Official',
+  },
+  {
+    id: 'part-2',
+    name: 'Vidsrc Network',
+    logo: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=150&auto=format&fit=crop&q=80',
+    url: 'https://vidsrc.me',
+    description: 'Ultra-fast 4K streaming decoders and global media distribution.',
+    addedAt: 'Official',
+  },
+];
+
+const globalAnnouncements: Array<{ id: string; content: string; createdAt: string; author: string }> = systemAnnouncements.map((a) => ({
+  id: a.id,
+  content: a.content || `${a.title || ''} ${a.description || ''}`.trim(),
+  createdAt: a.createdAt || 'Today',
+  author: a.author || 'System Admin',
+}));
+
+// Load persisted file data from disk on server startup
+loadPersistedData();
 
 const trollEffects = new Map<string, { discoMode?: boolean; upsideDown?: boolean }>();
 
@@ -390,6 +494,125 @@ app.get("/api/music/lyrics", async (req, res) => {
   } catch (error) {
     res.json({ lyrics: "Lyrics unavailable for this track.", synced: false });
   }
+});
+
+// Global Announcements API
+app.get("/api/announcements", (req, res) => {
+  res.json({ announcements: systemAnnouncements });
+});
+
+app.post("/api/announcements", (req, res) => {
+  const { iconEmoji, title, description, content, badge, author } = req.body;
+  const newAnn: ServerAnnouncement = {
+    id: `ann-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    iconEmoji: iconEmoji || '🚀',
+    title: title || 'System Update:',
+    description: description || content || '',
+    content: content || `${title || ''} ${description || ''}`.trim(),
+    badge: badge || 'ADMIN',
+    createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    author: author || 'Admin',
+  };
+  systemAnnouncements.unshift(newAnn);
+  globalAnnouncements.unshift({
+    id: newAnn.id,
+    content: newAnn.content || newAnn.description || '',
+    createdAt: newAnn.createdAt || 'Just now',
+    author: newAnn.author || 'Admin',
+  });
+  savePersistedData();
+  res.json({ success: true, announcements: systemAnnouncements });
+});
+
+app.delete("/api/announcements/:id", (req, res) => {
+  const { id } = req.params;
+  const idx = systemAnnouncements.findIndex((a) => a.id === id);
+  if (idx !== -1) {
+    systemAnnouncements.splice(idx, 1);
+  }
+  const chatIdx = globalAnnouncements.findIndex((a) => a.id === id);
+  if (chatIdx !== -1) {
+    globalAnnouncements.splice(chatIdx, 1);
+  }
+  savePersistedData();
+  res.json({ success: true, announcements: systemAnnouncements });
+});
+
+// Global Partners API
+app.get("/api/partners", (req, res) => {
+  res.json({ partners: systemPartners });
+});
+
+app.post("/api/partners", (req, res) => {
+  const { name, logo, url, description, addedAt } = req.body;
+  if (!name || !url) {
+    return res.status(400).json({ error: "Missing name or url for partner" });
+  }
+  let targetUrl = url.trim();
+  if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+    targetUrl = `https://${targetUrl}`;
+  }
+  const newPartner: ServerPartner = {
+    id: `part-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    name: name.trim(),
+    logo: (logo || '').trim() || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80',
+    url: targetUrl,
+    description: (description || '').trim() || 'Verified official partner of Yunø.',
+    addedAt: addedAt || new Date().toLocaleDateString(),
+  };
+  systemPartners.push(newPartner);
+  savePersistedData();
+  res.json({ success: true, partners: systemPartners });
+});
+
+app.delete("/api/partners/:id", (req, res) => {
+  const { id } = req.params;
+  const idx = systemPartners.findIndex((p) => p.id === id);
+  if (idx !== -1) {
+    systemPartners.splice(idx, 1);
+  }
+  savePersistedData();
+  res.json({ success: true, partners: systemPartners });
+});
+
+// Client Backup Sync Endpoint
+app.post("/api/sync-persisted-data", (req, res) => {
+  const { clientAnnouncements, clientPartners } = req.body;
+  let updated = false;
+
+  if (Array.isArray(clientAnnouncements)) {
+    for (const ca of clientAnnouncements) {
+      if (ca && ca.id && !systemAnnouncements.some((a) => a.id === ca.id)) {
+        systemAnnouncements.unshift(ca);
+        globalAnnouncements.unshift({
+          id: ca.id,
+          content: ca.content || ca.description || ca.title || '',
+          createdAt: ca.createdAt || 'Saved',
+          author: ca.author || 'Admin',
+        });
+        updated = true;
+      }
+    }
+  }
+
+  if (Array.isArray(clientPartners)) {
+    for (const cp of clientPartners) {
+      if (cp && cp.id && !systemPartners.some((p) => p.id === cp.id)) {
+        systemPartners.push(cp);
+        updated = true;
+      }
+    }
+  }
+
+  if (updated) {
+    savePersistedData();
+  }
+
+  res.json({
+    success: true,
+    announcements: systemAnnouncements,
+    partners: systemPartners,
+  });
 });
 
 // GAME PROXY ENDPOINT TO RENDER JSDELIVR HTML AS TEXT/HTML WITH BASE HREF
@@ -861,17 +1084,30 @@ app.post("/api/admin/action", (req, res) => {
 
   if (action === "post_announcement" && announcementContent) {
     const newAnn = {
-      id: Date.now().toString(),
+      id: `ann-${Date.now()}`,
+      iconEmoji: '📢',
+      title: 'Global Broadcast:',
+      description: announcementContent,
       content: announcementContent,
+      badge: 'EMERGENCY',
       createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       author: `${requester} [ADMIN]`
     };
-    globalAnnouncements.unshift(newAnn);
-    return res.json({ success: true, announcements: globalAnnouncements });
+    systemAnnouncements.unshift(newAnn);
+    globalAnnouncements.unshift({
+      id: newAnn.id,
+      content: newAnn.content,
+      createdAt: newAnn.createdAt,
+      author: newAnn.author
+    });
+    savePersistedData();
+    return res.json({ success: true, announcements: systemAnnouncements });
   }
 
   if (action === "clear_announcements") {
+    systemAnnouncements.length = 0;
     globalAnnouncements.length = 0;
+    savePersistedData();
     return res.json({ success: true, announcements: [] });
   }
 
@@ -950,15 +1186,411 @@ app.get("/api/webrtc/room", (req, res) => {
   res.json({ channelId, participants });
 });
 
+// Server-wide Watch Party & Gartic Phone Rooms State
+interface WatchPartyRoom {
+  roomCode: string;
+  selectedMovie: any;
+  selectedSource: string;
+  season: number;
+  episode: number;
+  currentTimeSec: number;
+  isPlaying: boolean;
+  updatedAt: number;
+  updatedBy: string;
+  messages: Array<{
+    id: string;
+    user: string;
+    avatar: string;
+    content: string;
+    timestamp: string;
+    badge: string;
+    isSystemEvent?: boolean;
+  }>;
+  presence: Map<string, { username: string; avatar: string; lastSeen: number }>;
+}
+
+interface GarticRoom {
+  roomCode: string;
+  phase: 'PROMPT' | 'DRAW' | 'GUESS' | 'REVEAL';
+  currentPrompt: string;
+  currentDrawing: string;
+  currentGuess: string;
+  turnIndex: number;
+  timer: number;
+  players: Array<{ username: string; score: number; avatar: string; ready: boolean }>;
+  history: Array<{ id: string; type: 'prompt' | 'draw' | 'guess'; author: string; content: string }>;
+  updatedAt: number;
+  updatedBy: string;
+}
+
+interface CustomGroupServer {
+  id: string;
+  name: string;
+  banner: string;
+  picture: string;
+  createdBy: string;
+  createdAt: string;
+  channels: Array<{ id: string; name: string; topic?: string }>;
+}
+
+const watchPartyRooms = new Map<string, WatchPartyRoom>();
+const garticRooms = new Map<string, GarticRoom>();
+const activeChatUsers = new Map<string, { username: string; avatar: string; status: string; lastSeen: number }>();
+const userDMs = new Map<string, Set<string>>(); // username -> Set of target usernames
+const customGroupsList: CustomGroupServer[] = [
+  {
+    id: 'grp-vips',
+    name: 'VIP Founders Club',
+    banner: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1000&auto=format&fit=crop&q=80',
+    picture: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80',
+    createdBy: 'System Admin',
+    createdAt: 'Official',
+    channels: [
+      { id: 'vip-lounge', name: 'vip-lounge', topic: 'Exclusive lounge for VIP members' },
+      { id: 'watch-party-announcements', name: 'watch-party-announcements', topic: 'Upcoming watch parties & tournaments' },
+    ],
+  },
+];
+
+// Helper to get or init WatchParty room
+function getOrCreateWatchPartyRoom(code: string): WatchPartyRoom {
+  const normCode = (code || 'DOUCHE-7709').trim().toUpperCase();
+  if (!watchPartyRooms.has(normCode)) {
+    watchPartyRooms.set(normCode, {
+      roomCode: normCode,
+      selectedMovie: {
+        id: 'tmdb-vip-101',
+        tmdbId: 550,
+        title: 'Fight Club',
+        year: 1999,
+        rating: 8.8,
+        category: 'trending',
+        image: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=500&auto=format&fit=crop&q=80',
+        backdrop: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=1200&auto=format&fit=crop&q=80',
+        description: 'An insomniac office worker and a devil-may-care soap maker form an underground fight club that evolves into something much more.',
+        genres: ['Action', 'Drama'],
+        duration: '2h 19m',
+        mediaType: 'movie'
+      },
+      selectedSource: 'vidcore',
+      season: 1,
+      episode: 1,
+      currentTimeSec: 0,
+      isPlaying: true,
+      updatedAt: Date.now(),
+      updatedBy: 'System',
+      messages: [
+        {
+          id: '1',
+          user: 'System Bot',
+          avatar: '',
+          content: `🔒 Connected to VIP Watch Party Room #${normCode}! Stream synced across all users.`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          badge: 'VIP SYSTEM',
+          isSystemEvent: true,
+        },
+      ],
+      presence: new Map(),
+    });
+  }
+  return watchPartyRooms.get(normCode)!;
+}
+
+// Helper to get or init Gartic room
+function getOrCreateGarticRoom(code: string): GarticRoom {
+  const normCode = (code || 'DOUCHE-7709').trim().toUpperCase();
+  if (!garticRooms.has(normCode)) {
+    garticRooms.set(normCode, {
+      roomCode: normCode,
+      phase: 'PROMPT',
+      currentPrompt: '',
+      currentDrawing: '',
+      currentGuess: '',
+      turnIndex: 0,
+      timer: 60,
+      players: [],
+      history: [],
+      updatedAt: Date.now(),
+      updatedBy: 'System',
+    });
+  }
+  return garticRooms.get(normCode)!;
+}
+
+// Watch Party Sync Endpoints
+app.get("/api/rooms/watchparty/state", (req, res) => {
+  const roomCode = ((req.query.roomCode as string) || "DOUCHE-7709").trim().toUpperCase();
+  const username = (req.query.user as string) || "Guest";
+  const avatar = (req.query.avatar as string) || "";
+
+  const room = getOrCreateWatchPartyRoom(roomCode);
+  if (username) {
+    room.presence.set(username, { username, avatar, lastSeen: Date.now() });
+  }
+
+  // Filter presence in last 12 seconds
+  const now = Date.now();
+  const activeMembers = Array.from(room.presence.values()).filter((p) => now - p.lastSeen < 12000);
+
+  res.json({
+    roomCode: room.roomCode,
+    selectedMovie: room.selectedMovie,
+    selectedSource: room.selectedSource,
+    season: room.season,
+    episode: room.episode,
+    currentTimeSec: room.currentTimeSec,
+    isPlaying: room.isPlaying,
+    updatedAt: room.updatedAt,
+    updatedBy: room.updatedBy,
+    messages: room.messages,
+    activeMembers,
+  });
+});
+
+app.post("/api/rooms/watchparty/sync", (req, res) => {
+  const { roomCode, selectedMovie, selectedSource, season, episode, currentTimeSec, isPlaying, user } = req.body;
+  const room = getOrCreateWatchPartyRoom(roomCode);
+
+  if (selectedMovie) room.selectedMovie = selectedMovie;
+  if (selectedSource) room.selectedSource = selectedSource;
+  if (season !== undefined) room.season = season;
+  if (episode !== undefined) room.episode = episode;
+  if (currentTimeSec !== undefined) room.currentTimeSec = currentTimeSec;
+  if (isPlaying !== undefined) room.isPlaying = isPlaying;
+  room.updatedAt = Date.now();
+  room.updatedBy = user || 'User';
+
+  res.json({ success: true, roomCode: room.roomCode, updatedAt: room.updatedAt });
+});
+
+app.post("/api/rooms/watchparty/message", (req, res) => {
+  const { roomCode, user, avatar, content, badge, isSystemEvent } = req.body;
+  if (!content) return res.status(400).json({ error: "Empty message" });
+
+  const room = getOrCreateWatchPartyRoom(roomCode);
+  const msg = {
+    id: `msg-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    user: user || 'VIP Member',
+    avatar: avatar || '',
+    content: content.trim(),
+    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    badge: badge || 'VIP',
+    isSystemEvent: Boolean(isSystemEvent),
+  };
+
+  room.messages.push(msg);
+  if (room.messages.length > 80) room.messages.shift();
+
+  res.json({ success: true, messages: room.messages, message: msg });
+});
+
+// Gartic Phone Sync Endpoints
+app.get("/api/gartic/state", (req, res) => {
+  const roomCode = ((req.query.roomCode as string) || "DOUCHE-7709").trim().toUpperCase();
+  const username = (req.query.username as string) || "";
+  const avatar = (req.query.avatar as string) || "";
+
+  const room = getOrCreateGarticRoom(roomCode);
+  if (username) {
+    let p = room.players.find((item) => item.username === username);
+    if (!p) {
+      room.players.push({ username, score: 0, avatar, ready: true });
+    } else {
+      p.avatar = avatar;
+    }
+  }
+
+  res.json({
+    roomCode: room.roomCode,
+    phase: room.phase,
+    currentPrompt: room.currentPrompt,
+    currentDrawing: room.currentDrawing,
+    currentGuess: room.currentGuess,
+    turnIndex: room.turnIndex,
+    timer: room.timer,
+    players: room.players,
+    history: room.history,
+    updatedAt: room.updatedAt,
+    updatedBy: room.updatedBy,
+  });
+});
+
+app.post("/api/gartic/action", (req, res) => {
+  const { roomCode, username, action, payload } = req.body;
+  const room = getOrCreateGarticRoom(roomCode);
+
+  if (action === 'submit_prompt') {
+    room.currentPrompt = payload?.prompt || '';
+    room.history.push({
+      id: `hist-${Date.now()}`,
+      type: 'prompt',
+      author: username || 'Player',
+      content: room.currentPrompt,
+    });
+    room.phase = 'DRAW';
+    room.timer = 60;
+  } else if (action === 'submit_drawing') {
+    room.currentDrawing = payload?.drawing || '';
+    room.history.push({
+      id: `hist-${Date.now()}`,
+      type: 'draw',
+      author: username || 'Player',
+      content: room.currentDrawing,
+    });
+    room.phase = 'GUESS';
+    room.timer = 45;
+  } else if (action === 'submit_guess') {
+    room.currentGuess = payload?.guess || '';
+    room.history.push({
+      id: `hist-${Date.now()}`,
+      type: 'guess',
+      author: username || 'Player',
+      content: room.currentGuess,
+    });
+    room.phase = 'REVEAL';
+  } else if (action === 'restart' || action === 'next_phase') {
+    room.phase = 'PROMPT';
+    room.currentPrompt = '';
+    room.currentDrawing = '';
+    room.currentGuess = '';
+    room.timer = 60;
+  }
+
+  room.updatedAt = Date.now();
+  room.updatedBy = username || 'Player';
+
+  res.json({
+    success: true,
+    phase: room.phase,
+    updatedAt: room.updatedAt,
+  });
+});
+
 // Community Chat & DM Endpoints
 app.get("/api/chat/messages", (req, res) => {
   const channelId = (req.query.channelId as string) || "global-chat";
+  const username = (req.query.username as string) || "";
+  const avatar = (req.query.avatar as string) || "";
+
+  // Track active online chat users (prune after 15s)
+  if (username) {
+    activeChatUsers.set(username, {
+      username,
+      avatar,
+      status: 'Online',
+      lastSeen: Date.now(),
+    });
+  }
+
   const filtered = communityMessages.filter((m) => m.channelId === channelId);
   res.json({
     messages: filtered,
     announcements: globalAnnouncements,
     profanityConfig: profanityFilterConfig,
   });
+});
+
+// Get real active users list (no fake preset members!)
+app.get("/api/chat/active-users", (req, res) => {
+  const now = Date.now();
+  const activeList: Array<{ username: string; avatar: string; status: string }> = [];
+
+  for (const [uname, userObj] of activeChatUsers.entries()) {
+    if (now - userObj.lastSeen < 18000) {
+      activeList.push({
+        username: userObj.username,
+        avatar: userObj.avatar,
+        status: userObj.status,
+      });
+    } else {
+      activeChatUsers.delete(uname);
+    }
+  }
+
+  res.json({ activeUsers: activeList });
+});
+
+// DM contacts management
+app.get("/api/chat/dms", (req, res) => {
+  const username = (req.query.username as string) || "";
+  if (!username) return res.json({ dms: [] });
+
+  const setObj = userDMs.get(username) || new Set();
+  const dms = Array.from(setObj).map((target) => {
+    const activeObj = activeChatUsers.get(target);
+    return {
+      id: `dm_${[username, target].sort().join('_')}`,
+      username: target,
+      avatar: activeObj?.avatar || '',
+      status: activeObj ? 'Online' : 'Offline',
+    };
+  });
+
+  res.json({ dms });
+});
+
+app.post("/api/chat/dms", (req, res) => {
+  const { username, targetUsername } = req.body;
+  if (!username || !targetUsername) {
+    return res.status(400).json({ error: "Missing usernames" });
+  }
+
+  const u1 = username.trim();
+  const u2 = targetUsername.trim();
+
+  if (!userDMs.has(u1)) userDMs.set(u1, new Set());
+  if (!userDMs.has(u2)) userDMs.set(u2, new Set());
+
+  userDMs.get(u1)!.add(u2);
+  userDMs.get(u2)!.add(u1);
+
+  const channelId = `dm_${[u1, u2].sort().join('_')}`;
+  res.json({ success: true, channelId, targetUsername: u2 });
+});
+
+// Groups / Servers API
+app.get("/api/chat/groups", (req, res) => {
+  res.json({ groups: customGroupsList });
+});
+
+app.post("/api/chat/groups", (req, res) => {
+  const { name, banner, picture, createdBy, channels } = req.body;
+  if (!name || !createdBy) {
+    return res.status(400).json({ error: "Missing group name or creator" });
+  }
+
+  const cleanName = name.trim();
+  const channelList = Array.isArray(channels) && channels.length > 0
+    ? channels.map((c: string) => ({
+        id: `grp-ch-${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${c.trim().toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+        name: c.trim().toLowerCase().replace(/[^a-z0-9]/g, '-'),
+        topic: `Discussion in #${c.trim()}`
+      }))
+    : [
+        {
+          id: `grp-ch-${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '-')}-general`,
+          name: 'general',
+          topic: 'General group chat'
+        },
+        {
+          id: `grp-ch-${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '-')}-lounge`,
+          name: 'lounge',
+          topic: 'Group lounge & media sharing'
+        }
+      ];
+
+  const newGroup: CustomGroupServer = {
+    id: `grp-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    name: cleanName,
+    banner: banner?.trim() || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1000&auto=format&fit=crop&q=80',
+    picture: picture?.trim() || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80',
+    createdBy: createdBy.trim(),
+    createdAt: new Date().toLocaleDateString(),
+    channels: channelList,
+  };
+
+  customGroupsList.push(newGroup);
+  res.json({ success: true, group: newGroup, groups: customGroupsList });
 });
 
 app.post("/api/chat/messages", (req, res) => {

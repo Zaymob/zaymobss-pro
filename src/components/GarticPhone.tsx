@@ -16,11 +16,23 @@ import {
   Pencil,
   Eye,
   BookOpen,
+  Phone,
+  Mic,
+  MicOff,
+  Video,
+  Volume2,
+  PhoneOff,
 } from 'lucide-react';
 import { audioEngine } from '../utils/audioSynth';
+import { CallState } from '../types';
 
 interface GarticPhoneProps {
+  roomCode?: string;
+  username?: string;
+  avatar?: string;
   onGameEvent?: (eventMessage: string) => void;
+  onStartCall?: (channelId: string, channelName: string, callType: 'voice' | 'video' | 'screen') => void;
+  callState?: CallState;
 }
 
 type GamePhase = 'PROMPT' | 'DRAW' | 'GUESS' | 'REVEAL';
@@ -51,8 +63,25 @@ const COLORS = [
   '#64748b',
 ];
 
-export const GarticPhone: React.FC<GarticPhoneProps> = ({ onGameEvent }) => {
+const ICE_BREAKER_PROMPTS = [
+  'What is your secret guilty pleasure food?',
+  'Draw your dream vacation destination on Earth',
+  'What is your biggest fear in the dark?',
+  'Draw what you would bring to a deserted island',
+  'Draw yourself as a futuristic superhero',
+  'What is your favorite late-night gaming snack?',
+];
+
+export const GarticPhone: React.FC<GarticPhoneProps> = ({
+  roomCode = 'VIP77',
+  username = 'Player',
+  avatar = '',
+  onGameEvent,
+  onStartCall,
+  callState,
+}) => {
   const [phase, setPhase] = useState<GamePhase>('PROMPT');
+  const [gameMode, setGameMode] = useState<'TELEPHONE' | 'EXQUISITE_CORPSE' | 'ICE_BREAKER'>('TELEPHONE');
   const [promptInput, setPromptInput] = useState('');
   const [currentPrompt, setCurrentPrompt] = useState('');
   const [guessInput, setGuessInput] = useState('');
@@ -67,6 +96,41 @@ export const GarticPhone: React.FC<GarticPhoneProps> = ({ onGameEvent }) => {
   const [drawingHistory, setDrawingHistory] = useState<ImageData[]>([]);
   const [drawnImageDataUrl, setDrawnImageDataUrl] = useState<string>('');
   const [timer, setTimer] = useState<number>(60);
+  const [players, setPlayers] = useState<Array<{ username: string; score: number }>>([]);
+  const [serverSynced, setServerSynced] = useState<boolean>(false);
+
+  // Poll Gartic room state from server
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchGarticState = async () => {
+      try {
+        const res = await fetch(`/api/gartic/state?roomCode=${encodeURIComponent(roomCode)}&username=${encodeURIComponent(username)}&avatar=${encodeURIComponent(avatar)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (!isMounted) return;
+
+          if (data.phase) setPhase(data.phase);
+          if (data.currentPrompt) setCurrentPrompt(data.currentPrompt);
+          if (data.currentDrawing && data.currentDrawing !== drawnImageDataUrl) {
+            setDrawnImageDataUrl(data.currentDrawing);
+          }
+          if (data.currentGuess) setCurrentGuess(data.currentGuess);
+          if (data.players) setPlayers(data.players);
+          setServerSynced(true);
+        }
+      } catch (e) {
+        console.warn('Gartic state poll error:', e);
+      }
+    };
+
+    fetchGarticState();
+    const interval = setInterval(fetchGarticState, 1800);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [roomCode, username, avatar]);
 
   // Timer tick for drawing phase
   useEffect(() => {
@@ -91,14 +155,51 @@ export const GarticPhone: React.FC<GarticPhoneProps> = ({ onGameEvent }) => {
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-        // Save initial snapshot
+
+        // If drawn image exists on server, render it onto canvas
+        if (drawnImageDataUrl) {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          };
+          img.src = drawnImageDataUrl;
+        }
+
         setDrawingHistory([ctx.getImageData(0, 0, canvas.width, canvas.height)]);
       }
     }
   }, [phase]);
 
+  const sendGarticAction = async (action: string, payload?: any) => {
+    try {
+      await fetch('/api/gartic/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          roomCode,
+          username,
+          action,
+          payload,
+        }),
+      });
+    } catch (e) {
+      console.error('Failed to post gartic action:', e);
+    }
+  };
+
   const getRandomPrompt = () => {
-    const random = SAMPLE_PROMPTS[Math.floor(Math.random() * SAMPLE_PROMPTS.length)];
+    let pool = SAMPLE_PROMPTS;
+    if (gameMode === 'ICE_BREAKER') {
+      pool = ICE_BREAKER_PROMPTS;
+    } else if (gameMode === 'EXQUISITE_CORPSE') {
+      pool = [
+        'Exquisite Corpse: Draw the TOP HALF (head, face & torso) of a crazy mutant monster!',
+        'Exquisite Corpse: Draw the TOP HALF of a futuristic cyborg robot!',
+        'Exquisite Corpse: Draw the TOP HALF of a famous cartoon character wearing a suit!',
+      ];
+    }
+    const random = pool[Math.floor(Math.random() * pool.length)];
     setPromptInput(random);
     try {
       audioEngine.playBlipSound();
@@ -112,7 +213,10 @@ export const GarticPhone: React.FC<GarticPhoneProps> = ({ onGameEvent }) => {
     setCurrentPrompt(finalP);
     setPhase('DRAW');
     setTimer(60);
-    if (onGameEvent) onGameEvent(`🎨 Gartic Phone started! Prompt: "${finalP}"`);
+
+    sendGarticAction('submit_prompt', { prompt: finalP });
+
+    if (onGameEvent) onGameEvent(`🎨 Gartic Phone started in Room #${roomCode}! Prompt: "${finalP}"`);
     try {
       audioEngine.playPopSound();
     } catch (e) {}
@@ -188,7 +292,7 @@ export const GarticPhone: React.FC<GarticPhoneProps> = ({ onGameEvent }) => {
     if (!ctx) return;
 
     const newHist = [...drawingHistory];
-    newHist.pop(); // remove current state
+    newHist.pop();
     const prevState = newHist[newHist.length - 1];
     if (prevState) {
       ctx.putImageData(prevState, 0, 0);
@@ -197,13 +301,16 @@ export const GarticPhone: React.FC<GarticPhoneProps> = ({ onGameEvent }) => {
   };
 
   const handleFinishDrawing = () => {
+    let dataUrl = drawnImageDataUrl;
     const canvas = canvasRef.current;
     if (canvas) {
-      const dataUrl = canvas.toDataURL('image/png');
+      dataUrl = canvas.toDataURL('image/png');
       setDrawnImageDataUrl(dataUrl);
     }
     setPhase('GUESS');
-    if (onGameEvent) onGameEvent(`✍️ Drawing completed! Time for the guess phase.`);
+    sendGarticAction('submit_drawing', { drawing: dataUrl });
+
+    if (onGameEvent) onGameEvent(`✍️ Drawing completed in Room #${roomCode}! Time for guess phase.`);
     try {
       audioEngine.playPopSound();
     } catch (e) {}
@@ -212,9 +319,12 @@ export const GarticPhone: React.FC<GarticPhoneProps> = ({ onGameEvent }) => {
   const handleSubmitGuess = (e: React.FormEvent) => {
     e.preventDefault();
     if (!guessInput.trim()) return;
-    setCurrentGuess(guessInput.trim());
+    const finalGuess = guessInput.trim();
+    setCurrentGuess(finalGuess);
     setPhase('REVEAL');
-    if (onGameEvent) onGameEvent(`🎉 Gartic Phone Reveal Book created! Guess was: "${guessInput.trim()}"`);
+    sendGarticAction('submit_guess', { guess: finalGuess });
+
+    if (onGameEvent) onGameEvent(`🎉 Gartic Phone Reveal Book created! Guess was: "${finalGuess}"`);
     try {
       audioEngine.playPopSound();
     } catch (e) {}
@@ -227,10 +337,54 @@ export const GarticPhone: React.FC<GarticPhoneProps> = ({ onGameEvent }) => {
     setGuessInput('');
     setCurrentGuess('');
     setDrawnImageDataUrl('');
+    sendGarticAction('restart');
   };
+
+  const isGarticVoiceActive = callState?.isActive && callState.channelId === `gartic-voice-${roomCode}`;
 
   return (
     <div className="p-5 rounded-3xl bg-zinc-950 border border-amber-500/30 shadow-2xl space-y-5">
+      {/* Voice Chat Banner Bar */}
+      <div className="p-3 bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 border border-amber-500/30 rounded-2xl flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center space-x-2.5">
+          <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center">
+            <Volume2 className="w-4 h-4 animate-pulse" />
+          </div>
+          <div>
+            <span className="text-xs font-bold text-white block">
+              Gartic Party Voice Chat <span className="font-mono text-amber-400">(#gartic-voice-{roomCode})</span>
+            </span>
+            <span className="text-[10px] text-zinc-400">
+              {isGarticVoiceActive ? '🟢 Live Voice Call Connected' : 'Talk with players live while drawing & guessing!'}
+            </span>
+          </div>
+        </div>
+
+        {onStartCall && (
+          <div className="flex items-center space-x-2">
+            {!callState?.isActive ? (
+              <button
+                type="button"
+                onClick={() => onStartCall(`gartic-voice-${roomCode}`, `🎨 Gartic Voice Room #${roomCode}`, 'voice')}
+                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-black font-black text-xs hover:brightness-110 shadow-lg transition-all flex items-center space-x-1.5"
+              >
+                <Phone className="w-3.5 h-3.5" />
+                <span>Join Voice Chat</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onStartCall(`gartic-voice-${roomCode}`, `🎨 Gartic Voice Room #${roomCode}`, 'voice')}
+                className="px-3.5 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold text-xs flex items-center space-x-1.5"
+              >
+                <Mic className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Voice Active</span>
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Game Header */}
       <div className="flex items-center justify-between border-b border-zinc-800/80 pb-4">
         <div className="flex items-center space-x-3">
@@ -241,7 +395,7 @@ export const GarticPhone: React.FC<GarticPhoneProps> = ({ onGameEvent }) => {
             <h3 className="text-base font-extrabold text-white flex items-center gap-2">
               <span>Gartic Phone VIP Party</span>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-amber-500 text-black font-bold">
-                TELEPHONE GAME
+                ROOM #{roomCode}
               </span>
             </h3>
             <p className="text-xs text-zinc-400">Write a prompt, draw it, pass it around & reveal hilarious guesses!</p>
@@ -258,45 +412,6 @@ export const GarticPhone: React.FC<GarticPhoneProps> = ({ onGameEvent }) => {
           </button>
         )}
       </div>
-
-      {/* PHASE 1: PROMPT INPUT */}
-      {phase === 'PROMPT' && (
-        <div className="space-y-4 py-4 max-w-xl mx-auto">
-          <div className="text-center space-y-1">
-            <h4 className="text-sm font-bold text-white">Step 1: Write a Secret Prompt</h4>
-            <p className="text-xs text-zinc-400">What should the next player draw? The crazier, the funnier!</p>
-          </div>
-
-          <form onSubmit={handleStartGameWithPrompt} className="space-y-3">
-            <div className="relative">
-              <input
-                type="text"
-                required
-                value={promptInput}
-                onChange={(e) => setPromptInput(e.target.value)}
-                placeholder="e.g. A cat driving a monster truck on the moon..."
-                className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-2xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400"
-              />
-              <button
-                type="button"
-                onClick={getRandomPrompt}
-                className="absolute right-2 top-2 px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-[11px] font-mono font-bold flex items-center space-x-1 border border-amber-500/30"
-              >
-                <Sparkles className="w-3 h-3 text-amber-400" />
-                <span>AI Prompt</span>
-              </button>
-            </div>
-
-            <button
-              type="submit"
-              className="w-full py-3 bg-gradient-to-r from-amber-500 via-amber-600 to-orange-600 hover:brightness-110 text-black font-extrabold text-xs rounded-2xl shadow-lg shadow-amber-500/20 transition-all flex items-center justify-center space-x-2"
-            >
-              <Play className="w-4 h-4 fill-black" />
-              <span>Start Drawing Phase</span>
-            </button>
-          </form>
-        </div>
-      )}
 
       {/* PHASE 2: DRAWING CANVAS */}
       {phase === 'DRAW' && (

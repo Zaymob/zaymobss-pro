@@ -153,20 +153,48 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     setTargetUser('');
   };
 
-  const handlePostAnnouncement = () => {
+  const handlePostAnnouncement = async () => {
     if (!announcementText.trim()) return;
     const msg = announcementText.trim();
     setCustomBannerMessage(msg);
-    localStorage.setItem('yuno_global_announcement', msg);
-    showFeedback('Global announcement broadcasted successfully!');
+
+    try {
+      await fetch('/api/announcements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          iconEmoji: announcementType === 'emergency' ? '🚨' : announcementType === 'warning' ? '⚠️' : '📢',
+          title: 'Global Broadcast:',
+          description: msg,
+          content: msg,
+          badge: announcementType.toUpperCase(),
+          author: 'Admin',
+        }),
+      });
+    } catch (e) {
+      console.error('Failed to post announcement:', e);
+    }
+
+    showFeedback('Global announcement broadcasted to server successfully!');
     addTelemetryLog(`Broadcasted announcement: ${msg}`);
     setAnnouncementText('');
   };
 
-  const handleClearAnnouncements = () => {
+  const handleClearAnnouncements = async () => {
     setCustomBannerMessage('');
-    localStorage.removeItem('yuno_global_announcement');
-    showFeedback('Cleared all global announcements.');
+    try {
+      await fetch('/api/admin/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requester: 'Yuno dev isa',
+          action: 'clear_announcements',
+        }),
+      });
+    } catch (e) {
+      console.error('Failed to clear announcements:', e);
+    }
+    showFeedback('Cleared all global announcements on server.');
     addTelemetryLog('Cleared global announcements.');
   };
 

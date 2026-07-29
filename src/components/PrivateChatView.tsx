@@ -51,15 +51,41 @@ interface PrivateChatViewProps {
   userProfile: UserProfile;
   onStartCall?: (channelId: string, channelName: string, callType: 'voice' | 'video' | 'screen') => void;
   callState?: CallState;
+  screenStream?: MediaStream | null;
+  onToggleScreenShare?: () => void;
 }
 
-export const PrivateChatView: React.FC<PrivateChatViewProps> = ({ userProfile, onStartCall, callState }) => {
+export const PrivateChatView: React.FC<PrivateChatViewProps> = ({
+  userProfile,
+  onStartCall,
+  callState,
+  screenStream,
+  onToggleScreenShare,
+}) => {
   const [activeTab, setActiveTab] = useState<'watch_party' | 'gartic_phone'>('watch_party');
 
-  // Room Code State
-  const [roomCode, setRoomCode] = useState<string>('DOUCHE-7709');
+  // Generate random room code under 7 chars
+  const generateRandomCode = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let res = '';
+    for (let i = 0; i < 5; i++) {
+      res += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return res;
+  };
+
+  // Room Code State (no hardcoded presets, under 7 characters)
+  const [roomCode, setRoomCode] = useState<string>(() => generateRandomCode());
   const [isJoinRoomOpen, setIsJoinRoomOpen] = useState<boolean>(false);
   const [inputRoomCode, setInputRoomCode] = useState<string>('');
+
+  const hostScreenVideoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    if (hostScreenVideoRef.current && screenStream) {
+      hostScreenVideoRef.current.srcObject = screenStream;
+    }
+  }, [screenStream]);
 
   // Watch Party States
   const [selectedMovie, setSelectedMovie] = useState<MovieItem>(() => {
@@ -158,6 +184,64 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({ userProfile, o
       setActiveOnlineHosts(uniqueHosts);
     } catch (err) {}
   };
+
+  // Poll Watch Party state and messages from server for room synchronization
+  useEffect(() => {
+    let isMounted = true;
+    const fetchRoomState = async () => {
+      try {
+        const username = userProfile.displayName || userProfile.username || 'VIP Member';
+        const res = await fetch(
+          `/api/rooms/watchparty/state?roomCode=${encodeURIComponent(roomCode)}&user=${encodeURIComponent(username)}&avatar=${encodeURIComponent(userProfile.avatar || '')}`
+        );
+        if (res.ok) {
+          const data = await res.json();
+          if (!isMounted) return;
+
+          // Update video state if changed
+          if (data.selectedMovie) setSelectedMovie(data.selectedMovie);
+          if (data.selectedSource) setSelectedSource(data.selectedSource);
+          if (data.season !== undefined) setSeason(data.season);
+          if (data.episode !== undefined) setEpisode(data.episode);
+          if (data.currentTimeSec !== undefined) setCurrentTimeSec(data.currentTimeSec);
+          if (data.isPlaying !== undefined) setIsPlaying(data.isPlaying);
+
+          // Merge chat messages
+          if (Array.isArray(data.messages) && data.messages.length > 0) {
+            setMessages((prev) => {
+              const prevIds = new Set(prev.map((m) => m.id));
+              const newMsgs = data.messages.filter((m: any) => !prevIds.has(m.id));
+              if (newMsgs.length === 0) return prev;
+              return [...prev, ...newMsgs];
+            });
+          }
+
+          // Active users online
+          if (Array.isArray(data.activeUsers)) {
+            const formatted = data.activeUsers.map((u: any) => ({
+              tabId: u.user,
+              hostName: u.user,
+              avatar: u.avatar || '',
+              roomCode,
+              showingTitle: selectedMovie.title || 'Watching Movie',
+              activeTab,
+              lastActive: Date.now(),
+            }));
+            setActiveOnlineHosts(formatted);
+          }
+        }
+      } catch (err) {
+        console.warn('Room state poll error:', err);
+      }
+    };
+
+    fetchRoomState();
+    const interval = setInterval(fetchRoomState, 1500);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [roomCode, userProfile, activeTab]);
 
   // Heartbeat & Presence broadcasting
   useEffect(() => {
@@ -409,6 +493,13 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({ userProfile, o
 
     setMessages((prev) => [...prev, newMessage]);
 
+    // Send to backend room API
+    fetch('/api/rooms/watchparty/message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roomCode, message: newMessage }),
+    }).catch((e) => console.warn('Failed to send room msg:', e));
+
     try {
       broadcastChannelRef.current?.postMessage({
         type: 'CHAT_MSG',
@@ -490,6 +581,28 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({ userProfile, o
 
     setMessages((prev) => [...prev, sysMsg]);
 
+    // Send state sync payload to backend server
+    fetch('/api/rooms/watchparty/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        roomCode,
+        user: userProfile.displayName || userProfile.username || 'Host',
+        selectedMovie,
+        selectedSource,
+        season,
+        episode,
+        currentTimeSec: targetTime,
+        isPlaying: targetPlaying,
+      }),
+    }).catch((e) => console.warn('Failed sync post:', e));
+
+    fetch('/api/rooms/watchparty/message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roomCode, message: sysMsg }),
+    }).catch((e) => console.warn('Failed system msg post:', e));
+
     try {
       broadcastChannelRef.current?.postMessage({
         type: 'CHAT_MSG',
@@ -557,7 +670,13 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({ userProfile, o
   };
 
   const handleJoinRoom = (codeToJoin: string) => {
-    const cleanCode = codeToJoin.trim().toUpperCase().replace(/[^A-Z0-9-]/g, '') || 'DOUCHE-7709';
+    let cleanCode = codeToJoin.trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
+    if (cleanCode.length > 7) {
+      cleanCode = cleanCode.substring(0, 7);
+    }
+    if (!cleanCode) {
+      cleanCode = generateRandomCode();
+    }
     setRoomCode(cleanCode);
     setIsJoinRoomOpen(false);
     setInputRoomCode('');
@@ -571,9 +690,9 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({ userProfile, o
           id: Date.now().toString(),
           user: 'System Bot',
           avatar: '',
-          content: `🔒 Connected to Private VIP Room #${cleanCode}! Share this room code with your friends so they can join you here.`,
+          content: `🔒 Connected to Private Room #${cleanCode}! Share this room code with friends to stream and chat together.`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          badge: 'VIP SYSTEM',
+          badge: 'ROOM SYSTEM',
           isSystemEvent: true,
         };
         setMessages([welcomeMsg]);
@@ -719,17 +838,33 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({ userProfile, o
                   className="space-y-3"
                 >
                   <div>
-                    <label className="text-[11px] font-mono font-bold text-amber-400 uppercase mb-1.5 block">
-                      Enter Room Code
-                    </label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-[11px] font-mono font-bold text-amber-400 uppercase">
+                        Enter Custom Room Code (Max 7 Chars)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setInputRoomCode(generateRandomCode())}
+                        className="text-[10px] font-mono font-bold text-amber-300 hover:underline flex items-center gap-1"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        <span>Random Code</span>
+                      </button>
+                    </div>
                     <input
                       type="text"
                       autoFocus
+                      maxLength={7}
                       value={inputRoomCode}
-                      onChange={(e) => setInputRoomCode(e.target.value)}
-                      placeholder="e.g. SQUAD-1234, DOUCHE-7709, MOVIE-NIGHT"
-                      className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-2xl text-sm font-mono text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400"
+                      onChange={(e) =>
+                        setInputRoomCode(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '').substring(0, 7))
+                      }
+                      placeholder="e.g. VIP77, X7A9, NIGHT..."
+                      className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-2xl text-sm font-mono font-bold text-amber-300 tracking-wider placeholder-zinc-500 focus:outline-none focus:border-amber-400"
                     />
+                    <p className="text-[10px] text-zinc-500 mt-1">
+                      No presets! Type any custom code under 7 characters to create or join a room with friends.
+                    </p>
                   </div>
 
                   <div className="flex gap-2">
@@ -744,7 +879,7 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({ userProfile, o
                       type="submit"
                       className="flex-1 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:brightness-110 text-black font-black text-xs rounded-2xl shadow-lg"
                     >
-                      Join Room
+                      Join / Host Room
                     </button>
                   </div>
                 </form>
@@ -828,33 +963,6 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({ userProfile, o
                     </div>
                   )}
 
-                  {/* Quick Preset Room Launcher */}
-                  <div className="pt-2 border-t border-zinc-800/80">
-                    <span className="text-[10px] font-mono text-zinc-500 uppercase font-bold block mb-1.5">
-                      Quick Switch Room Presets:
-                    </span>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {[
-                        { code: 'DOUCHE-7709', label: 'Main VIP' },
-                        { code: 'SQUAD-PARTY', label: 'Squad Chill' },
-                        { code: 'GARTIC-ZONE', label: 'Gartic Phone' },
-                      ].map((preset) => (
-                        <button
-                          key={preset.code}
-                          type="button"
-                          onClick={() => handleJoinRoom(preset.code)}
-                          className={`p-2 rounded-xl border text-center transition-all ${
-                            roomCode === preset.code
-                              ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
-                              : 'bg-zinc-900 border-zinc-800/80 text-zinc-400 hover:text-white hover:bg-zinc-800'
-                          }`}
-                        >
-                          <div className="text-[10px] font-mono font-bold">#{preset.code}</div>
-                          <div className="text-[9px] text-zinc-500">{preset.label}</div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
                 </div>
               </motion.div>
             </motion.div>
@@ -910,6 +1018,26 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({ userProfile, o
                 </div>
 
                 <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onToggleScreenShare) {
+                        onToggleScreenShare();
+                      } else if (onStartCall) {
+                        onStartCall(`vip-screen-${roomCode}`, `VIP Watch Stream #${roomCode}`, 'screen');
+                      }
+                    }}
+                    className={`px-3.5 py-1.5 rounded-xl font-extrabold text-xs transition-all flex items-center space-x-1.5 flex-shrink-0 shadow-lg ${
+                      screenStream
+                        ? 'bg-amber-400 text-black animate-pulse border border-amber-300'
+                        : 'bg-zinc-800 hover:bg-zinc-700 text-amber-300 border border-amber-500/30'
+                    }`}
+                    title="Share Host Screen & System Audio to Room"
+                  >
+                    <Monitor className="w-4 h-4 text-amber-400" />
+                    <span>{screenStream ? 'Sharing Screen Live' : 'Share Screen & Audio'}</span>
+                  </button>
+
                   <button
                     onClick={() => setShowMovieSelector(!showMovieSelector)}
                     className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs transition-all shadow-lg flex items-center space-x-1.5 flex-shrink-0"
@@ -1062,13 +1190,29 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({ userProfile, o
                   ))}
                 </div>
 
-                <iframe
-                  src={getStreamEmbedUrl(selectedMovie)}
-                  title="VIP Watch Party Player"
-                  className="w-full h-full border-0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                />
+                {screenStream ? (
+                  <div className="relative w-full h-full bg-black flex items-center justify-center">
+                    <video
+                      ref={hostScreenVideoRef}
+                      autoPlay
+                      playsInline
+                      controls
+                      className="w-full h-full object-contain"
+                    />
+                    <div className="absolute top-3 left-3 z-30 px-3 py-1.5 rounded-xl bg-amber-500 text-black text-xs font-black flex items-center space-x-1.5 shadow-2xl border border-amber-300">
+                      <Monitor className="w-4 h-4 animate-pulse" />
+                      <span>🔴 LIVE HOST SCREEN & SYSTEM AUDIO BROADCAST (Room #{roomCode})</span>
+                    </div>
+                  </div>
+                ) : (
+                  <iframe
+                    src={getStreamEmbedUrl(selectedMovie)}
+                    title="VIP Watch Party Player"
+                    className="w-full h-full border-0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                )}
               </div>
 
               {/* Sync Controls & Live Reactions Bar */}
@@ -1138,6 +1282,11 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({ userProfile, o
             </div>
           ) : (
             <GarticPhone
+              roomCode={roomCode}
+              username={userProfile.displayName || userProfile.username || 'VIP Member'}
+              avatar={userProfile.avatar || ''}
+              onStartCall={onStartCall}
+              callState={callState}
               onGameEvent={(evt) => {
                 const sysMsg: PrivateChatMessage = {
                   id: Date.now().toString(),

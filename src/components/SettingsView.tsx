@@ -60,35 +60,65 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   });
 
   // Announcements State & Admin Creator
-  const [announcements, setAnnouncements] = useState<AnnouncementItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('yuno_announcements');
-      return saved ? JSON.parse(saved) : DEFAULT_ANNOUNCEMENTS;
-    } catch (e) {
-      return DEFAULT_ANNOUNCEMENTS;
-    }
-  });
-
+  const [announcements, setAnnouncements] = useState<AnnouncementItem[]>(DEFAULT_ANNOUNCEMENTS);
   const [isAddingAnn, setIsAddingAnn] = useState(false);
   const [newAnnEmoji, setNewAnnEmoji] = useState('🚀');
   const [newAnnTitle, setNewAnnTitle] = useState('');
   const [newAnnDesc, setNewAnnDesc] = useState('');
 
   // Partners State & Admin Creator
-  const [partners, setPartners] = useState<PartnerItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('yuno_partners');
-      return saved ? JSON.parse(saved) : DEFAULT_PARTNERS;
-    } catch (e) {
-      return DEFAULT_PARTNERS;
-    }
-  });
-
+  const [partners, setPartners] = useState<PartnerItem[]>(DEFAULT_PARTNERS);
   const [isAddingPartner, setIsAddingPartner] = useState(false);
   const [partnerName, setPartnerName] = useState('');
   const [partnerUrl, setPartnerUrl] = useState('');
   const [partnerLogo, setPartnerLogo] = useState('');
   const [partnerDesc, setPartnerDesc] = useState('');
+
+  // Fetch announcements & partners from global server with localStorage backup
+  const fetchGlobalData = async () => {
+    try {
+      // First sync client local items with server
+      const localAnnRaw = localStorage.getItem('yuno_announcements');
+      const localPartRaw = localStorage.getItem('yuno_partners');
+      const clientAnnouncements = localAnnRaw ? JSON.parse(localAnnRaw) : [];
+      const clientPartners = localPartRaw ? JSON.parse(localPartRaw) : [];
+
+      if (clientAnnouncements.length > 0 || clientPartners.length > 0) {
+        await fetch('/api/sync-persisted-data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clientAnnouncements, clientPartners }),
+        }).catch(() => {});
+      }
+
+      const [annRes, partRes] = await Promise.all([
+        fetch('/api/announcements'),
+        fetch('/api/partners'),
+      ]);
+      if (annRes.ok) {
+        const annData = await annRes.json();
+        if (Array.isArray(annData.announcements)) {
+          setAnnouncements(annData.announcements);
+          localStorage.setItem('yuno_announcements', JSON.stringify(annData.announcements));
+        }
+      }
+      if (partRes.ok) {
+        const partData = await partRes.json();
+        if (Array.isArray(partData.partners)) {
+          setPartners(partData.partners);
+          localStorage.setItem('yuno_partners', JSON.stringify(partData.partners));
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to fetch global announcements/partners:', e);
+    }
+  };
+
+  useEffect(() => {
+    fetchGlobalData();
+    const interval = setInterval(fetchGlobalData, 4000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleExtractTheme = async (urlToProcess?: string) => {
     const target = urlToProcess || currentWallpaper;
@@ -125,7 +155,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const currentUsername = getCurrentUsername();
 
-  const handleAddAnnouncement = (e: React.FormEvent) => {
+  const handleAddAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAnnTitle.trim() || !newAnnDesc.trim()) return;
 
@@ -134,31 +164,50 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       formattedTitle += ':';
     }
 
-    const newItem: AnnouncementItem = {
-      id: `ann-${Date.now()}`,
-      iconEmoji: newAnnEmoji || '🚀',
-      title: formattedTitle,
-      description: newAnnDesc.trim(),
-      badge: 'ADMIN',
-      createdAt: 'Just now',
-    };
-
-    const updated = [newItem, ...announcements];
-    setAnnouncements(updated);
-    localStorage.setItem('yuno_announcements', JSON.stringify(updated));
+    try {
+      const res = await fetch('/api/announcements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          iconEmoji: newAnnEmoji || '🚀',
+          title: formattedTitle,
+          description: newAnnDesc.trim(),
+          badge: 'ADMIN',
+          author: currentUsername || 'Admin',
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.announcements)) {
+          setAnnouncements(data.announcements);
+        }
+      }
+    } catch (err) {
+      console.error('Error posting announcement to server:', err);
+    }
 
     setNewAnnTitle('');
     setNewAnnDesc('');
     setIsAddingAnn(false);
   };
 
-  const handleDeleteAnnouncement = (id: string) => {
-    const updated = announcements.filter((a) => a.id !== id);
-    setAnnouncements(updated);
-    localStorage.setItem('yuno_announcements', JSON.stringify(updated));
+  const handleDeleteAnnouncement = async (id: string) => {
+    try {
+      const res = await fetch(`/api/announcements/${id}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.announcements)) {
+          setAnnouncements(data.announcements);
+        }
+      }
+    } catch (err) {
+      console.error('Error deleting announcement from server:', err);
+    }
   };
 
-  const handleAddPartner = (e: React.FormEvent) => {
+  const handleAddPartner = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!partnerName.trim() || !partnerUrl.trim()) return;
 
@@ -167,18 +216,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       targetUrl = `https://${targetUrl}`;
     }
 
-    const newItem: PartnerItem = {
-      id: `part-${Date.now()}`,
-      name: partnerName.trim(),
-      logo: partnerLogo.trim() || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80',
-      url: targetUrl,
-      description: partnerDesc.trim() || 'Verified official partner of Yunø.',
-      addedAt: new Date().toLocaleDateString(),
-    };
-
-    const updated = [...partners, newItem];
-    setPartners(updated);
-    localStorage.setItem('yuno_partners', JSON.stringify(updated));
+    try {
+      const res = await fetch('/api/partners', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: partnerName.trim(),
+          logo: partnerLogo.trim() || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80',
+          url: targetUrl,
+          description: partnerDesc.trim() || 'Verified official partner of Yunø.',
+          addedAt: new Date().toLocaleDateString(),
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.partners)) {
+          setPartners(data.partners);
+        }
+      }
+    } catch (err) {
+      console.error('Error adding partner to server:', err);
+    }
 
     setPartnerName('');
     setPartnerUrl('');
@@ -187,10 +245,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setIsAddingPartner(false);
   };
 
-  const handleDeletePartner = (id: string) => {
-    const updated = partners.filter((p) => p.id !== id);
-    setPartners(updated);
-    localStorage.setItem('yuno_partners', JSON.stringify(updated));
+  const handleDeletePartner = async (id: string) => {
+    try {
+      const res = await fetch(`/api/partners/${id}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.partners)) {
+          setPartners(data.partners);
+        }
+      }
+    } catch (err) {
+      console.error('Error deleting partner from server:', err);
+    }
   };
 
   const handleCustomSubmit = (e: React.FormEvent) => {

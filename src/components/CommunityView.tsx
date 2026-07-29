@@ -124,23 +124,33 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   const [tempAvatar, setTempAvatar] = useState<string>(profile.avatar);
   const [profileError, setProfileError] = useState<string | null>(null);
 
-  // Direct Messages & Friends List
-  const [dmsList, setDmsList] = useState<Array<{ id: string; username: string; avatar: string; status: string }>>([
-    {
-      id: 'dm-kairo',
-      username: 'Kairo_Dev',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=80',
-      status: 'Online',
-    },
-    {
-      id: 'dm-vortex',
-      username: 'Vortex_99',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
-      status: 'Playing Arcade',
-    },
-  ]);
+  // Direct Messages & Dynamic Groups
+  const [dmsList, setDmsList] = useState<Array<{ id: string; username: string; avatar: string; status: string }>>([]);
   const [newDmName, setNewDmName] = useState<string>('');
   const [showAddDmModal, setShowAddDmModal] = useState<boolean>(false);
+
+  // Groups / Servers
+  const [groupsList, setGroupsList] = useState<
+    Array<{
+      id: string;
+      name: string;
+      banner: string;
+      picture: string;
+      createdBy: string;
+      createdAt: string;
+      channels: Array<{ id: string; name: string; topic?: string }>;
+    }>
+  >([]);
+  const [showAddGroupModal, setShowAddGroupModal] = useState<boolean>(false);
+  const [newGroupName, setNewGroupName] = useState<string>('');
+  const [newGroupBanner, setNewGroupBanner] = useState<string>('');
+  const [newGroupPicture, setNewGroupPicture] = useState<string>('');
+  const [newGroupChannels, setNewGroupChannels] = useState<string>('general, lounge');
+
+  // Active Users Online (no presets)
+  const [activeOnlineUsers, setActiveOnlineUsers] = useState<
+    Array<{ username: string; avatar: string; status: string }>
+  >([]);
 
   // Announcements
   const [announcements, setAnnouncements] = useState<Array<{ id: string; content: string; createdAt: string; author: string }>>([]);
@@ -151,6 +161,137 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  // Fetch DMs
+  const fetchDms = async () => {
+    if (!profile.username) return;
+    try {
+      const res = await fetch(`/api/chat/dms?username=${encodeURIComponent(profile.username)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setDmsList(data.dms || []);
+      }
+    } catch (e) {
+      console.warn('Failed to fetch DMs:', e);
+    }
+  };
+
+  // Fetch Groups
+  const fetchGroups = async () => {
+    try {
+      const res = await fetch('/api/chat/groups');
+      if (res.ok) {
+        const data = await res.json();
+        setGroupsList(data.groups || []);
+      }
+    } catch (e) {
+      console.warn('Failed to fetch groups:', e);
+    }
+  };
+
+  // Fetch Active Users
+  const fetchActiveUsers = async () => {
+    try {
+      const res = await fetch('/api/chat/active-users');
+      if (res.ok) {
+        const data = await res.json();
+        setActiveOnlineUsers(data.activeUsers || []);
+      }
+    } catch (e) {
+      console.warn('Failed to fetch active users:', e);
+    }
+  };
+
+  // Create DM handler
+  const handleCreateDm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const target = newDmName.trim();
+    if (!target || !profile.username) return;
+
+    try {
+      const res = await fetch('/api/chat/dms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: profile.username,
+          targetUsername: target,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setShowAddDmModal(false);
+        setNewDmName('');
+        await fetchDms();
+        if (data.channelId) {
+          setActiveChannel(data.channelId);
+        }
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Could not create DM');
+      }
+    } catch (err) {
+      console.error('Create DM failed:', err);
+    }
+  };
+
+  // Create Group handler
+  const handleCreateGroup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = newGroupName.trim();
+    if (!name || !profile.username) return;
+
+    const channelsArray = newGroupChannels
+      .split(',')
+      .map((c) => c.trim())
+      .filter(Boolean);
+
+    try {
+      const res = await fetch('/api/chat/groups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          banner: newGroupBanner.trim(),
+          picture: newGroupPicture.trim(),
+          createdBy: profile.username,
+          channels: channelsArray,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setShowAddGroupModal(false);
+        setNewGroupName('');
+        setNewGroupBanner('');
+        setNewGroupPicture('');
+        setNewGroupChannels('general, lounge');
+        await fetchGroups();
+        if (data.group && data.group.channels && data.group.channels.length > 0) {
+          setActiveChannel(data.group.channels[0].id);
+        }
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Could not create group');
+      }
+    } catch (err) {
+      console.error('Create Group failed:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchDms();
+    fetchGroups();
+    fetchActiveUsers();
+
+    const interval = setInterval(() => {
+      fetchDms();
+      fetchGroups();
+      fetchActiveUsers();
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [profile.username]);
 
   // Fetch messages from backend
   const fetchMessages = async () => {
@@ -509,6 +650,56 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               ))}
             </div>
 
+            {/* GROUPS / CUSTOM SERVERS */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between px-2">
+                <span className="text-[10px] font-mono font-bold text-zinc-500 uppercase tracking-wider">
+                  GROUPS & SERVERS
+                </span>
+                <button
+                  onClick={() => setShowAddGroupModal(true)}
+                  className="text-zinc-500 hover:text-cyan-400 p-0.5 rounded transition-colors"
+                  title="Create New Group"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {groupsList.map((grp) => (
+                <div key={grp.id} className="space-y-1 rounded-2xl bg-zinc-900/60 p-2 border border-zinc-800/60 my-1">
+                  {/* Group Header Banner & Picture */}
+                  <div className="relative h-12 w-full rounded-xl overflow-hidden border border-zinc-800">
+                    <img src={grp.banner} alt={grp.name} className="w-full h-full object-cover brightness-75" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-2 space-x-2">
+                      <img src={grp.picture} alt={grp.name} className="w-6 h-6 rounded-lg object-cover ring-1 ring-cyan-400 flex-shrink-0" />
+                      <span className="text-xs font-black text-white truncate drop-shadow">{grp.name}</span>
+                    </div>
+                  </div>
+
+                  {/* Group Channels List */}
+                  <div className="space-y-0.5 pt-1 pl-1">
+                    {grp.channels.map((c) => {
+                      const isActive = activeChannel === c.id;
+                      return (
+                        <button
+                          key={c.id}
+                          onClick={() => setActiveChannel(c.id)}
+                          className={`w-full flex items-center space-x-2 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                            isActive
+                              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                              : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
+                          }`}
+                        >
+                          <Hash className="w-3.5 h-3.5 text-cyan-400/80" />
+                          <span className="truncate">{c.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+
             {/* Direct Messages */}
             <div className="space-y-1">
               <div className="flex items-center justify-between px-2">
@@ -517,30 +708,36 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 </span>
                 <button
                   onClick={() => setShowAddDmModal(true)}
-                  className="text-zinc-500 hover:text-cyan-400 p-0.5 rounded"
+                  className="text-zinc-500 hover:text-cyan-400 p-0.5 rounded transition-colors"
                   title="New DM"
                 >
                   <Plus className="w-3.5 h-3.5" />
                 </button>
               </div>
 
-              {dmsList.map((dm) => {
-                const isActive = activeChannel === dm.id;
-                return (
-                  <button
-                    key={dm.id}
-                    onClick={() => setActiveChannel(dm.id)}
-                    className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-all ${
-                      isActive
-                        ? 'bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 shadow-lg'
-                        : 'text-zinc-400 hover:bg-zinc-900 hover:text-white'
-                    }`}
-                  >
-                    {renderUserAvatar(dm.avatar, dm.username, "w-5 h-5", "border border-zinc-800")}
-                    <span className="truncate">{dm.username}</span>
-                  </button>
-                );
-              })}
+              {dmsList.length === 0 ? (
+                <div className="p-2 text-[11px] text-zinc-600 font-mono text-center">
+                  No DMs yet. Click + to add!
+                </div>
+              ) : (
+                dmsList.map((dm) => {
+                  const isActive = activeChannel === dm.id;
+                  return (
+                    <button
+                      key={dm.id}
+                      onClick={() => setActiveChannel(dm.id)}
+                      className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+                        isActive
+                          ? 'bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 shadow-lg'
+                          : 'text-zinc-400 hover:bg-zinc-900 hover:text-white'
+                      }`}
+                    >
+                      {renderUserAvatar(dm.avatar, dm.username, "w-5 h-5", "border border-zinc-800")}
+                      <span className="truncate">{dm.username}</span>
+                    </button>
+                  );
+                })
+              )}
             </div>
           </div>
 
@@ -824,32 +1021,176 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               </div>
             </div>
 
-            {/* Online Members */}
+            {/* Active Online Members */}
             <div className="space-y-2">
               <span className="text-[10px] font-mono font-bold text-zinc-500 uppercase tracking-wider block">
-                ONLINE MEMBERS
+                ONLINE MEMBERS ({activeOnlineUsers.length + (profile.username ? 1 : 0)})
               </span>
 
-              {[
-                { name: 'Kairo_Dev', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=80', status: 'Coding in React' },
-                { name: 'Vortex_99', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80', status: 'Playing Arcade' },
-                { name: 'PixelArtist', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&auto=format&fit=crop&q=80', status: 'Creating Wallpaper' },
-              ].map((m) => (
-                <div key={m.name} className="flex items-center space-x-2.5 p-1.5 rounded-xl hover:bg-zinc-900 transition-colors">
+              {/* Current user */}
+              {profile.username && (
+                <div className="flex items-center space-x-2.5 p-1.5 rounded-xl bg-cyan-950/30 border border-cyan-500/20">
                   <div className="relative">
-                    <img src={m.avatar} alt={m.name} className="w-7 h-7 rounded-full object-cover border border-zinc-700" />
+                    {renderUserAvatar(profile.avatar, profile.username, "w-7 h-7", "border border-cyan-400")}
                     <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-emerald-500 border border-black" />
                   </div>
                   <div className="truncate">
-                    <span className="text-xs font-medium text-zinc-200 block truncate">{m.name}</span>
-                    <span className="text-[9px] text-zinc-500 block truncate">{m.status}</span>
+                    <span className="text-xs font-bold text-cyan-300 block truncate">{profile.username} (You)</span>
+                    <span className="text-[9px] text-zinc-400 block truncate">{profile.badge || 'Online'}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Server Active Users */}
+              {activeOnlineUsers.filter((u) => u.username !== profile.username).map((m) => (
+                <div key={m.username} className="flex items-center space-x-2.5 p-1.5 rounded-xl hover:bg-zinc-900 transition-colors">
+                  <div className="relative">
+                    {renderUserAvatar(m.avatar, m.username, "w-7 h-7", "border border-zinc-700")}
+                    <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-emerald-500 border border-black" />
+                  </div>
+                  <div className="truncate">
+                    <span className="text-xs font-medium text-zinc-200 block truncate">{m.username}</span>
+                    <span className="text-[9px] text-zinc-500 block truncate">{m.status || 'Active'}</span>
                   </div>
                 </div>
               ))}
+
+              {activeOnlineUsers.length === 0 && !profile.username && (
+                <div className="text-[10px] text-zinc-600 font-mono text-center p-2">
+                  No other active members online right now.
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
+
+      {/* CREATE DM MODAL */}
+      {showAddDmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+          <div className="w-full max-w-sm bg-zinc-900 border border-indigo-500/30 rounded-3xl p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <div className="flex items-center space-x-2">
+                <MessageSquare className="w-4 h-4 text-indigo-400" />
+                <h4 className="text-sm font-bold text-white">Create Direct Message</h4>
+              </div>
+              <button onClick={() => setShowAddDmModal(false)} className="text-zinc-500 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateDm} className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-[11px] font-mono text-zinc-400 font-bold uppercase">Target Username</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Enter handle e.g. Kairo_Dev..."
+                  value={newDmName}
+                  onChange={(e) => setNewDmName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-400"
+                />
+              </div>
+
+              <div className="flex items-center justify-end space-x-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddDmModal(false)}
+                  className="px-3.5 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-bold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white text-xs font-bold shadow-lg hover:brightness-110"
+                >
+                  Start DM
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* CREATE GROUP MODAL */}
+      {showAddGroupModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+          <div className="w-full max-w-md bg-zinc-900 border border-cyan-500/30 rounded-3xl p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <div className="flex items-center space-x-2">
+                <Users className="w-4 h-4 text-cyan-400" />
+                <h4 className="text-sm font-bold text-white">Create Group / Server</h4>
+              </div>
+              <button onClick={() => setShowAddGroupModal(false)} className="text-zinc-500 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateGroup} className="space-y-3.5">
+              <div className="space-y-1">
+                <label className="text-[11px] font-mono text-zinc-400 font-bold uppercase">Group Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. VIP Gaming Guild, Arcade Squad..."
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-mono text-zinc-400 font-bold uppercase">Group Banner Image URL</label>
+                <input
+                  type="url"
+                  placeholder="https://images.unsplash.com/..."
+                  value={newGroupBanner}
+                  onChange={(e) => setNewGroupBanner(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-mono text-zinc-400 font-bold uppercase">Group Picture / Logo URL</label>
+                <input
+                  type="url"
+                  placeholder="https://images.unsplash.com/..."
+                  value={newGroupPicture}
+                  onChange={(e) => setNewGroupPicture(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-mono text-zinc-400 font-bold uppercase">Text Channels / Sections (Comma Separated)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. general, announcements, lounge, clips"
+                  value={newGroupChannels}
+                  onChange={(e) => setNewGroupChannels(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400"
+                />
+              </div>
+
+              <div className="flex items-center justify-end space-x-2 pt-2 border-t border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setShowAddGroupModal(false)}
+                  className="px-3.5 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-bold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-black text-xs font-bold shadow-lg hover:brightness-110"
+                >
+                  Create Group
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

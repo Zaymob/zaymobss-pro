@@ -4,15 +4,6 @@ import { GameItem } from '../types';
 import { Gamepad2, Search, Play, X, Maximize2, RefreshCw, Heart, Zap, Layers } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-// Canvas Games Implementations
-import { Playable2048 } from './games/Playable2048';
-import { PlayableSnake } from './games/PlayableSnake';
-import { PlayableFlappy } from './games/PlayableFlappy';
-import { PlayableWordle } from './games/PlayableWordle';
-import { PlayableSpaceInvaders } from './games/PlayableSpaceInvaders';
-import { PlayableTetris } from './games/PlayableTetris';
-import { PlayableDino } from './games/PlayableDino';
-
 interface GamesViewProps {
   selectedGameId?: string;
 }
@@ -30,7 +21,7 @@ export interface ExternalGame {
 }
 
 export const GamesView: React.FC<GamesViewProps> = ({ selectedGameId }) => {
-  const [activeSource, setActiveSource] = useState<'noahh' | 'hydra' | 'canvas'>('noahh');
+  const [activeSource, setActiveSource] = useState<'noahh' | 'hydra'>('noahh');
   const [searchQuery, setSearchQuery] = useState('');
   const [favorites, setFavorites] = useState<string[]>([]);
 
@@ -87,9 +78,7 @@ export const GamesView: React.FC<GamesViewProps> = ({ selectedGameId }) => {
   };
 
   useEffect(() => {
-    if (activeSource !== 'canvas') {
-      fetchExternalGames();
-    }
+    fetchExternalGames();
   }, [activeSource]);
 
   const toggleFavorite = (gameId: string, e: React.MouseEvent) => {
@@ -101,38 +90,16 @@ export const GamesView: React.FC<GamesViewProps> = ({ selectedGameId }) => {
 
   // Determine current game list based on active source
   const getRawGameList = () => {
-    if (activeSource === 'noahh') return noahhGames;
     if (activeSource === 'hydra') return hydraGames;
-    return GAMES;
+    return noahhGames.length > 0 ? noahhGames : GAMES;
   };
 
   const rawList = getRawGameList();
 
   const filteredGames = rawList.filter((game: any) => {
-    const matchesSearch = game.title.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = (game.title || game.name || '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchesSearch;
   });
-
-  const renderGameCanvas = (game: GameItem) => {
-    switch (game.canvasGameType) {
-      case '2048':
-        return <Playable2048 />;
-      case 'snake':
-        return <PlayableSnake />;
-      case 'flappy':
-        return <PlayableFlappy />;
-      case 'wordle':
-        return <PlayableWordle />;
-      case 'space_invaders':
-        return <PlayableSpaceInvaders />;
-      case 'tetris':
-        return <PlayableTetris />;
-      case 'dino':
-        return <PlayableDino />;
-      default:
-        return <PlayableFlappy />;
-    }
-  };
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto pb-16">
@@ -171,33 +138,19 @@ export const GamesView: React.FC<GamesViewProps> = ({ selectedGameId }) => {
             <Layers className="w-3.5 h-3.5" />
             <span>Hydra Network</span>
           </button>
-
-          <button
-            onClick={() => setActiveSource('canvas')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 ${
-              activeSource === 'canvas'
-                ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20'
-                : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-            }`}
-          >
-            <Gamepad2 className="w-3.5 h-3.5" />
-            <span>Built-in Canvas</span>
-          </button>
         </div>
       </div>
 
       {/* Search Bar */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="relative w-full sm:w-80">
-          <Search className="absolute left-3 top-2.5 w-4 h-4 text-zinc-400" />
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
           <input
             type="text"
             placeholder={`Search ${
               activeSource === 'noahh'
                 ? "Noah's catalog"
-                : activeSource === 'hydra'
-                ? 'Hydra Network'
-                : 'Canvas games'
+                : 'Hydra Network'
             }...`}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -205,7 +158,7 @@ export const GamesView: React.FC<GamesViewProps> = ({ selectedGameId }) => {
           />
         </div>
 
-        <div className="text-xs font-mono text-zinc-400">
+        <div className="text-xs font-mono text-zinc-500">
           Showing <span className="text-white font-bold">{filteredGames.length}</span> unblocked titles
         </div>
       </div>
@@ -218,15 +171,12 @@ export const GamesView: React.FC<GamesViewProps> = ({ selectedGameId }) => {
         </div>
       )}
 
-      {/* Games Grid */}
+      {/* Game Cards Grid */}
       {!isLoadingGames && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-          {filteredGames.length === 0 ? (
-            <div className="col-span-full py-16 text-center text-zinc-500 text-xs font-mono border border-dashed border-zinc-800 rounded-2xl">
-              No games found matching your query.
-            </div>
-          ) : (
-            filteredGames.map((game: any, idx: number) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {filteredGames.map((game: any, idx: number) => {
+            const isFav = favorites.includes(game.id || idx.toString());
+            return (
               <div
                 key={`${game.id || 'game'}-${idx}`}
                 onClick={() => setPlayingGame(game)}
@@ -234,26 +184,23 @@ export const GamesView: React.FC<GamesViewProps> = ({ selectedGameId }) => {
               >
                 <div className="aspect-video w-full rounded-xl overflow-hidden bg-zinc-800 relative">
                   <img
-                    src={game.image || game.img}
+                    src={game.image || 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=600&auto=format&fit=crop&q=80'}
                     alt={game.title || game.name}
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src =
-                        'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=500&auto=format&fit=crop&q=80';
-                    }}
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                    loading="lazy"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-transparent to-transparent opacity-80" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
 
                   <div className="absolute top-2 right-2 flex items-center space-x-1">
                     <button
-                      onClick={(e) => toggleFavorite(game.id, e)}
-                      className={`p-1.5 rounded-lg backdrop-blur transition-all ${
-                        favorites.includes(game.id)
-                          ? 'bg-rose-500 text-white'
-                          : 'bg-black/60 text-zinc-400 hover:text-white'
+                      onClick={(e) => toggleFavorite(game.id || idx.toString(), e)}
+                      className={`p-1.5 rounded-lg border backdrop-blur-md transition-colors ${
+                        isFav
+                          ? 'bg-rose-500/20 border-rose-500/40 text-rose-400'
+                          : 'bg-black/40 border-white/10 text-zinc-400 hover:text-white'
                       }`}
                     >
-                      <Heart className={`w-3.5 h-3.5 ${favorites.includes(game.id) ? 'fill-current' : ''}`} />
+                      <Heart className={`w-3.5 h-3.5 ${isFav ? 'fill-current' : ''}`} />
                     </button>
                   </div>
 
@@ -271,7 +218,7 @@ export const GamesView: React.FC<GamesViewProps> = ({ selectedGameId }) => {
 
                 <div className="mt-3 pt-2 border-t border-zinc-800/60 flex items-center justify-between text-[11px] text-emerald-400 font-semibold">
                   <span className="uppercase tracking-wider font-mono text-[9px] text-zinc-500">
-                    {game.source ? `${game.source.toUpperCase()} UNBLOCKED` : 'CANVAS'}
+                    {game.source ? `${game.source.toUpperCase()} UNBLOCKED` : 'UNBLOCKED GAME'}
                   </span>
                   <div className="flex items-center space-x-1">
                     <span>Play</span>
@@ -279,28 +226,31 @@ export const GamesView: React.FC<GamesViewProps> = ({ selectedGameId }) => {
                   </div>
                 </div>
               </div>
-            ))
-          )}
+            );
+          })}
         </div>
       )}
 
-      {/* Interactive Playable Game Modal */}
+      {/* FULLSCREEN GAME MODAL OVERLAY */}
       <AnimatePresence>
         {playingGame && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4"
+            className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-2 sm:p-6"
           >
-            <div ref={gameContainerRef} className="relative w-full max-w-5xl bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl flex flex-col h-[85vh]">
+            <div
+              ref={gameContainerRef}
+              className="w-full h-full max-w-6xl max-h-[90vh] bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden flex flex-col shadow-2xl relative"
+            >
               {/* Modal Window Top Header */}
               <div className="flex items-center justify-between p-4 bg-zinc-950 border-b border-zinc-800">
                 <div className="flex items-center space-x-3">
                   <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
                   <span className="text-sm font-bold text-white">{playingGame.title || playingGame.name}</span>
                   <span className="text-[10px] font-mono text-emerald-400 px-2 py-0.5 bg-emerald-500/20 rounded border border-emerald-500/30">
-                    {playingGame.url ? 'CDN UNBLOCKED IFRAME' : 'CANVAS ENGINE'}
+                    CDN UNBLOCKED GAME
                   </span>
                 </div>
 
@@ -337,18 +287,14 @@ export const GamesView: React.FC<GamesViewProps> = ({ selectedGameId }) => {
 
               {/* Game Viewport Container */}
               <div className="flex-1 bg-black flex items-center justify-center relative overflow-hidden p-2">
-                {playingGame.url ? (
-                  <iframe
-                    src={playingGame.url}
-                    title={playingGame.title || 'Unblocked Game'}
-                    className="w-full h-full border-0 rounded-xl bg-black"
-                    allowFullScreen
-                    allow="autoplay; payment; microphone; camera; midi; geolocation; gyroscope; accelerometer; cross-origin-isolated; encrypted-media; fullscreen"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  renderGameCanvas(playingGame)
-                )}
+                <iframe
+                  src={playingGame.url || playingGame.embedUrl}
+                  title={playingGame.title || 'Unblocked Game'}
+                  className="w-full h-full border-0 rounded-xl bg-black"
+                  allowFullScreen
+                  allow="autoplay; payment; microphone; camera; midi; geolocation; gyroscope; accelerometer; cross-origin-isolated; encrypted-media; fullscreen"
+                  referrerPolicy="no-referrer"
+                />
               </div>
             </div>
           </motion.div>

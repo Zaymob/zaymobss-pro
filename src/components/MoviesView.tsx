@@ -30,69 +30,75 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
   const [watchlist, setWatchlist] = useState<string[]>([]);
 
   // Fetch TMDB or AniList
-  useEffect(() => {
-    const fetchContent = async () => {
-      setIsLoadingList(true);
-      try {
-        if (filterCategory === 'anime') {
-          const res = await fetch('/api/anime/trending');
-          if (res.ok) {
-            const data = await res.json();
-            if (data.anime && Array.isArray(data.anime)) {
-              setAnimeList(data.anime);
-              if (data.anime.length > 0 && (!activeMovie || activeMovie.mediaType !== 'anime')) {
-                setActiveMovie(data.anime[0]);
-              }
+  const fetchContent = async () => {
+    setIsLoadingList(true);
+    try {
+      if (filterCategory === 'anime') {
+        const res = await fetch('/api/anime/trending');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.anime && Array.isArray(data.anime)) {
+            setAnimeList(data.anime);
+            if (data.anime.length > 0 && (!activeMovie || activeMovie.mediaType !== 'anime')) {
+              setActiveMovie(data.anime[0]);
             }
           }
-        } else {
-          const res = await fetch('/api/tmdb/trending');
-          if (res.ok) {
-            const data = await res.json();
-            if (data.results && Array.isArray(data.results)) {
-              const parsedItems: MovieItem[] = data.results.slice(0, 20).map((item: any) => ({
-                id: `tmdb-${item.id}`,
-                tmdbId: item.id,
-                mediaType: item.media_type === 'tv' ? 'tv' : 'movie',
-                title: item.title || item.name || 'Untitled',
-                year: item.release_date
-                  ? new Date(item.release_date).getFullYear()
-                  : item.first_air_date
-                  ? new Date(item.first_air_date).getFullYear()
-                  : 2024,
-                rating: Math.round((item.vote_average || 8.0) * 10) / 10,
-                category: item.media_type === 'tv' ? 'shows' : 'trending',
-                image: item.poster_path
-                  ? `https://image.tmdb.org/t/p/w500${item.poster_path}`
-                  : 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=500&auto=format&fit=crop&q=80',
-                backdrop: item.backdrop_path
-                  ? `https://image.tmdb.org/t/p/original${item.backdrop_path}`
-                  : 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=1200&auto=format&fit=crop&q=80',
-                description: item.overview || 'No synopsis provided.',
-                genres: [item.media_type === 'tv' ? 'TV Series' : 'Blockbuster'],
-                duration: item.media_type === 'tv' ? 'TV Series' : '2h 15m',
-                seasonsCount: 5,
-              }));
-              if (parsedItems.length > 0) {
-                setTmdbList([...parsedItems, ...MOVIES]);
+        }
+      } else {
+        const res = await fetch('/api/tmdb/trending');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.results && Array.isArray(data.results)) {
+            const parsedItems: MovieItem[] = data.results.slice(0, 24).map((item: any) => ({
+              id: `tmdb-${item.id}`,
+              tmdbId: item.id,
+              mediaType: item.media_type === 'tv' ? 'tv' : 'movie',
+              title: item.title || item.name || 'Untitled',
+              year: item.release_date
+                ? new Date(item.release_date).getFullYear()
+                : item.first_air_date
+                ? new Date(item.first_air_date).getFullYear()
+                : 2024,
+              rating: Math.round((item.vote_average || 8.0) * 10) / 10,
+              category: item.media_type === 'tv' ? 'shows' : 'trending',
+              image: item.poster_path
+                ? `https://image.tmdb.org/t/p/w500${item.poster_path}`
+                : 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=500&auto=format&fit=crop&q=80',
+              backdrop: item.backdrop_path
+                ? `https://image.tmdb.org/t/p/original${item.backdrop_path}`
+                : 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=1200&auto=format&fit=crop&q=80',
+              description: item.overview || 'No synopsis provided.',
+              genres: [item.media_type === 'tv' ? 'TV Series' : 'Blockbuster'],
+              duration: item.media_type === 'tv' ? 'TV Series' : '2h 15m',
+              seasonsCount: 5,
+            }));
+            if (parsedItems.length > 0) {
+              setTmdbList(parsedItems);
+              if (!activeMovie || activeMovie.mediaType === 'anime') {
+                setActiveMovie(parsedItems[0]);
               }
             }
           }
         }
-      } catch (err) {
-        console.error('Fetch error:', err);
-      } finally {
-        setIsLoadingList(false);
       }
-    };
+    } catch (err) {
+      console.error('Fetch error:', err);
+    } finally {
+      setIsLoadingList(false);
+    }
+  };
 
+  useEffect(() => {
     fetchContent();
   }, [filterCategory, selectedMovieId]);
 
   // Handle Search
   const handleSearchSubmit = async (queryStr: string) => {
     setSearchQuery(queryStr);
-    if (!queryStr.trim()) return;
+    if (!queryStr.trim()) {
+      fetchContent();
+      return;
+    }
 
     try {
       setIsLoadingList(true);
@@ -297,10 +303,10 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
       <div className="flex items-center space-x-2 overflow-x-auto pb-2 scrollbar-none">
         {[
           { id: 'all', name: 'All Blockbusters' },
-          { id: 'anime', name: '✨ AniList Anime' },
-          { id: 'shows', name: '📺 TV Series' },
-          { id: 'trending', name: '🔥 TMDB Trending' },
-          { id: 'watchlist', name: `❤️ Watchlist (${watchlist.length})` },
+          { id: 'anime', name: 'Anime' },
+          { id: 'shows', name: 'TV Series' },
+          { id: 'trending', name: 'Trending' },
+          { id: 'watchlist', name: `Watchlist (${watchlist.length})` },
         ].map((tab) => (
           <button
             key={tab.id}

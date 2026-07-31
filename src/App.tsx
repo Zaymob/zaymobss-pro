@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { NavTab, MusicTrack, CallState, CallParticipant, PlaybackContext, UserProfile } from './types';
+import { NavTab, MusicTrack, CallState, CallParticipant, PlaybackContext, UserProfile, YouTubeVideo } from './types';
 import { WALLPAPERS, MUSIC_TRACKS } from './data/portalData';
 import { audioEngine } from './utils/audioSynth';
 
@@ -17,9 +17,11 @@ import { MusicPlayerBar } from './components/MusicPlayerBar';
 import { CallOverlay } from './components/CallOverlay';
 import { AdminPanelModal } from './components/AdminPanelModal';
 import { ProfileModal } from './components/ProfileModal';
+import { OnboardingModal } from './components/OnboardingModal';
 import { ProxyTab } from './components/ProxyTab';
 import { PrivateChatView } from './components/PrivateChatView';
 import { HaloView } from './components/HaloView';
+import { PipVideoOverlay } from './components/PipVideoOverlay';
 
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -126,6 +128,23 @@ export default function App() {
   // Modals state
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState<boolean>(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState<boolean>(false);
+
+  // Auto-launch Onboarding Guided Tour & Profile Setup for first-time users after boot screen
+  useEffect(() => {
+    if (!showBootScreen) {
+      try {
+        const completed = localStorage.getItem('yuno_onboarding_completed');
+        if (!completed) {
+          setIsOnboardingOpen(true);
+        }
+      } catch (e) {}
+    }
+  }, [showBootScreen]);
+
+  // PiP YouTube Video State
+  const [pipVideo, setPipVideo] = useState<YouTubeVideo | null>(null);
+  const [pipInitialVideo, setPipInitialVideo] = useState<YouTubeVideo | null>(null);
 
   // WebRTC Call State
   const [callState, setCallState] = useState<CallState>({
@@ -605,7 +624,13 @@ export default function App() {
                 <GamesView selectedGameId={selectedGameId} />
               )}
 
-              {activeTab === 'youtube' && <YoutubeView />}
+              {activeTab === 'youtube' && (
+                <YoutubeView
+                  onSetPipVideo={(video) => setPipVideo(video)}
+                  activePipVideoId={pipVideo?.videoId}
+                  initialSelectedVideo={pipInitialVideo}
+                />
+              )}
 
               {activeTab === 'ai' && (
                 <AiView
@@ -656,6 +681,7 @@ export default function App() {
                   currentWallpaper={currentWallpaper}
                   onSelectWallpaper={handleSelectWallpaper}
                   onReplayBoot={() => setShowBootScreen(true)}
+                  onReplayTour={() => setIsOnboardingOpen(true)}
                   onOpenAdminPanel={() => setIsAdminPanelOpen(true)}
                   isAdmin={isAdmin}
                   onRevokeAdmin={handleRevokeAdmin}
@@ -706,6 +732,28 @@ export default function App() {
         onSaveProfile={(updated) => {
           setUserProfile(updated);
           localStorage.setItem('yuno_user_profile', JSON.stringify(updated));
+        }}
+      />
+
+      {/* First-Time User Onboarding Guided Tour & Profile Setup Modal */}
+      <OnboardingModal
+        isOpen={isOnboardingOpen}
+        onClose={() => setIsOnboardingOpen(false)}
+        currentProfile={userProfile}
+        onSaveProfile={(updated) => {
+          setUserProfile(updated);
+          localStorage.setItem('yuno_user_profile', JSON.stringify(updated));
+        }}
+      />
+
+      {/* Global Picture-in-Picture (PiP) Floating Video Player Overlay */}
+      <PipVideoOverlay
+        pipVideo={pipVideo}
+        onClose={() => setPipVideo(null)}
+        onExpand={(video) => {
+          setPipInitialVideo(video);
+          setActiveTab('youtube');
+          setPipVideo(null);
         }}
       />
     </div>

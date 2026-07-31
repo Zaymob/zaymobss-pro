@@ -675,43 +675,7 @@ export const AiView: React.FC<AiViewProps> = ({ onGrantAdmin, onUnlockPrivateCha
         </div>
       </div>
 
-      {/* Quick Prompt Presets */}
-      <div className="flex items-center space-x-2 overflow-x-auto pb-3 scrollbar-none">
-        {[
-          {
-            icon: Calculator,
-            label: 'Solve Math Problem',
-            prompt: 'Explain step-by-step how to solve this calculus problem: d/dx(x^3 * sin(x))',
-          },
-          {
-            icon: Code,
-            label: 'Generate React Hook',
-            prompt: 'Write a custom TypeScript React hook for managing localStorage state safely.',
-          },
-          {
-            icon: BookOpen,
-            label: 'Schoolwork Summary',
-            prompt: 'Summarize the causes and global consequences of the Industrial Revolution in bullet points.',
-          },
-          {
-            icon: PenTool,
-            label: 'Draft Essay Intro',
-            prompt: 'Write an engaging essay introduction about the impact of Artificial Intelligence on human creativity.',
-          },
-        ].map((preset, idx) => {
-          const Icon = preset.icon;
-          return (
-            <button
-              key={idx}
-              onClick={() => handleSendMessage(preset.prompt)}
-              className="flex items-center space-x-2 px-3 py-1.5 bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800 rounded-xl text-xs text-zinc-300 hover:text-amber-300 transition-all whitespace-nowrap flex-shrink-0"
-            >
-              <Icon className="w-3.5 h-3.5 text-amber-400" />
-              <span>{preset.label}</span>
-            </button>
-          );
-        })}
-      </div>
+
 
       {/* Chat Messages Feed */}
       <div className="flex-1 bg-zinc-950/90 border border-zinc-800/80 rounded-3xl p-4 sm:p-6 overflow-y-auto space-y-4 shadow-inner backdrop-blur-xl">

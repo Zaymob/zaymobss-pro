@@ -28,6 +28,10 @@ import {
   Bell,
   Eye,
   Settings,
+  Crown,
+  Award,
+  Star,
+  Users,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { motion, AnimatePresence } from 'motion/react';
@@ -48,6 +52,20 @@ interface ServerTelemetry {
   logs: string[];
 }
 
+export type UserRole = 'ADMIN' | 'MODERATOR' | 'PARTNER' | 'VIP' | 'MEMBER';
+
+export interface RoleUserItem {
+  username: string;
+  role: UserRole;
+  badge: string;
+  partnerPerks: {
+    featuredSpotlight: boolean;
+    highSpeedProxy: boolean;
+    goldChatGlow: boolean;
+    verifiedBadge: boolean;
+  };
+}
+
 export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   isOpen,
   onClose,
@@ -55,7 +73,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   onRevokeAdmin,
 }) => {
   const [activeTab, setActiveTab] = useState<
-    'moderation' | 'telemetry' | 'announcements' | 'site_controls' | 'trolls' | 'filters'
+    'moderation' | 'roles' | 'telemetry' | 'announcements' | 'site_controls' | 'trolls' | 'filters'
   >('moderation');
 
   const [targetUser, setTargetUser] = useState<string>('');
@@ -63,6 +81,143 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   const [announcementType, setAnnouncementType] = useState<'info' | 'warning' | 'emergency'>('info');
   const [timeoutMins, setTimeoutMins] = useState<number>(10);
   const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; error?: boolean } | null>(null);
+
+  // User Roles & Partner Management State
+  const [userRoles, setUserRoles] = useState<RoleUserItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('yuno_user_roles_list');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return [
+      {
+        username: 'Exantus',
+        role: 'ADMIN',
+        badge: '👑 ADMIN',
+        partnerPerks: { featuredSpotlight: true, highSpeedProxy: true, goldChatGlow: true, verifiedBadge: true },
+      },
+      {
+        username: 'Vortex_Dev',
+        role: 'PARTNER',
+        badge: '⚡ PARTNER',
+        partnerPerks: { featuredSpotlight: true, highSpeedProxy: true, goldChatGlow: true, verifiedBadge: true },
+      },
+      {
+        username: 'Aura_Gamer',
+        role: 'PARTNER',
+        badge: '⚡ PARTNER',
+        partnerPerks: { featuredSpotlight: true, highSpeedProxy: true, goldChatGlow: true, verifiedBadge: true },
+      },
+      {
+        username: 'Shadow_Mod',
+        role: 'MODERATOR',
+        badge: '🛡️ MOD',
+        partnerPerks: { featuredSpotlight: false, highSpeedProxy: true, goldChatGlow: false, verifiedBadge: true },
+      },
+      {
+        username: 'Luna_VIP',
+        role: 'VIP',
+        badge: '💎 VIP',
+        partnerPerks: { featuredSpotlight: false, highSpeedProxy: true, goldChatGlow: false, verifiedBadge: true },
+      },
+      {
+        username: 'Cyber_User',
+        role: 'MEMBER',
+        badge: '👤 MEMBER',
+        partnerPerks: { featuredSpotlight: false, highSpeedProxy: false, goldChatGlow: false, verifiedBadge: false },
+      },
+    ];
+  });
+
+  const [newRoleUsername, setNewRoleUsername] = useState<string>('');
+  const [newRoleSelected, setNewRoleSelected] = useState<UserRole>('PARTNER');
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('yuno_user_roles_list', JSON.stringify(userRoles));
+    } catch (e) {}
+  }, [userRoles]);
+
+  const handleUpdateRole = (username: string, nextRole: UserRole) => {
+    setUserRoles((prev) =>
+      prev.map((u) => {
+        if (u.username.toLowerCase() === username.toLowerCase()) {
+          let badge = '👤 MEMBER';
+          if (nextRole === 'ADMIN') badge = '👑 ADMIN';
+          if (nextRole === 'MODERATOR') badge = '🛡️ MOD';
+          if (nextRole === 'PARTNER') badge = '⚡ PARTNER';
+          if (nextRole === 'VIP') badge = '💎 VIP';
+
+          const isPartner = nextRole === 'PARTNER' || nextRole === 'ADMIN';
+          return {
+            ...u,
+            role: nextRole,
+            badge,
+            partnerPerks: {
+              featuredSpotlight: isPartner,
+              highSpeedProxy: true,
+              goldChatGlow: isPartner,
+              verifiedBadge: isPartner || nextRole === 'MODERATOR' || nextRole === 'VIP',
+            },
+          };
+        }
+        return u;
+      })
+    );
+    showFeedback(`Updated role for '${username}' to ${nextRole}`);
+    addTelemetryLog(`Changed role of ${username} -> ${nextRole}`);
+  };
+
+  const handleTogglePartnerPerk = (username: string, perkKey: keyof RoleUserItem['partnerPerks']) => {
+    setUserRoles((prev) =>
+      prev.map((u) => {
+        if (u.username.toLowerCase() === username.toLowerCase()) {
+          return {
+            ...u,
+            partnerPerks: {
+              ...u.partnerPerks,
+              [perkKey]: !u.partnerPerks[perkKey],
+            },
+          };
+        }
+        return u;
+      })
+    );
+    showFeedback(`Updated Partner Perk '${perkKey}' for ${username}`);
+  };
+
+  const handleAddUserRole = () => {
+    if (!newRoleUsername.trim()) return;
+    const name = newRoleUsername.trim();
+    if (userRoles.some((u) => u.username.toLowerCase() === name.toLowerCase())) {
+      showFeedback(`User '${name}' already exists in role matrix.`, true);
+      return;
+    }
+
+    let badge = '👤 MEMBER';
+    if (newRoleSelected === 'ADMIN') badge = '👑 ADMIN';
+    if (newRoleSelected === 'MODERATOR') badge = '🛡️ MOD';
+    if (newRoleSelected === 'PARTNER') badge = '⚡ PARTNER';
+    if (newRoleSelected === 'VIP') badge = '💎 VIP';
+
+    const isPartner = newRoleSelected === 'PARTNER' || newRoleSelected === 'ADMIN';
+
+    const newUser: RoleUserItem = {
+      username: name,
+      role: newRoleSelected,
+      badge,
+      partnerPerks: {
+        featuredSpotlight: isPartner,
+        highSpeedProxy: true,
+        goldChatGlow: isPartner,
+        verifiedBadge: isPartner || newRoleSelected === 'MODERATOR' || newRoleSelected === 'VIP',
+      },
+    };
+
+    setUserRoles([...userRoles, newUser]);
+    setNewRoleUsername('');
+    showFeedback(`Added user '${name}' with role ${newRoleSelected}`);
+    addTelemetryLog(`Added role mapping: ${name} -> ${newRoleSelected}`);
+  };
 
   // Global Site Toggles State
   const [maintenanceMode, setMaintenanceMode] = useState<boolean>(() => {
@@ -291,6 +446,19 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
 
                 <button
                   type="button"
+                  onClick={() => setActiveTab('roles')}
+                  className={`flex items-center space-x-2 px-4 py-2.5 rounded-t-2xl text-xs font-bold transition-all border-t border-x ${
+                    activeTab === 'roles'
+                      ? 'bg-zinc-950 border-amber-500/50 text-amber-400 shadow-lg'
+                      : 'border-transparent text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <Crown className="w-4 h-4 text-amber-400" />
+                  <span>Roles & Partner Matrix</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => setActiveTab('telemetry')}
                   className={`flex items-center space-x-2 px-4 py-2.5 rounded-t-2xl text-xs font-bold transition-all border-t border-x ${
                     activeTab === 'telemetry'
@@ -466,6 +634,195 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                             </div>
                           ))}
                         </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB: ROLES & PARTNER MATRIX */}
+                {activeTab === 'roles' && (
+                  <div className="space-y-6">
+                    {/* Top Overview Cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-950/40 via-zinc-900 to-zinc-950 border border-amber-500/30 flex items-center space-x-3">
+                        <Crown className="w-8 h-8 text-amber-400 flex-shrink-0" />
+                        <div>
+                          <div className="text-[10px] text-zinc-400 font-mono uppercase font-bold">Active Partners</div>
+                          <div className="text-xl font-black text-amber-300">
+                            {userRoles.filter((u) => u.role === 'PARTNER').length} Verified
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-4 rounded-2xl bg-zinc-900/80 border border-zinc-800 flex items-center space-x-3">
+                        <Award className="w-8 h-8 text-cyan-400 flex-shrink-0" />
+                        <div>
+                          <div className="text-[10px] text-zinc-400 font-mono uppercase font-bold">Total Privileged Roles</div>
+                          <div className="text-xl font-black text-white">
+                            {userRoles.filter((u) => u.role !== 'MEMBER').length} Users
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-4 rounded-2xl bg-zinc-900/80 border border-zinc-800 flex items-center space-x-3">
+                        <Star className="w-8 h-8 text-yellow-400 flex-shrink-0" />
+                        <div>
+                          <div className="text-[10px] text-zinc-400 font-mono uppercase font-bold">Partner Spotlight Perks</div>
+                          <div className="text-xl font-black text-white">Unlimited High-Speed</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Add New User Role */}
+                    <div className="p-4 rounded-2xl bg-zinc-900/80 border border-zinc-800 space-y-3">
+                      <h3 className="text-xs font-mono font-bold text-amber-400 uppercase tracking-wider flex items-center space-x-2">
+                        <Users className="w-4 h-4" />
+                        <span>Assign Role or Promote Partner</span>
+                      </h3>
+
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <input
+                          type="text"
+                          placeholder="Username to assign (e.g. Nexus_Creator)"
+                          value={newRoleUsername}
+                          onChange={(e) => setNewRoleUsername(e.target.value)}
+                          className="flex-1 px-3.5 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-500"
+                        />
+
+                        <select
+                          value={newRoleSelected}
+                          onChange={(e) => setNewRoleSelected(e.target.value as UserRole)}
+                          className="px-3.5 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                        >
+                          <option value="PARTNER">⚡ PARTNER (Gold Verification & Perks)</option>
+                          <option value="ADMIN">👑 ADMIN (Full Control Clearance)</option>
+                          <option value="MODERATOR">🛡️ MODERATOR (Chat & User Mod)</option>
+                          <option value="VIP">💎 VIP (Custom Badge)</option>
+                          <option value="MEMBER">👤 MEMBER (Standard User)</option>
+                        </select>
+
+                        <button
+                          type="button"
+                          onClick={handleAddUserRole}
+                          disabled={!newRoleUsername.trim()}
+                          className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-black font-extrabold text-xs disabled:opacity-50 transition-all shadow-lg shadow-amber-500/20"
+                        >
+                          Grant Role
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Roles Matrix User Directory */}
+                    <div className="p-4 rounded-2xl bg-zinc-900/80 border border-zinc-800 space-y-4">
+                      <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+                        <h4 className="text-xs font-mono font-bold text-white uppercase tracking-wider">
+                          User Roles Directory & Partner Perks Control
+                        </h4>
+                        <span className="text-[11px] font-mono text-amber-400 font-bold">
+                          {userRoles.length} Managed Users
+                        </span>
+                      </div>
+
+                      <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+                        {userRoles.map((u) => {
+                          const isPartnerRole = u.role === 'PARTNER' || u.role === 'ADMIN';
+
+                          return (
+                            <div
+                              key={u.username}
+                              className={`p-3.5 rounded-2xl border transition-all flex flex-col md:flex-row items-start md:items-center justify-between gap-4 ${
+                                u.role === 'PARTNER'
+                                  ? 'bg-amber-950/20 border-amber-500/40 shadow-sm'
+                                  : u.role === 'ADMIN'
+                                  ? 'bg-amber-500/10 border-amber-500/50'
+                                  : 'bg-zinc-950/60 border-zinc-800'
+                              }`}
+                            >
+                              <div className="flex items-center space-x-3">
+                                <div className="w-9 h-9 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center font-bold text-xs text-white">
+                                  {u.username.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                  <div className="flex items-center space-x-2">
+                                    <span className="font-extrabold text-white text-xs">{u.username}</span>
+                                    <span
+                                      className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border ${
+                                        u.role === 'PARTNER'
+                                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                                          : u.role === 'ADMIN'
+                                          ? 'bg-amber-500 text-black border-amber-400'
+                                          : u.role === 'MODERATOR'
+                                          ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                                          : u.role === 'VIP'
+                                          ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                                          : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                                      }`}
+                                    >
+                                      {u.badge}
+                                    </span>
+                                  </div>
+
+                                  {/* Partner Specific Perks Toggles */}
+                                  {isPartnerRole && (
+                                    <div className="flex flex-wrap gap-2 mt-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleTogglePartnerPerk(u.username, 'featuredSpotlight')}
+                                        className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold transition-all border ${
+                                          u.partnerPerks.featuredSpotlight
+                                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                                            : 'bg-zinc-900 text-zinc-500 border-zinc-800'
+                                        }`}
+                                      >
+                                        ⭐ Spotlight
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => handleTogglePartnerPerk(u.username, 'highSpeedProxy')}
+                                        className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold transition-all border ${
+                                          u.partnerPerks.highSpeedProxy
+                                            ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                                            : 'bg-zinc-900 text-zinc-500 border-zinc-800'
+                                        }`}
+                                      >
+                                        ⚡ Priority Proxy
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => handleTogglePartnerPerk(u.username, 'goldChatGlow')}
+                                        className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold transition-all border ${
+                                          u.partnerPerks.goldChatGlow
+                                            ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40'
+                                            : 'bg-zinc-900 text-zinc-500 border-zinc-800'
+                                        }`}
+                                      >
+                                        ✨ Gold Chat
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Role Selector */}
+                              <div className="flex items-center space-x-2 w-full md:w-auto">
+                                <span className="text-[11px] text-zinc-400 font-mono">Role:</span>
+                                <select
+                                  value={u.role}
+                                  onChange={(e) => handleUpdateRole(u.username, e.target.value as UserRole)}
+                                  className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                                >
+                                  <option value="MEMBER">Member</option>
+                                  <option value="VIP">VIP</option>
+                                  <option value="MODERATOR">Moderator</option>
+                                  <option value="PARTNER">Partner ⚡</option>
+                                  <option value="ADMIN">Admin 👑</option>
+                                </select>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>

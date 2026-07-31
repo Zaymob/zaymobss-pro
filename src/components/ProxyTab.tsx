@@ -13,13 +13,13 @@ import {
   AlertTriangle,
   ExternalLink,
   ShieldCheck,
-  Compass,
   Sparkles,
   Lock,
-  Radio,
   Tv,
   Gamepad2,
-  Bookmark
+  Bookmark,
+  Layers,
+  Zap,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ProxyBrowserTab } from '../types';
@@ -33,13 +33,6 @@ interface ProxyTabProps {
 
 const DEFAULT_BOOKMARKS = [
   {
-    name: 'Roblox',
-    url: 'https://nowgg.fun/apps/a/19900/b.html',
-    iconUrl: 'https://www.google.com/s2/favicons?domain=roblox.com&sz=128',
-    category: 'Games',
-    color: 'from-purple-600 to-indigo-800',
-  },
-  {
     name: 'YouTube',
     url: 'https://www.youtube.com',
     iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/0/09/YouTube_full-color_icon_%282017%29.svg',
@@ -52,6 +45,13 @@ const DEFAULT_BOOKMARKS = [
     iconUrl: 'https://www.google.com/s2/favicons?domain=tiktok.com&sz=128',
     category: 'Social',
     color: 'from-cyan-600 to-pink-600',
+  },
+  {
+    name: 'Bloxd.io',
+    url: 'https://bloxd.io',
+    iconUrl: 'https://www.google.com/s2/favicons?domain=bloxd.io&sz=128',
+    category: 'Voxel Game',
+    color: 'from-emerald-600 to-teal-800',
   },
   {
     name: 'Discord',
@@ -86,188 +86,175 @@ const DEFAULT_BOOKMARKS = [
     url: 'https://open.spotify.com',
     iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/1/19/Spotify_logo_without_text.svg',
     category: 'Music',
-    color: 'from-emerald-600 to-green-800',
+    color: 'from-emerald-500 to-green-700',
   },
   {
     name: 'ChatGPT',
-    url: 'https://chat.openai.com',
-    iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/0/04/ChatGPT_logo.svg',
+    url: 'https://chatgpt.com',
+    iconUrl: 'https://www.google.com/s2/favicons?domain=openai.com&sz=128',
     category: 'AI',
-    color: 'from-teal-600 to-emerald-700',
-  },
-  {
-    name: 'Instagram',
-    url: 'https://www.instagram.com',
-    iconUrl: 'https://www.google.com/s2/favicons?domain=instagram.com&sz=128',
-    category: 'Social',
-    color: 'from-pink-600 to-purple-700',
+    color: 'from-teal-600 to-emerald-800',
   },
   {
     name: 'DuckDuckGo',
     url: 'https://duckduckgo.com',
     iconUrl: 'https://www.google.com/s2/favicons?domain=duckduckgo.com&sz=128',
     category: 'Search',
-    color: 'from-orange-500 to-amber-600',
+    color: 'from-orange-500 to-amber-700',
   },
   {
     name: 'Wikipedia',
     url: 'https://www.wikipedia.org',
     iconUrl: 'https://www.google.com/s2/favicons?domain=wikipedia.org&sz=128',
     category: 'Wiki',
-    color: 'from-zinc-500 to-zinc-700',
+    color: 'from-zinc-600 to-zinc-800',
   },
   {
-    name: 'Bing Search',
-    url: 'https://www.bing.com',
-    iconUrl: 'https://www.google.com/s2/favicons?domain=bing.com&sz=128',
-    category: 'Search',
-    color: 'from-blue-500 to-teal-600',
-  },
-  {
-    name: 'Minecraft Web',
+    name: 'Minecraft Classic',
     url: 'https://classic.minecraft.net',
     iconUrl: 'https://www.google.com/s2/favicons?domain=minecraft.net&sz=128',
-    category: 'Games',
-    color: 'from-emerald-600 to-green-800',
+    category: 'Game',
+    color: 'from-green-600 to-lime-800',
   },
 ];
 
-export const ProxyTab: React.FC<ProxyTabProps> = ({ initialUrl, onNavigateHome }) => {
+export const ProxyTab: React.FC<ProxyTabProps> = ({ initialUrl = '', onNavigateHome }) => {
   const [tabs, setTabs] = useState<ProxyBrowserTab[]>(() => {
-    const startUrl = initialUrl ? formatProxyDestination(initialUrl) : '';
+    const startUrl = initialUrl.trim() || '';
     return [
       {
         id: 'tab-1',
         title: startUrl ? getDisplayDomain(startUrl) : 'New Tab',
         url: startUrl,
         inputUrl: startUrl,
-        history: startUrl ? [startUrl] : [],
-        historyIndex: startUrl ? 0 : -1,
-        loading: !!startUrl,
+        history: startUrl ? [startUrl] : [''],
+        historyIndex: startUrl ? 0 : 0,
+        loading: false,
         error: null,
       },
     ];
   });
 
   const [activeTabId, setActiveTabId] = useState<string>('tab-1');
-  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
-  const [swActive, setSwActive] = useState<boolean>(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [proxyMode, setProxyMode] = useState<'server' | 'direct'>('server');
+  const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  // Initialize Scramjet Worker on mount
+  // Initialize and clear any stale workers on mount
   useEffect(() => {
-    registerScramjetWorker().then((success) => {
-      setSwActive(success);
-    });
+    registerScramjetWorker().catch(() => {});
   }, []);
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
 
-  // Auto safety dismiss for loading state so iframe is never stuck hidden
   useEffect(() => {
-    if (activeTab.loading) {
-      const timer = setTimeout(() => {
-        updateTab(activeTabId, { loading: false });
-      }, 3500);
-      return () => clearTimeout(timer);
+    if (initialUrl && initialUrl !== activeTab.url) {
+      navigateActiveTab(initialUrl);
     }
-  }, [activeTab.loading, activeTabId, activeTab.url]);
+  }, [initialUrl]);
 
-  const updateTab = (id: string, updater: Partial<ProxyBrowserTab>) => {
+  const updateActiveTab = (updater: Partial<ProxyBrowserTab>) => {
     setTabs((prev) =>
-      prev.map((tab) => (tab.id === id ? { ...tab, ...updater } : tab))
+      prev.map((tab) => (tab.id === activeTabId ? { ...tab, ...updater } : tab))
     );
   };
 
-  const createNewTab = (targetUrl: string = '') => {
-    const newId = `tab-${Date.now()}`;
-    const formatted = targetUrl ? formatProxyDestination(targetUrl) : '';
-    const newTabObj: ProxyBrowserTab = {
-      id: newId,
-      title: formatted ? getDisplayDomain(formatted) : 'New Tab',
-      url: formatted,
-      inputUrl: formatted,
-      history: formatted ? [formatted] : [],
-      historyIndex: formatted ? 0 : -1,
-      loading: !!formatted,
-      error: null,
-    };
-    setTabs((prev) => [...prev, newTabObj]);
-    setActiveTabId(newId);
-  };
+  const navigateActiveTab = (rawTarget: string) => {
+    if (!rawTarget.trim()) return;
 
-  const closeTab = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (tabs.length === 1) {
-      // If closing last tab, reset to empty tab
-      updateTab(id, {
-        url: '',
-        inputUrl: '',
-        title: 'New Tab',
-        history: [],
-        historyIndex: -1,
-        loading: false,
-        error: null,
-      });
-      return;
+    let targetUrl = rawTarget.trim();
+
+    // Check if user input is a search query or URL
+    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+      if (targetUrl.includes('.') && !targetUrl.includes(' ')) {
+        targetUrl = 'https://' + targetUrl;
+      } else {
+        // Search query -> DuckDuckGo
+        targetUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(targetUrl)}`;
+      }
     }
 
-    const filtered = tabs.filter((t) => t.id !== id);
-    setTabs(filtered);
-    if (activeTabId === id) {
-      setActiveTabId(filtered[filtered.length - 1].id);
-    }
-  };
+    const currentHistory = activeTab.history.slice(0, activeTab.historyIndex + 1);
+    const newHistory = [...currentHistory, targetUrl];
 
-  const navigateActiveTab = (destinationUrl: string) => {
-    if (!destinationUrl.trim()) return;
-    const formatted = formatProxyDestination(destinationUrl);
-    const currentHist = activeTab.history.slice(0, activeTab.historyIndex + 1);
-    const nextHist = [...currentHist, formatted];
-
-    updateTab(activeTabId, {
-      url: formatted,
-      inputUrl: formatted,
-      title: getDisplayDomain(formatted),
-      history: nextHist,
-      historyIndex: nextHist.length - 1,
+    updateActiveTab({
+      url: targetUrl,
+      inputUrl: targetUrl,
+      title: getDisplayDomain(targetUrl),
+      history: newHistory,
+      historyIndex: newHistory.length - 1,
       loading: true,
       error: null,
     });
   };
 
-  const handleUrlSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (activeTab.inputUrl.trim()) {
-      navigateActiveTab(activeTab.inputUrl);
+  const handleCreateNewTab = (url: string = '') => {
+    const newId = `tab-${Date.now()}`;
+    const newTab: ProxyBrowserTab = {
+      id: newId,
+      title: url ? getDisplayDomain(url) : 'New Tab',
+      url: url,
+      inputUrl: url,
+      history: url ? [url] : [''],
+      historyIndex: 0,
+      loading: !!url,
+      error: null,
+    };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(newId);
+  };
+
+  const handleCloseTab = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (tabs.length === 1) {
+      // Reset the single tab to home
+      setTabs([
+        {
+          id: 'tab-1',
+          title: 'New Tab',
+          url: '',
+          inputUrl: '',
+          history: [''],
+          historyIndex: 0,
+          loading: false,
+          error: null,
+        },
+      ]);
+      setActiveTabId('tab-1');
+      return;
+    }
+
+    const nextTabs = tabs.filter((t) => t.id !== id);
+    setTabs(nextTabs);
+    if (activeTabId === id) {
+      setActiveTabId(nextTabs[nextTabs.length - 1].id);
     }
   };
 
-  const handleBack = () => {
+  const handleGoBack = () => {
     if (activeTab.historyIndex > 0) {
-      const prevIdx = activeTab.historyIndex - 1;
-      const prevUrl = activeTab.history[prevIdx];
-      updateTab(activeTabId, {
+      const newIndex = activeTab.historyIndex - 1;
+      const prevUrl = activeTab.history[newIndex];
+      updateActiveTab({
         url: prevUrl,
         inputUrl: prevUrl,
-        title: getDisplayDomain(prevUrl),
-        historyIndex: prevIdx,
-        loading: true,
+        title: prevUrl ? getDisplayDomain(prevUrl) : 'New Tab',
+        historyIndex: newIndex,
+        loading: !!prevUrl,
         error: null,
       });
     }
   };
 
-  const handleForward = () => {
+  const handleGoForward = () => {
     if (activeTab.historyIndex < activeTab.history.length - 1) {
-      const nextIdx = activeTab.historyIndex + 1;
-      const nextUrl = activeTab.history[nextIdx];
-      updateTab(activeTabId, {
+      const newIndex = activeTab.historyIndex + 1;
+      const nextUrl = activeTab.history[newIndex];
+      updateActiveTab({
         url: nextUrl,
         inputUrl: nextUrl,
         title: getDisplayDomain(nextUrl),
-        historyIndex: nextIdx,
+        historyIndex: newIndex,
         loading: true,
         error: null,
       });
@@ -276,61 +263,60 @@ export const ProxyTab: React.FC<ProxyTabProps> = ({ initialUrl, onNavigateHome }
 
   const handleReload = () => {
     if (activeTab.url) {
-      updateTab(activeTabId, { loading: true, error: null });
+      updateActiveTab({ loading: true, error: null });
       if (iframeRef.current) {
-        iframeRef.current.src = getProxiedUrl(activeTab.url);
+        iframeRef.current.src = iframeRef.current.src;
       }
     }
   };
 
-  const handleHome = () => {
-    updateTab(activeTabId, {
-      url: '',
-      inputUrl: '',
-      title: 'New Tab',
-      error: null,
+  const handleIframeLoad = () => {
+    updateActiveTab({ loading: false });
+  };
+
+  const handleIframeError = () => {
+    updateActiveTab({
       loading: false,
+      error: 'Failed to load page. The target site may be blocking proxy requests.',
     });
   };
 
-  const toggleFullscreen = () => {
-    if (!containerRef.current) return;
-    if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
-    } else {
-      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+  // Determine iframe source URL based on proxy mode
+  const getIframeSrc = () => {
+    if (!activeTab.url) return 'about:blank';
+    if (proxyMode === 'server') {
+      return getProxiedUrl(activeTab.url);
     }
+    return activeTab.url;
   };
 
   return (
     <div
-      ref={containerRef}
-      className={`relative w-full flex flex-col bg-zinc-950 text-white border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl transition-all ${
-        isFullscreen ? 'fixed inset-0 z-50 rounded-none border-none' : 'min-h-[85vh] h-[85vh]'
+      className={`flex flex-col bg-zinc-950/95 border border-zinc-800/90 rounded-3xl overflow-hidden shadow-2xl transition-all duration-300 ${
+        isExpanded ? 'fixed inset-4 z-50 rounded-2xl' : 'w-full h-[calc(100vh-140px)] min-h-[600px]'
       }`}
     >
-      {/* SCRAMJET BROWSER TOP BAR */}
-      <div className="bg-zinc-900/90 backdrop-blur-xl border-b border-zinc-800 p-2 space-y-2 select-none flex-shrink-0">
-        
-        {/* TABS HEADERS BAR */}
-        <div className="flex items-center space-x-1.5 overflow-x-auto no-scrollbar pt-1 px-1">
-          {tabs.map((t) => {
-            const isActive = t.id === activeTabId;
+      {/* Top Browser Chrome Bar */}
+      <div className="bg-zinc-900 border-b border-zinc-800/80 px-4 py-2.5 flex flex-col space-y-2 select-none">
+        {/* Tabs Bar */}
+        <div className="flex items-center space-x-2 overflow-x-auto no-scrollbar">
+          {tabs.map((tab) => {
+            const isActive = tab.id === activeTabId;
             return (
               <div
-                key={t.id}
-                onClick={() => setActiveTabId(t.id)}
-                className={`group relative flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-medium cursor-pointer transition-all max-w-[180px] sm:max-w-[220px] min-w-[110px] flex-shrink-0 border ${
+                key={tab.id}
+                onClick={() => setActiveTabId(tab.id)}
+                className={`group relative flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all max-w-[200px] min-w-[120px] ${
                   isActive
-                    ? 'bg-zinc-800 text-white border-cyan-500/40 shadow-lg shadow-cyan-950/20'
-                    : 'bg-zinc-900/60 text-zinc-400 hover:text-zinc-200 border-zinc-800 hover:bg-zinc-800/60'
+                    ? 'bg-zinc-800 text-cyan-400 border border-zinc-700/80 shadow-md'
+                    : 'bg-zinc-950/60 text-zinc-400 hover:bg-zinc-850 hover:text-zinc-200 border border-transparent'
                 }`}
               >
                 <Globe className={`w-3.5 h-3.5 flex-shrink-0 ${isActive ? 'text-cyan-400' : 'text-zinc-500'}`} />
-                <span className="truncate flex-1 font-mono text-[11px]">{t.title}</span>
+                <span className="truncate flex-1">{tab.title || 'New Tab'}</span>
                 <button
-                  onClick={(e) => closeTab(t.id, e)}
-                  className="p-0.5 rounded-md hover:bg-zinc-700/80 text-zinc-400 hover:text-red-300 transition-colors opacity-70 group-hover:opacity-100"
+                  onClick={(e) => handleCloseTab(tab.id, e)}
+                  className="opacity-60 hover:opacity-100 p-0.5 rounded-md hover:bg-zinc-700 text-zinc-400 hover:text-white transition-opacity"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -338,266 +324,245 @@ export const ProxyTab: React.FC<ProxyTabProps> = ({ initialUrl, onNavigateHome }
             );
           })}
 
-          {/* Add New Tab Button */}
           <button
-            onClick={() => createNewTab('')}
-            className="p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-cyan-300 transition-colors flex-shrink-0"
-            title="Open New Proxy Tab (+)"
+            onClick={() => handleCreateNewTab('')}
+            className="p-1.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors border border-zinc-700/50"
+            title="New Tab"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="w-4 h-4" />
           </button>
-
-          {/* Scramjet Engine Status Badge */}
-          <div className="ml-auto hidden sm:flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-cyan-950/40 border border-cyan-500/30 text-[10px] font-mono text-cyan-300">
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-            <span>Scramjet Proxy Active</span>
-          </div>
         </div>
 
-        {/* NAVIGATION TOOLBAR */}
-        <div className="flex items-center space-x-2 px-1">
-          {/* Back Button */}
-          <button
-            onClick={handleBack}
-            disabled={activeTab.historyIndex <= 0}
-            className="p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 disabled:opacity-30 disabled:hover:bg-zinc-900 transition-all active:scale-95"
-            title="Back"
+        {/* Address Bar Controls */}
+        <div className="flex items-center space-x-2">
+          {/* Navigation Controls */}
+          <div className="flex items-center space-x-1">
+            <button
+              onClick={handleGoBack}
+              disabled={activeTab.historyIndex <= 0}
+              className="p-2 rounded-xl bg-zinc-800/60 hover:bg-zinc-700 disabled:opacity-30 disabled:hover:bg-zinc-800/60 text-zinc-300 transition-all"
+              title="Back"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleGoForward}
+              disabled={activeTab.historyIndex >= activeTab.history.length - 1}
+              className="p-2 rounded-xl bg-zinc-800/60 hover:bg-zinc-700 disabled:opacity-30 disabled:hover:bg-zinc-800/60 text-zinc-300 transition-all"
+              title="Forward"
+            >
+              <ArrowRight className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleReload}
+              className={`p-2 rounded-xl bg-zinc-800/60 hover:bg-zinc-700 text-zinc-300 transition-all ${
+                activeTab.loading ? 'animate-spin text-cyan-400' : ''
+              }`}
+              title="Reload"
+            >
+              <RotateCw className="w-4 h-4" />
+            </button>
+            {onNavigateHome && (
+              <button
+                onClick={() => {
+                  updateActiveTab({ url: '', inputUrl: '', title: 'New Tab' });
+                }}
+                className="p-2 rounded-xl bg-zinc-800/60 hover:bg-zinc-700 text-zinc-300 transition-all"
+                title="Proxy Home"
+              >
+                <Home className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {/* URL Input Bar */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              navigateActiveTab(activeTab.inputUrl);
+            }}
+            className="flex-1 flex items-center space-x-2 bg-zinc-950 px-3 py-1.5 rounded-2xl border border-zinc-800 focus-within:border-cyan-500/60 transition-all shadow-inner"
           >
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-
-          {/* Forward Button */}
-          <button
-            onClick={handleForward}
-            disabled={activeTab.historyIndex >= activeTab.history.length - 1}
-            className="p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 disabled:opacity-30 disabled:hover:bg-zinc-900 transition-all active:scale-95"
-            title="Forward"
-          >
-            <ArrowRight className="w-4 h-4" />
-          </button>
-
-          {/* Reload Button */}
-          <button
-            onClick={handleReload}
-            disabled={!activeTab.url}
-            className="p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 disabled:opacity-30 transition-all active:scale-95"
-            title="Reload"
-          >
-            <RotateCw className={`w-4 h-4 ${activeTab.loading ? 'animate-spin text-cyan-400' : ''}`} />
-          </button>
-
-          {/* Home Button */}
-          <button
-            onClick={handleHome}
-            className="p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 transition-all active:scale-95"
-            title="Home"
-          >
-            <Home className="w-4 h-4" />
-          </button>
-
-          {/* URL BAR & SEARCH FORM */}
-          <form onSubmit={handleUrlSubmit} className="flex-1 flex items-center relative">
-            <div className="absolute left-3 flex items-center space-x-1.5 text-zinc-400 pointer-events-none">
-              <Lock className="w-3.5 h-3.5 text-emerald-400" />
-            </div>
-
+            <Lock className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
             <input
               type="text"
               value={activeTab.inputUrl}
-              onChange={(e) => updateTab(activeTabId, { inputUrl: e.target.value })}
-              placeholder="Search the web or enter a URL (e.g. youtube.com)..."
-              className="w-full pl-9 pr-20 py-2 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-cyan-500/60 text-xs font-mono text-zinc-100 placeholder-zinc-500 focus:outline-none transition-all"
+              onChange={(e) => updateActiveTab({ inputUrl: e.target.value })}
+              placeholder="Search web or enter URL (e.g. youtube.com, wikipedia.org)..."
+              className="flex-1 bg-transparent text-xs text-white placeholder-zinc-500 focus:outline-none"
             />
-
             <button
               type="submit"
-              className="absolute right-1.5 px-3 py-1 bg-gradient-to-r from-cyan-500 to-blue-600 hover:brightness-110 text-white font-bold text-[11px] rounded-lg shadow transition-all flex items-center space-x-1"
+              className="px-3 py-1 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black text-xs font-bold transition-all shadow-md shadow-cyan-500/20"
             >
-              <Search className="w-3 h-3" />
-              <span className="hidden sm:inline">Go</span>
+              Launch
             </button>
           </form>
 
-          {/* Fullscreen Button */}
-          <button
-            onClick={toggleFullscreen}
-            className="p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 transition-all active:scale-95"
-            title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-          >
-            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-          </button>
+          {/* Engine Selector & Expand */}
+          <div className="flex items-center space-x-1.5">
+            <button
+              onClick={() => setProxyMode(proxyMode === 'server' ? 'direct' : 'server')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all border flex items-center space-x-1.5 ${
+                proxyMode === 'server'
+                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-sm'
+                  : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+              }`}
+              title="Toggle Proxy Transport Mode"
+            >
+              <Zap className="w-3.5 h-3.5 text-cyan-400" />
+              <span>{proxyMode === 'server' ? 'Server Proxy' : 'Direct Embed'}</span>
+            </button>
+
+            {activeTab.url && (
+              <a
+                href={activeTab.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 transition-colors border border-zinc-700/50"
+                title="Open in New Tab"
+              >
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            )}
+
+            <button
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="p-2 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 transition-colors border border-zinc-700/50"
+              title={isExpanded ? 'Minimize Browser' : 'Maximize Browser'}
+            >
+              {isExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* BROWSER VIEWPORT CONTAINER */}
-      <div className="relative flex-1 bg-zinc-950 overflow-hidden">
-        
-        {/* EMPTY STATE: WHEN NO URL IS LOADED */}
-        {!activeTab.url && (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-6 md:p-12 text-center space-y-8 overflow-y-auto">
-            
-            {/* Scramjet Proxy Hero Emblem */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="space-y-3 max-w-xl"
-            >
-              <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600 mx-auto flex items-center justify-center text-white shadow-[0_0_30px_rgba(34,211,238,0.3)]">
-                <Globe className="w-8 h-8" />
-              </div>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-                Scramjet Web Proxy
-              </h2>
-              <p className="text-xs sm:text-sm text-zinc-400 font-sans">
-                Enter any website URL or search query to browse unblocked with high-speed proxying.
-              </p>
-            </motion.div>
+      {/* Main Content Area */}
+      <div className="flex-1 relative bg-zinc-950 overflow-hidden flex flex-col">
+        {activeTab.loading && (
+          <div className="absolute top-0 left-0 right-0 h-1 bg-zinc-800 z-30 overflow-hidden">
+            <div className="h-full bg-gradient-to-r from-cyan-500 via-blue-500 to-cyan-400 animate-pulse w-full" />
+          </div>
+        )}
 
-            {/* Big Search Input Card */}
-            <motion.form
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              onSubmit={handleUrlSubmit}
-              className="w-full max-w-2xl flex items-center bg-zinc-900/90 border border-cyan-500/30 rounded-2xl p-2 shadow-2xl focus-within:border-cyan-400 transition-all"
+        {!activeTab.url ? (
+          /* New Tab Home Screen */
+          <div className="flex-1 overflow-y-auto p-6 sm:p-10 space-y-8 max-w-5xl mx-auto w-full flex flex-col justify-center">
+            {/* Header Banner */}
+            <div className="text-center space-y-3">
+              <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-cyan-500/10 text-cyan-400 text-xs font-mono border border-cyan-500/20">
+                <Sparkles className="w-4 h-4" />
+                <span>Yunø High-Speed Scramjet Proxy Engine</span>
+              </div>
+              <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
+                Yuno Web
+              </h1>
+              <p className="text-sm text-zinc-400 max-w-xl mx-auto">
+                Search the web or launch popular sites directly with zero tracking or restrictions.
+              </p>
+            </div>
+
+            {/* Quick Launch Search Input */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                navigateActiveTab(activeTab.inputUrl);
+              }}
+              className="max-w-2xl mx-auto w-full flex items-center space-x-2 bg-zinc-900/90 p-2 rounded-2xl border border-zinc-800 shadow-2xl focus-within:border-cyan-500"
             >
               <Search className="w-5 h-5 text-cyan-400 ml-3 flex-shrink-0" />
               <input
                 type="text"
                 value={activeTab.inputUrl}
-                onChange={(e) => updateTab(activeTabId, { inputUrl: e.target.value })}
-                placeholder="Search Google or type a web address..."
-                className="w-full px-3 py-2 bg-transparent text-sm font-sans text-white placeholder-zinc-500 focus:outline-none"
+                onChange={(e) => updateActiveTab({ inputUrl: e.target.value })}
+                placeholder="Enter web address or search terms..."
+                className="flex-1 bg-transparent px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none"
               />
               <button
                 type="submit"
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:brightness-110 font-bold text-xs text-white shadow-lg shadow-cyan-500/20 transition-all flex items-center space-x-1.5"
+                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-extrabold text-xs shadow-lg shadow-cyan-500/20 transition-all"
               >
-                <span>Launch</span>
-                <Compass className="w-4 h-4" />
+                Search & Launch
               </button>
-            </motion.form>
+            </form>
 
-            {/* Quick Bookmarks Grid */}
-            <motion.div
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-              className="w-full max-w-3xl space-y-3"
-            >
-              <div className="flex items-center justify-between text-xs font-mono font-bold text-zinc-400 uppercase tracking-wider px-1">
-                <span className="flex items-center space-x-1.5">
-                  <Bookmark className="w-3.5 h-3.5 text-cyan-400" />
+            {/* Bookmarks Grid */}
+            <div className="space-y-4 pt-4">
+              <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
+                <div className="flex items-center space-x-2 text-xs font-mono font-bold text-zinc-400 uppercase tracking-wider">
+                  <Bookmark className="w-4 h-4 text-cyan-400" />
                   <span>Popular Destinations</span>
-                </span>
-                <span>Click to Open</span>
+                </div>
+                <span className="text-[11px] font-mono text-zinc-500">Click to launch unblocked</span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                {DEFAULT_BOOKMARKS.map((bm) => (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5">
+                {DEFAULT_BOOKMARKS.map((bookmark) => (
                   <button
-                    key={bm.name}
-                    onClick={() => navigateActiveTab(bm.url)}
-                    className="flex items-center space-x-3 p-3 rounded-2xl bg-zinc-900/80 hover:bg-zinc-800/90 border border-zinc-800 hover:border-cyan-500/50 text-left transition-all group hover:scale-[1.03] active:scale-95 shadow-md hover:shadow-cyan-500/10"
+                    key={bookmark.name}
+                    onClick={() => navigateActiveTab(bookmark.url)}
+                    className="p-4 rounded-2xl bg-zinc-900/80 hover:bg-zinc-850 border border-zinc-800/80 hover:border-cyan-500/40 transition-all flex items-center space-x-3.5 group text-left shadow-lg hover:scale-[1.02]"
                   >
-                    <div className="w-10 h-10 rounded-xl bg-zinc-950/80 border border-zinc-800 p-2 flex items-center justify-center group-hover:border-cyan-500/40 group-hover:scale-110 transition-all flex-shrink-0 shadow-inner overflow-hidden">
-                      <img
-                        src={bm.iconUrl}
-                        alt={bm.name}
-                        className="w-full h-full object-contain filter drop-shadow"
-                        onError={(e) => {
-                          const domain = bm.url.replace(/^https?:\/\//i, '').split('/')[0];
-                          e.currentTarget.src = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
-                        }}
-                      />
-                    </div>
-                    <div className="truncate min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="text-xs font-bold text-white group-hover:text-cyan-300 transition-colors truncate">
-                          {bm.name}
-                        </span>
-                        {bm.category && (
-                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full bg-zinc-800/80 text-zinc-400 group-hover:text-cyan-400 border border-zinc-700/50 flex-shrink-0">
-                            {bm.category}
-                          </span>
-                        )}
+                    <img
+                      src={bookmark.iconUrl}
+                      alt={bookmark.name}
+                      className="w-8 h-8 rounded-xl object-contain bg-zinc-950 p-1 border border-zinc-800 flex-shrink-0 group-hover:scale-110 transition-transform"
+                      onError={(e) => {
+                        (e.target as HTMLElement).style.display = 'none';
+                      }}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-bold text-white group-hover:text-cyan-300 truncate">
+                        {bookmark.name}
                       </div>
-                      <div className="text-[10px] text-zinc-500 font-mono truncate mt-0.5">
-                        {bm.url.replace(/^https?:\/\//i, '')}
+                      <div className="text-[10px] font-mono text-zinc-500 truncate mt-0.5">
+                        {getDisplayDomain(bookmark.url)}
                       </div>
                     </div>
                   </button>
                 ))}
               </div>
-            </motion.div>
-
-          </div>
-        )}
-
-        {/* NON-BLOCKING LOADING INDICATOR & PROGRESS BAR */}
-        {activeTab.loading && activeTab.url && (
-          <div className="absolute top-0 left-0 right-0 z-20 pointer-events-none">
-            <div className="h-1 bg-gradient-to-r from-cyan-400 via-blue-500 to-amber-400 animate-pulse w-full shadow-[0_0_12px_#22d3ee]" />
-            <div className="absolute top-3 right-4 bg-zinc-950/90 border border-cyan-500/40 backdrop-blur-md px-3 py-1.5 rounded-xl shadow-2xl flex items-center space-x-2 text-xs text-cyan-300 font-mono">
-              <RotateCw className="w-3.5 h-3.5 animate-spin text-cyan-400" />
-              <span>Proxy connecting...</span>
             </div>
           </div>
-        )}
+        ) : (
+          /* Active Proxied Web Frame */
+          <div className="relative flex-1 w-full h-full">
+            {activeTab.error ? (
+              <div className="absolute inset-0 bg-zinc-950 flex flex-col items-center justify-center p-6 text-center z-20 space-y-4">
+                <div className="p-4 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">
+                  <AlertTriangle className="w-8 h-8" />
+                </div>
+                <h3 className="text-xl font-extrabold text-white">Proxy Request Blocked or Refused</h3>
+                <p className="text-xs text-zinc-400 max-w-md">{activeTab.error}</p>
+                <div className="flex items-center space-x-3 pt-2">
+                  <button
+                    onClick={handleReload}
+                    className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-bold transition-all border border-zinc-700"
+                  >
+                    Retry Loading
+                  </button>
+                  <a
+                    href={activeTab.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black text-xs font-extrabold transition-all shadow-md"
+                  >
+                    Open in New Tab
+                  </a>
+                </div>
+              </div>
+            ) : null}
 
-        {/* ERROR STATE */}
-        {activeTab.error && (
-          <div className="absolute inset-0 z-30 bg-zinc-950 flex flex-col items-center justify-center p-6 text-center space-y-5">
-            <div className="w-16 h-16 rounded-3xl bg-red-500/10 border border-red-500/30 text-red-400 flex items-center justify-center shadow-lg">
-              <AlertTriangle className="w-8 h-8" />
-            </div>
-            <div className="space-y-2 max-w-md">
-              <h2 className="text-xl font-bold text-white">Unable to load this website</h2>
-              <p className="text-xs text-zinc-400 font-mono">
-                The requested URL <span className="text-red-300">{activeTab.url}</span> could not be retrieved through the proxy engine.
-              </p>
-            </div>
-            <div className="flex items-center space-x-3 pt-2">
-              <button
-                onClick={handleReload}
-                className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-white transition-colors"
-              >
-                Try Again
-              </button>
-              <button
-                onClick={handleHome}
-                className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:brightness-110 text-xs font-bold text-white transition-all shadow-md"
-              >
-                Go Home
-              </button>
-              {activeTab.historyIndex > 0 && (
-                <button
-                  onClick={handleBack}
-                  className="px-4 py-2 rounded-xl bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-xs text-zinc-300 font-medium transition-colors"
-                >
-                  Back
-                </button>
-              )}
-            </div>
+            <iframe
+              ref={iframeRef}
+              src={getIframeSrc()}
+              onLoad={handleIframeLoad}
+              onError={handleIframeError}
+              className="w-full h-full border-none bg-white"
+              title={activeTab.title}
+              sandbox="allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts allow-downloads"
+            />
           </div>
-        )}
-
-        {/* ACTIVE PROXIED IFRAME */}
-        {activeTab.url && (
-          <iframe
-            ref={iframeRef}
-            key={`${activeTab.id}-${activeTab.url}`}
-            src={getProxiedUrl(activeTab.url)}
-            title={activeTab.title}
-            className="w-full h-full border-none bg-white"
-            onLoad={() => {
-              updateTab(activeTabId, { loading: false });
-            }}
-            onError={() => {
-              updateTab(activeTabId, { loading: false, error: 'Proxy request failed' });
-            }}
-            sandbox="allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-downloads"
-          />
         )}
       </div>
     </div>

@@ -92,6 +92,54 @@ export const MusicView: React.FC<MusicViewProps> = ({
     }
   });
 
+  // Recently Played Listening History State for Personalization
+  const [recentlyPlayed, setRecentlyPlayed] = useState<MusicTrack[]>(() => {
+    try {
+      const saved = localStorage.getItem('yuno_recently_played');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  // Calculate top listened artist from listening history
+  const topListenedArtist = React.useMemo(() => {
+    if (!recentlyPlayed || recentlyPlayed.length === 0) return 'Kanye West & Malcolm Todd';
+    const artistCounts: Record<string, number> = {};
+    recentlyPlayed.forEach((track) => {
+      if (track.artist) {
+        artistCounts[track.artist] = (artistCounts[track.artist] || 0) + 1;
+      }
+    });
+    let topArt = recentlyPlayed[0].artist || 'Kanye West';
+    let maxCount = 0;
+    Object.entries(artistCounts).forEach(([art, count]) => {
+      if (count > maxCount) {
+        maxCount = count;
+        topArt = art;
+      }
+    });
+    return topArt;
+  }, [recentlyPlayed]);
+
+  // Sync listening history from localStorage
+  useEffect(() => {
+    const updateHistory = () => {
+      try {
+        const saved = localStorage.getItem('yuno_recently_played');
+        if (saved) {
+          setRecentlyPlayed(JSON.parse(saved));
+        }
+      } catch (e) {}
+    };
+    window.addEventListener('storage', updateHistory);
+    const interval = setInterval(updateHistory, 3000);
+    return () => {
+      window.removeEventListener('storage', updateHistory);
+      clearInterval(interval);
+    };
+  }, []);
+
   // Custom Playlists State
   const [playlists, setPlaylists] = useState<Playlist[]>(() => {
     try {
@@ -146,7 +194,7 @@ export const MusicView: React.FC<MusicViewProps> = ({
 
   // Initial search on load
   useEffect(() => {
-    handleMetingSearch('Top Hits');
+    handleMetingSearch('Kanye West Malcolm Todd');
   }, []);
 
   // Fetch lyrics whenever currentTrack changes or lyrics tab opens
@@ -340,6 +388,170 @@ export const MusicView: React.FC<MusicViewProps> = ({
       {/* TAB 1: FEATURED ALBUMS & SEARCH */}
       {activeTab === 'home' && (
         <div className="space-y-8">
+          {/* PERSONALIZED TASTE SECTION: BASED ON WHAT YOU LISTEN TO */}
+          <div className="p-6 rounded-3xl bg-gradient-to-r from-purple-900/40 via-indigo-950/60 to-zinc-950 border border-purple-500/30 shadow-2xl relative overflow-hidden space-y-5">
+            <div className="absolute top-0 right-0 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
+            
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
+              <div className="space-y-1">
+                <div className="flex items-center space-x-2 text-xs font-mono font-bold text-purple-400">
+                  <Disc3 className="w-4 h-4 animate-spin text-cyan-400" />
+                  <span>Personalized Taste Engine</span>
+                </div>
+                <h2 className="text-2xl font-black text-white tracking-tight flex items-center space-x-2">
+                  <span>Based on What You Listen To</span>
+                </h2>
+                <p className="text-xs text-zinc-300">
+                  Curated mixes inspired by your affinity for <span className="text-cyan-300 font-bold">{topListenedArtist}</span>, Malcolm Todd & Kanye West.
+                </p>
+              </div>
+
+              <button
+                onClick={() => handleMetingSearch(topListenedArtist)}
+                className="px-4 py-2 rounded-xl bg-purple-500 hover:bg-purple-400 text-white font-bold text-xs shadow-lg shadow-purple-500/30 transition-all flex items-center space-x-2 self-start sm:self-auto"
+              >
+                <Radio className="w-3.5 h-3.5" />
+                <span>Launch {topListenedArtist.split(' ')[0]} Radio Station</span>
+              </button>
+            </div>
+
+            {/* Recently Listened Quick Replay Row (If History Exists) */}
+            {recentlyPlayed.length > 0 && (
+              <div className="space-y-2 relative z-10 pt-2 border-t border-purple-500/20">
+                <span className="text-[10px] font-mono uppercase tracking-wider text-purple-300 font-bold block">
+                  Recently Listened Tracks ({recentlyPlayed.length})
+                </span>
+                <div className="flex items-center space-x-3 overflow-x-auto pb-2 scrollbar-none">
+                  {recentlyPlayed.slice(0, 10).map((track, i) => (
+                    <div
+                      key={`hist-${track.id}-${i}`}
+                      onClick={() => onPlayTrack(track, { type: 'general' })}
+                      className="group/hist flex items-center space-x-2.5 p-2 rounded-2xl bg-zinc-900/90 border border-zinc-800 hover:border-purple-400 cursor-pointer flex-shrink-0 transition-all hover:scale-105"
+                    >
+                      <img src={track.cover} alt={track.title} className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
+                      <div className="min-w-0 pr-1">
+                        <p className="text-xs font-bold text-white group-hover/hist:text-purple-300 truncate max-w-[110px]">
+                          {track.title}
+                        </p>
+                        <p className="text-[10px] text-zinc-400 truncate max-w-[110px]">{track.artist}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Taste Recommendation Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 relative z-10">
+              <div
+                onClick={() => handleMetingSearch('Kanye West Graduation Yeezus')}
+                className="p-4 rounded-2xl bg-zinc-900/80 border border-zinc-800 hover:border-amber-500/60 cursor-pointer transition-all hover:bg-zinc-850 group"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-mono font-bold border border-amber-500/30">
+                    Hip-Hop / Synth
+                  </span>
+                  <Play className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
+                </div>
+                <h4 className="text-sm font-bold text-white group-hover:text-amber-300 transition-colors">Kanye West Essential Vault</h4>
+                <p className="text-[11px] text-zinc-400 mt-1">Flashing Lights, Bound 2, Father Stretch My Hands & classic Ye beats.</p>
+              </div>
+
+              <div
+                onClick={() => handleMetingSearch('Malcolm Todd Roommates Sweet Boy')}
+                className="p-4 rounded-2xl bg-zinc-900/80 border border-zinc-800 hover:border-cyan-500/60 cursor-pointer transition-all hover:bg-zinc-850 group"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 text-[10px] font-mono font-bold border border-cyan-500/30">
+                    Indie R&B / Soul
+                  </span>
+                  <Play className="w-4 h-4 text-cyan-400 group-hover:scale-110 transition-transform" />
+                </div>
+                <h4 className="text-sm font-bold text-white group-hover:text-cyan-300 transition-colors">Malcolm Todd Atmosphere</h4>
+                <p className="text-[11px] text-zinc-400 mt-1">Roommates, Art House, Chest Press & smooth, bedroom R&B groove.</p>
+              </div>
+
+              <div
+                onClick={() => handleMetingSearch('Tyler The Creator Don Toliver Frank Ocean')}
+                className="p-4 rounded-2xl bg-zinc-900/80 border border-zinc-800 hover:border-purple-500/60 cursor-pointer transition-all hover:bg-zinc-850 group"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-[10px] font-mono font-bold border border-purple-500/30">
+                    Alternative Vibe
+                  </span>
+                  <Play className="w-4 h-4 text-purple-400 group-hover:scale-110 transition-transform" />
+                </div>
+                <h4 className="text-sm font-bold text-white group-hover:text-purple-300 transition-colors">Tyler, Don Toliver & Frank Ocean</h4>
+                <p className="text-[11px] text-zinc-400 mt-1">See You Again, Bandit, Pink + White & high-energy futuristic tracks.</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Featured Essential Albums (Kanye, Malcolm Todd, Tyler, Don Toliver) */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="flex items-center space-x-2 text-xs font-mono text-cyan-400">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Curated Collections</span>
+                </div>
+                <h2 className="text-xl font-black text-white">Essential Artist Vaults</h2>
+              </div>
+              <span className="text-xs font-mono text-zinc-500 hidden sm:inline">Kanye • Malcolm Todd • Tyler • Don Toliver</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {EDITORS_PICKS_ALBUMS.map((album) => (
+                <div
+                  key={album.id}
+                  className="group relative rounded-2xl p-4 bg-zinc-900/90 border border-zinc-800 hover:border-cyan-500/50 transition-all hover:bg-zinc-850 flex flex-col justify-between space-y-3"
+                >
+                  <div className="space-y-3">
+                    <div className="aspect-square w-full rounded-xl overflow-hidden bg-zinc-800 relative">
+                      <img
+                        src={album.cover}
+                        alt={album.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                      <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-black bg-cyan-400 px-2 py-0.5 rounded-full font-mono">
+                          {album.artist}
+                        </span>
+                        <span className="text-[10px] text-zinc-300 font-mono">{album.year}</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h3 className="text-sm font-extrabold text-white group-hover:text-cyan-300 transition-colors truncate">
+                        {album.title}
+                      </h3>
+                      <p className="text-[11px] text-zinc-400 line-clamp-2 mt-0.5">{album.description}</p>
+                    </div>
+                  </div>
+
+                  {/* Album Tracks Quick Launcher */}
+                  <div className="pt-2 border-t border-zinc-800 space-y-1">
+                    <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider block mb-1">Featured Tracks</span>
+                    {album.tracks.slice(0, 3).map((track, tIdx) => (
+                      <button
+                        key={tIdx}
+                        onClick={() => handlePlayAlbumTrack(album, track.title)}
+                        className="w-full flex items-center justify-between p-1.5 rounded-lg hover:bg-zinc-800 text-left transition-colors text-[11px] group/trk"
+                      >
+                        <div className="flex items-center space-x-2 truncate">
+                          <Play className="w-3 h-3 text-cyan-400 fill-current flex-shrink-0 group-hover/trk:scale-110 transition-transform" />
+                          <span className="text-zinc-300 group-hover/trk:text-white font-medium truncate">{track.title}</span>
+                        </div>
+                        <span className="text-[9px] font-mono text-zinc-500">{track.duration}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* Searchable Songs Engine */}
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">

@@ -103,6 +103,23 @@ const DAILY_VERSES = [
   },
 ];
 
+// Voice Quality Helper: Score browser SpeechSynthesis voices to prioritize high-definition natural voices
+function getVoiceQualityScore(voice: SpeechSynthesisVoice): number {
+  const name = voice.name.toLowerCase();
+  let score = 0;
+
+  if (voice.lang.startsWith('en')) score += 50;
+
+  if (name.includes('natural') || name.includes('online')) score += 100;
+  if (name.includes('google')) score += 80;
+  if (name.includes('neural') || name.includes('premium') || name.includes('enhanced') || name.includes('studio')) score += 70;
+  if (name.includes('aria') || name.includes('guy') || name.includes('jenny') || name.includes('samantha') || name.includes('daniel') || name.includes('karen')) score += 60;
+  if (name.includes('microsoft')) score += 40;
+  if (name.includes('apple')) score += 30;
+
+  return score;
+}
+
 export const HaloView: React.FC<HaloViewProps> = ({ userDisplayName = 'Friend' }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     return [
@@ -118,7 +135,6 @@ export const HaloView: React.FC<HaloViewProps> = ({ userDisplayName = 'Friend' }
 
   const [inputMessage, setInputMessage] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [activeCategory, setActiveCategory] = useState<'all' | 'struggles' | 'bible' | 'prayer'>('all');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // Daily Verse state
@@ -128,11 +144,12 @@ export const HaloView: React.FC<HaloViewProps> = ({ userDisplayName = 'Friend' }
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>('');
   const [selectedPreset, setSelectedPreset] = useState<string>('pastor');
-  const [voiceRate, setVoiceRate] = useState<number>(0.9);
-  const [voicePitch, setVoicePitch] = useState<number>(0.95);
+  const [voiceRate, setVoiceRate] = useState<number>(0.92);
+  const [voicePitch, setVoicePitch] = useState<number>(0.92);
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
   const [autoSpeak, setAutoSpeak] = useState<boolean>(true);
   const [isVoiceSettingsOpen, setIsVoiceSettingsOpen] = useState<boolean>(false);
+  const [showNaturalVoicesOnly, setShowNaturalVoicesOnly] = useState<boolean>(false);
 
   // Speech Recognition (STT) State
   const [isListening, setIsListening] = useState<boolean>(false);
@@ -149,16 +166,20 @@ export const HaloView: React.FC<HaloViewProps> = ({ userDisplayName = 'Friend' }
     scrollToBottom();
   }, [messages, isGenerating]);
 
-  // Load browser SpeechSynthesis voices
+  // Load and sort browser SpeechSynthesis voices by naturalness quality
   useEffect(() => {
     const updateVoices = () => {
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-        const voices = window.speechSynthesis.getVoices();
-        setAvailableVoices(voices);
-        if (voices.length > 0 && !selectedVoiceURI) {
-          // Prefer English voices
-          const engVoice = voices.find((v) => v.lang.startsWith('en')) || voices[0];
-          setSelectedVoiceURI(engVoice.voiceURI);
+        const rawVoices = window.speechSynthesis.getVoices();
+        if (rawVoices.length > 0) {
+          // Sort by natural quality score descending
+          const sorted = [...rawVoices].sort((a, b) => getVoiceQualityScore(b) - getVoiceQualityScore(a));
+          setAvailableVoices(sorted);
+
+          if (!selectedVoiceURI) {
+            // Automatically select the highest scoring natural voice
+            setSelectedVoiceURI(sorted[0].voiceURI);
+          }
         }
       }
     };
@@ -169,26 +190,35 @@ export const HaloView: React.FC<HaloViewProps> = ({ userDisplayName = 'Friend' }
     }
   }, []);
 
-  // Handle TTS Speaking
+  // Natural Sentence Paced TTS Handler
   const speakText = (text: string) => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
 
     window.speechSynthesis.cancel(); // Stop any current speech
 
-    // Clean markdown symbols for natural audio speech
-    const cleanSpeechText = text
-      .replace(/[*_#`~]/g, '')
+    // Clean markdown and non-verbal formatting for natural human speech
+    let cleanSpeechText = text
+      .replace(/###|##|#/g, '')
+      .replace(/\*\*|\*/g, '')
       .replace(/\[.*?\]/g, '')
-      .replace(/🔒|✨|🕊️|✝️|📖|🙏|🎤/g, '')
+      .replace(/🔒|✨|🕊️|✝️|📖|🙏|🎤|🔊|⭐|—/g, '')
+      .replace(/(\r\n|\n|\r)+/g, '. ')
       .trim();
 
     if (!cleanSpeechText) return;
+
+    // Truncate ultra-long text to maintain responsive speech performance
+    if (cleanSpeechText.length > 1000) {
+      cleanSpeechText = cleanSpeechText.substring(0, 1000) + '... Peace be with you.';
+    }
 
     const utterance = new SpeechSynthesisUtterance(cleanSpeechText);
 
     if (selectedVoiceURI) {
       const match = availableVoices.find((v) => v.voiceURI === selectedVoiceURI);
       if (match) utterance.voice = match;
+    } else if (availableVoices.length > 0) {
+      utterance.voice = availableVoices[0];
     }
 
     utterance.rate = voiceRate;
@@ -208,13 +238,44 @@ export const HaloView: React.FC<HaloViewProps> = ({ userDisplayName = 'Friend' }
     }
   };
 
-  // Apply preset voice configuration
+  // Apply preset voice configuration & pick matching best natural voice
   const handleApplyPreset = (presetId: string) => {
     const preset = VOICE_PRESETS.find((p) => p.id === presetId);
     if (!preset) return;
+
     setSelectedPreset(preset.id);
     setVoiceRate(preset.rate);
     setVoicePitch(preset.pitch);
+
+    // Try to pick a fitting voice from available sorted natural voices
+    if (availableVoices.length > 0) {
+      let candidate = availableVoices[0];
+
+      if (presetId === 'sister' || presetId === 'guide') {
+        const femaleVoice = availableVoices.find(
+          (v) =>
+            v.name.toLowerCase().includes('female') ||
+            v.name.toLowerCase().includes('zira') ||
+            v.name.toLowerCase().includes('aria') ||
+            v.name.toLowerCase().includes('jenny') ||
+            v.name.toLowerCase().includes('samantha') ||
+            v.name.toLowerCase().includes('karen')
+        );
+        if (femaleVoice) candidate = femaleVoice;
+      } else if (presetId === 'pastor' || presetId === 'scholar') {
+        const maleVoice = availableVoices.find(
+          (v) =>
+            v.name.toLowerCase().includes('male') ||
+            v.name.toLowerCase().includes('guy') ||
+            v.name.toLowerCase().includes('david') ||
+            v.name.toLowerCase().includes('daniel') ||
+            v.name.toLowerCase().includes('george')
+        );
+        if (maleVoice) candidate = maleVoice;
+      }
+
+      setSelectedVoiceURI(candidate.voiceURI);
+    }
 
     // Speak quick sample preview
     const sample = `I am now set to ${preset.title}. Peace be with you.`;
@@ -483,6 +544,12 @@ Key Guidelines:
             <div className="space-y-2">
               {[
                 {
+                  icon: BookOpen,
+                  label: 'What Does the Bible Say About Judgment?',
+                  prompt: 'Halo, what does the Bible say about judgment, judging others, and God\'s judgment?',
+                  tag: 'bible',
+                },
+                {
                   icon: HeartHandshake,
                   label: 'Get Something Off My Chest',
                   prompt: 'Halo, I am carrying a heavy burden today and need a safe place to share what I am struggling with...',
@@ -742,44 +809,48 @@ Key Guidelines:
                 </button>
               </div>
 
-              {/* Character Voice Presets */}
-              <div className="space-y-2">
-                <label className="text-xs font-mono font-bold text-amber-400 uppercase block">
-                  Select Character Personality Preset
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {VOICE_PRESETS.map((preset) => (
-                    <button
-                      key={preset.id}
-                      onClick={() => handleApplyPreset(preset.id)}
-                      className={`p-3 rounded-2xl border text-left transition-all ${
-                        selectedPreset === preset.id
-                          ? 'bg-amber-500/20 border-amber-500 text-amber-200'
-                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white'
-                      }`}
-                    >
-                      <div className="font-bold text-xs text-white">{preset.name}</div>
-                      <div className="text-[10px] text-zinc-400 mt-1 line-clamp-2">{preset.description}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
+
 
               {/* Browser Hardware Voice Selection */}
               <div className="space-y-1.5">
-                <label className="text-xs font-mono font-bold text-amber-400 uppercase block">
-                  Available Browser Speech Engine Voices
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-mono font-bold text-amber-400 uppercase block">
+                    Speech Engine Voices ({availableVoices.length} Found)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowNaturalVoicesOnly(!showNaturalVoicesOnly)}
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold transition-all ${
+                      showNaturalVoicesOnly
+                        ? 'bg-amber-500/30 text-amber-300 border border-amber-500/40'
+                        : 'bg-zinc-800 text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    {showNaturalVoicesOnly ? '⭐ Natural Only' : 'Show All Voices'}
+                  </button>
+                </div>
+
                 <select
                   value={selectedVoiceURI}
                   onChange={(e) => setSelectedVoiceURI(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                  className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 font-sans"
                 >
-                  {availableVoices.map((v) => (
-                    <option key={v.voiceURI} value={v.voiceURI}>
-                      {v.name} ({v.lang})
-                    </option>
-                  ))}
+                  {availableVoices
+                    .filter((v) => {
+                      if (!showNaturalVoicesOnly) return true;
+                      return getVoiceQualityScore(v) >= 80;
+                    })
+                    .map((v, idx) => {
+                      const score = getVoiceQualityScore(v);
+                      const isNatural = score >= 80;
+                      const uniqueKey = v.voiceURI ? `${v.voiceURI}-${idx}` : `${v.name}-${v.lang}-${idx}`;
+                      return (
+                        <option key={uniqueKey} value={v.voiceURI}>
+                          {isNatural ? '⭐ ' : ''}
+                          {v.name} ({v.lang})
+                        </option>
+                      );
+                    })}
                 </select>
               </div>
 

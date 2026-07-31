@@ -61,17 +61,17 @@ export async function registerScramjetWorker(): Promise<boolean> {
   }
 
   try {
-    // Attempt registration if sw.js exists in public directory
-    const reg = await navigator.serviceWorker.register('/scramjet-sw.js', {
-      scope: '/scramjet/',
-    });
-    swRegistered = true;
-    console.log('[Scramjet Engine] Service worker registered successfully:', reg.scope);
-    return true;
-  } catch (err) {
-    console.warn('[Scramjet Engine] Service worker registration skipped, using server proxy transport mode:', err);
-    return false;
+    // Unregister any stale or broken service workers hijacking fetch requests
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    for (const reg of registrations) {
+      console.log('[Scramjet Engine] Unregistering stale service worker:', reg.scope);
+      await reg.unregister();
+    }
+  } catch (e) {
+    console.warn('[Scramjet Engine] Error cleaning service workers:', e);
   }
+
+  return false;
 }
 
 /**

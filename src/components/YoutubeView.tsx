@@ -150,7 +150,17 @@ interface ReactionBubble {
   x: number;
 }
 
-export const YoutubeView: React.FC = () => {
+interface YoutubeViewProps {
+  onSetPipVideo?: (video: YouTubeVideo | null) => void;
+  activePipVideoId?: string;
+  initialSelectedVideo?: YouTubeVideo | null;
+}
+
+export const YoutubeView: React.FC<YoutubeViewProps> = ({
+  onSetPipVideo,
+  activePipVideoId,
+  initialSelectedVideo,
+}) => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeQuery, setActiveQuery] = useState<string>('Trending Videos');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
@@ -159,7 +169,13 @@ export const YoutubeView: React.FC = () => {
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [selectedVideo, setSelectedVideo] = useState<YouTubeVideo | null>(null);
+  const [selectedVideo, setSelectedVideo] = useState<YouTubeVideo | null>(initialSelectedVideo || null);
+
+  useEffect(() => {
+    if (initialSelectedVideo) {
+      setSelectedVideo(initialSelectedVideo);
+    }
+  }, [initialSelectedVideo]);
   const [miniPlayerVideo, setMiniPlayerVideo] = useState<YouTubeVideo | null>(null);
   const [activeSkin, setActiveSkin] = useState<SkinTheme>('crimson');
   const [showSkinMenu, setShowSkinMenu] = useState<boolean>(false);
@@ -911,6 +927,22 @@ export const YoutubeView: React.FC = () => {
                     >
                       <Bookmark className="w-3.5 h-3.5" />
                       <span>{savedVideoIds.includes(selectedVideo.videoId) ? 'Saved' : 'Save'}</span>
+                    </button>
+
+                    {/* PiP Floating Window Popout Button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (selectedVideo && onSetPipVideo) {
+                          onSetPipVideo(selectedVideo);
+                          setSelectedVideo(null);
+                        }
+                      }}
+                      className="flex items-center space-x-1.5 px-4 py-2 rounded-full bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 text-xs font-extrabold text-red-400 transition-all shadow-md shadow-red-500/10"
+                      title="Pop out video into floating Picture-in-Picture window"
+                    >
+                      <Tv className="w-3.5 h-3.5 text-red-400" />
+                      <span>PiP Popout</span>
                     </button>
 
                     {/* Share Button */}

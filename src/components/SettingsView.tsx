@@ -24,6 +24,8 @@ import {
   Globe,
   Link as LinkIcon,
   X,
+  Zap,
+  Cpu,
 } from 'lucide-react';
 import { extractWallpaperColors, applyThemeToCSS, ExtractedTheme } from '../utils/colorExtractor';
 
@@ -31,6 +33,7 @@ interface SettingsViewProps {
   currentWallpaper: string;
   onSelectWallpaper: (url: string) => void;
   onReplayBoot: () => void;
+  onReplayTour?: () => void;
   onOpenAdminPanel?: () => void;
   isAdmin?: boolean;
   onRevokeAdmin?: () => void;
@@ -40,6 +43,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   currentWallpaper,
   onSelectWallpaper,
   onReplayBoot,
+  onReplayTour,
   onOpenAdminPanel,
   isAdmin = false,
   onRevokeAdmin,
@@ -58,6 +62,33 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [isAdminPanelEnabled, setIsAdminPanelEnabled] = useState<boolean>(() => {
     return localStorage.getItem('yuno_admin_panel_enabled') !== 'false';
   });
+
+  const [isYunoLiteEnabled, setIsYunoLiteEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('yuno_lite_mode') === 'true';
+    } catch (e) {
+      return false;
+    }
+  });
+
+  const handleToggleYunoLite = (enabled: boolean) => {
+    setIsYunoLiteEnabled(enabled);
+    try {
+      localStorage.setItem('yuno_lite_mode', enabled ? 'true' : 'false');
+    } catch (e) {}
+
+    if (enabled) {
+      document.documentElement.classList.add('yuno-lite-active');
+    } else {
+      document.documentElement.classList.remove('yuno-lite-active');
+    }
+  };
+
+  useEffect(() => {
+    if (isYunoLiteEnabled) {
+      document.documentElement.classList.add('yuno-lite-active');
+    }
+  }, []);
 
   // Announcements State & Admin Creator
   const [announcements, setAnnouncements] = useState<AnnouncementItem[]>(DEFAULT_ANNOUNCEMENTS);
@@ -325,6 +356,35 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             >
               <ShieldAlert className="w-4 h-4" />
               <span>Open Developer Admin Panel</span>
+            </button>
+          </div>
+
+          {/* Admin-Only Yuno Lite Performance Toggle */}
+          <div className="mt-4 pt-4 border-t border-zinc-800/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-zinc-950/60 p-4 rounded-2xl border border-amber-500/20">
+            <div className="space-y-1">
+              <div className="flex items-center space-x-2">
+                <Cpu className="w-4 h-4 text-amber-400" />
+                <h4 className="text-sm font-extrabold text-white">Yunø Lite (Low-Power Optimization)</h4>
+                <span className="px-2 py-0.5 rounded-md text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  ADMIN ONLY
+                </span>
+              </div>
+              <p className="text-xs text-zinc-400 max-w-lg">
+                Optimized performance mode for slower laptops and Chromebooks. Disables heavy backdrop-filter blurs, video filters, and complex animations to save CPU and RAM.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => handleToggleYunoLite(!isYunoLiteEnabled)}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 flex-shrink-0 border ${
+                isYunoLiteEnabled
+                  ? 'bg-amber-500 text-black border-amber-400 shadow-lg shadow-amber-500/20'
+                  : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-700'
+              }`}
+            >
+              {isYunoLiteEnabled ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5 text-zinc-500" />}
+              <span>{isYunoLiteEnabled ? 'Yunø Lite Enabled' : 'Yunø Lite Disabled'}</span>
             </button>
           </div>
         </div>
@@ -707,25 +767,37 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       </div>
 
-      {/* Boot Animation Replay Card */}
-      <div className="p-6 rounded-3xl bg-zinc-900/90 border border-zinc-800 flex items-center justify-between shadow-xl">
+      {/* Boot Animation & Guided Tour Replay Card */}
+      <div className="p-6 rounded-3xl bg-zinc-900/90 border border-zinc-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl">
         <div className="space-y-1">
           <h3 className="text-base font-bold text-white flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-cyan-400" />
-            Yunø Boot Screen Sequence
+            Yunø Onboarding & System Boot
           </h3>
           <p className="text-xs text-zinc-400">
-            Replay the startup animation with "Yun" dissolving into the "Ø" logo transition.
+            Replay the site guided tour, re-customize profile defaults, or re-watch the startup sequence.
           </p>
         </div>
 
-        <button
-          onClick={onReplayBoot}
-          className="px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs rounded-xl shadow-lg transition-all flex items-center space-x-2"
-        >
-          <RotateCcw className="w-4 h-4" />
-          <span>Replay Boot Screen</span>
-        </button>
+        <div className="flex items-center space-x-2.5">
+          {onReplayTour && (
+            <button
+              onClick={onReplayTour}
+              className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs rounded-xl transition-all flex items-center space-x-2 border border-zinc-700"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-purple-400" />
+              <span>Guided Tour & Setup</span>
+            </button>
+          )}
+
+          <button
+            onClick={onReplayBoot}
+            className="px-4 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs rounded-xl shadow-lg transition-all flex items-center space-x-2"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Replay Boot Screen</span>
+          </button>
+        </div>
       </div>
 
       {/* Wallpaper Picker */}

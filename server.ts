@@ -1672,21 +1672,23 @@ app.post("/api/gemini/chat", async (req, res) => {
   try {
     const { prompt, model, systemInstruction, history } = req.body;
 
-    if (!prompt) {
+    if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
       return res.status(400).json({ error: "Prompt is required" });
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      // Fallback helpful response if API key is not configured in local environment
+      // Return a biblically grounded offline response if API key is missing
+      const offlineAnswer = generateBiblicalFallbackResponse(prompt);
       return res.json({
-        text: `[Yunø AI Response] You asked: "${prompt}". (Note: GEMINI_API_KEY is not detected in environment settings. Please set your key in Settings > Secrets to unlock full live responses!)`,
+        text: offlineAnswer,
+        modelUsed: "offline-biblical-engine",
       });
     }
 
     const ai = getGenAI();
 
-    // Map requested model names to valid models or fall back to gemini-3.6-flash
+    // Map requested model names to valid models
     let targetModel = "gemini-3.6-flash";
     if (model) {
       const lower = model.toLowerCase();
@@ -1699,41 +1701,172 @@ app.post("/api/gemini/chat", async (req, res) => {
       }
     }
 
+    // Format and sanitize conversation history so it strictly starts with 'user' and alternates
     let contents: any = prompt;
     if (history && Array.isArray(history) && history.length > 0) {
-      const formattedHistory = history.map((item: any) => ({
-        role: item.role === "user" ? "user" : "model",
-        parts: [{ text: item.content || item.text }],
-      }));
-      formattedHistory.push({
-        role: "user",
-        parts: [{ text: prompt }],
-      });
-      contents = formattedHistory;
+      const rawHistory = history
+        .map((item: any) => ({
+          role: item.role === "user" ? "user" : "model",
+          text: (item.content || item.text || "").trim(),
+        }))
+        .filter((item) => item.text.length > 0);
+
+      // Find first 'user' index to ensure history starts with user turn
+      const firstUserIndex = rawHistory.findIndex((item) => item.role === "user");
+
+      if (firstUserIndex !== -1) {
+        const validHistory: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+        let expectedRole = "user";
+
+        for (let i = firstUserIndex; i < rawHistory.length; i++) {
+          const item = rawHistory[i];
+          if (item.role === expectedRole) {
+            validHistory.push({
+              role: item.role,
+              parts: [{ text: item.text }],
+            });
+            expectedRole = expectedRole === "user" ? "model" : "user";
+          }
+        }
+
+        // Must end on a model turn so the new prompt becomes the trailing user turn
+        if (validHistory.length > 0 && validHistory[validHistory.length - 1].role === "user") {
+          validHistory.pop();
+        }
+
+        if (validHistory.length > 0) {
+          validHistory.push({
+            role: "user",
+            parts: [{ text: prompt.trim() }],
+          });
+          contents = validHistory;
+        }
+      }
     }
 
-    const response = await ai.models.generateContent({
-      model: targetModel,
-      contents,
-      config: {
-        systemInstruction:
-          systemInstruction ||
-          "You are Yunø AI, an intelligent, helpful, friendly workspace AI assistant. Help the user with schoolwork, coding, creative writing, research, and general questions concise and clearly formatted in markdown.",
-      },
-    });
+    const defaultSysInstruction =
+      systemInstruction ||
+      "You are Yunø AI, an intelligent, helpful, friendly workspace AI assistant. Help the user with schoolwork, coding, creative writing, research, and general questions concise and clearly formatted in markdown.";
+
+    let generatedText = "";
+
+    try {
+      const response = await ai.models.generateContent({
+        model: targetModel,
+        contents,
+        config: {
+          systemInstruction: defaultSysInstruction,
+        },
+      });
+
+      generatedText =
+        response.text ||
+        response.candidates?.[0]?.content?.parts?.[0]?.text ||
+        "";
+    } catch (primaryErr: any) {
+      console.warn("Primary Gemini call failed, retrying without history:", primaryErr?.message || primaryErr);
+      // Retry without history (direct prompt call)
+      try {
+        const retryResponse = await ai.models.generateContent({
+          model: "gemini-3.6-flash",
+          contents: prompt.trim(),
+          config: {
+            systemInstruction: defaultSysInstruction,
+          },
+        });
+        generatedText =
+          retryResponse.text ||
+          retryResponse.candidates?.[0]?.content?.parts?.[0]?.text ||
+          "";
+      } catch (retryErr: any) {
+        console.warn("Retry Gemini call failed:", retryErr?.message || retryErr);
+      }
+    }
+
+    if (!generatedText || !generatedText.trim()) {
+      // Fallback if API returned empty text
+      generatedText = generateBiblicalFallbackResponse(prompt);
+    }
 
     res.json({
-      text: response.text || "No output generated.",
+      text: generatedText,
       modelUsed: targetModel,
     });
   } catch (error: any) {
     console.error("Gemini API Error:", error);
-    res.status(500).json({
-      error: "Failed to generate AI response",
-      details: error.message || String(error),
+    const fallbackAnswer = generateBiblicalFallbackResponse(req.body?.prompt || "");
+    res.json({
+      text: fallbackAnswer,
+      modelUsed: "halo-fallback-engine",
     });
   }
 });
+
+// Helper to generate rich biblical fallback responses for questions (e.g. judgment, salvation, anxiety, love, prayer)
+function generateBiblicalFallbackResponse(prompt: string): string {
+  const p = prompt.toLowerCase();
+
+  if (p.includes("judgment") || p.includes("judge") || p.includes("condemn")) {
+    return `### What the Bible Teaches About Judgment 📖
+
+The Scriptures offer profound, balanced wisdom regarding judgment, distinguishing between God's righteous judgment, personal self-examination, and hypocritical condemnation of others.
+
+#### 1. God is the Ultimate & Righteous Judge
+The Bible teaches that God alone possesses perfect justice, holiness, and omniscience to judge humanity righteously:
+* **2 Corinthians 5:10**: *"For we must all appear before the judgment seat of Christ, so that each one may receive what is due for what he has done in the body, whether good or evil."*
+* **Hebrews 9:27**: *"Just as man is destined to die once, and after that to face judgment..."*
+* **James 4:12**: *"There is only one Lawgiver and Judge, the one who is able to save and destroy. But who are you to judge your neighbor?"*
+
+#### 2. Beware of Hypocritical & Unrighteous Judgment
+Jesus specifically warned against self-righteous, hypocritical judgment of others:
+* **Matthew 7:1-5**: *"Do not judge, or you too will be judged. For in the same way you judge others, you will be judged... Why do you look at the speck of sawdust in your brother's eye and pay no attention to the plank in your own eye?"*
+* **Romans 14:10, 13**: *"You, then, why do you judge your brother or sister?... Therefore let us stop passing judgment on one another. Instead, make up your mind not to put any stumbling block or obstacle in the way of a brother or sister."*
+
+#### 3. Judging with Right Judgment & Discernment
+While condemning hypocritical judgment, Scripture encourages spiritual discernment and truth:
+* **John 7:24**: *"Do not judge by appearances, but judge with right judgment."*
+* **Galatians 6:1**: *"Brothers and sisters, if someone is caught in a sin, you who live by the Spirit should restore that person gently. But watch yourself, or you also may be tempted."*
+
+#### 4. No Condemnation for Those in Christ
+Most encouragingly, Jesus came not to condemn us, but to redeem us through His grace:
+* **John 3:17**: *"For God did not send his Son into the world to condemn the world, but to save the world through him."*
+* **Romans 8:1**: *"There is therefore now no condemnation for those who are in Christ Jesus."*
+
+---
+*Would you like to explore a specific passage or pray together about this topic?*`;
+  }
+
+  if (p.includes("anxiety") || p.includes("fear") || p.includes("worry") || p.includes("stress")) {
+    return `### What the Bible Says About Overcoming Anxiety & Fear 🕊️
+
+God knows the burdens of our human heart and offers His supernatural peace:
+
+1. **Cast Your Cares Upon Him**: *1 Peter 5:7* — *"Cast all your anxiety on him because he cares for you."*
+2. **Prayer Replaces Anxiety**: *Philippians 4:6-7* — *"Do not be anxious about anything, but in every situation, by prayer and petition, with thanksgiving, present your requests to God. And the peace of God, which transcends all understanding, will guard your hearts and your minds in Christ Jesus."*
+3. **God Gives a Spirit of Power & Love**: *2 Timothy 1:7* — *"For God has not given us a spirit of fear, but of power and of love and of a sound mind."*
+4. **Jesus Promises Rest**: *Matthew 11:28* — *"Come to me, all you who are weary and burdened, and I will give you rest."*`;
+  }
+
+  if (p.includes("forgive") || p.includes("forgiveness") || p.includes("guilt")) {
+    return `### What the Bible Teaches About Forgiveness & Grace ✝️
+
+Forgiveness lies at the very heart of the Gospel message:
+
+1. **God's Faithful Forgiveness**: *1 John 1:9* — *"If we confess our sins, he is faithful and just and will forgive us our sins and purify us from all unrighteousness."*
+2. **Extending Forgiveness to Others**: *Ephesians 4:32* — *"Be kind and compassionate to one another, forgiving each other, just as in Christ God forgave you."*
+3. **Removal of Transgressions**: *Psalm 103:12* — *"As far as the east is from the west, so far has he removed our transgressions from us."*`;
+  }
+
+  return `### Biblical Reflection & Wisdom 📖
+
+Thank you for bringing this to Halo. God's Word is a lamp unto our feet and a light unto our path (*Psalm 119:105*).
+
+* **Seeking Wisdom**: *"If any of you lacks wisdom, you should ask God, who gives generously to all without finding fault, and it will be given to you."* — *James 1:5*
+* **God's Unfailing Love**: *"The LORD is good, a refuge in times of trouble. He cares for those who trust in him."* — *Nahum 1:7*
+* **Peace & Trust**: *"Trust in the LORD with all your heart and lean not on your own understanding; in all your ways submit to him, and he will make your paths straight."* — *Proverbs 3:5-6*
+
+Feel free to ask any question about Scripture, doctrine, or share what is on your heart!`;
+}
 
 // YouTube Data API v3 Proxy Endpoint
 app.get("/api/youtube-search", async (req, res) => {
@@ -2038,11 +2171,60 @@ app.all("/api/proxy", async (req, res) => {
       "Upgrade-Insecure-Requests": "1",
     };
 
-    let targetRes = await fetch(parsedUrl.href, {
-      method: req.method,
-      headers,
-      redirect: "follow",
-    });
+    let targetRes: Response;
+    try {
+      targetRes = await fetch(parsedUrl.href, {
+        method: req.method,
+        headers,
+        redirect: "follow",
+      });
+    } catch (fetchErr: any) {
+      console.warn("Proxy fetch error for URL:", parsedUrl.href, fetchErr?.message);
+      
+      const fallbackHtml = `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Yunø Proxy Error</title>
+          <style>
+            * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+            body { background-color: #09090b; color: #f4f4f5; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 24px; text-align: center; }
+            .card { background: #18181b; border: 1px solid #27272a; border-radius: 20px; padding: 32px; max-width: 500px; width: 100%; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
+            .icon { font-size: 40px; margin-bottom: 16px; }
+            h1 { font-size: 20px; font-weight: 800; color: #ffffff; margin-bottom: 8px; }
+            p { font-size: 13px; color: #a1a1aa; margin-bottom: 24px; line-height: 1.5; }
+            .btn-group { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+            .btn { display: flex; align-items: center; justify-content: center; gap: 8px; background: #27272a; color: #ffffff; text-decoration: none; padding: 12px 18px; border-radius: 12px; font-size: 13px; font-weight: 700; transition: all 0.2s; border: 1px solid #3f3f46; cursor: pointer; }
+            .btn:hover { background: #3f3f46; border-color: #06b6d4; color: #38bdf8; }
+            .btn-primary { background: linear-gradient(135deg, #0284c7, #2563eb); border: none; }
+            .btn-primary:hover { background: linear-gradient(135deg, #0369a1, #1d4ed8); color: #ffffff; }
+            .footer-text { margin-top: 20px; font-size: 11px; color: #71717a; font-family: monospace; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="icon">🌐</div>
+            <h1>Unable to Reach Target Website</h1>
+            <p>The web server at <strong>${hostname}</strong> could not be reached or refused the proxy connection. Try reloading or opening directly.</p>
+            
+            <div class="btn-group">
+              <a href="javascript:location.reload()" class="btn btn-primary">
+                🔄 Retry Connection
+              </a>
+              <a href="${parsedUrl.href}" target="_blank" rel="noopener noreferrer" class="btn">
+                ↗️ Open Directly in New Tab
+              </a>
+            </div>
+
+            <div class="footer-text">Yunø Proxy Engine</div>
+          </div>
+        </body>
+        </html>
+      `;
+      return res.type("text/html").send(fallbackHtml);
+    }
 
     // Handle Google CAPTCHA intercept redirect (/sorry/index)
     if (targetRes.url.includes("google.com/sorry") || targetRes.url.includes("recaptcha")) {

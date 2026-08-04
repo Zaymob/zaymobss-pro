@@ -416,6 +416,10 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({
     const isTv = movie.mediaType === 'tv' || movie.duration.includes('Series');
 
     switch (selectedSource) {
+      case 'vidfast':
+        return isTv
+          ? `https://vidfast.vc/tv/${tmdbId}/${season}/${episode}?autoPlay=true`
+          : `https://vidfast.vc/movie/${tmdbId}?autoPlay=true`;
       case 'vidcore':
         return isTv
           ? `https://vidcore.net/tv/${tmdbId}/${season}/${episode}?autoPlay=true`
@@ -1053,7 +1057,7 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({
                 {/* Server selection */}
                 <div className="flex items-center space-x-2">
                   <span className="text-zinc-500">SERVER:</span>
-                  {(['vidcore', 'streamrip', 'viduki', 'vidsrc'] as StreamSource[]).map((srv) => (
+                  {(['vidfast', 'vidcore', 'streamrip', 'viduki', 'vidsrc'] as StreamSource[]).map((srv) => (
                     <button
                       key={srv}
                       onClick={() => setSelectedSource(srv)}

@@ -1,24 +1,25 @@
 import React from 'react';
 import { NavTab } from '../types';
+import { YunoLogo } from './YunoLogo';
 import {
-  Home,
+  House,
   Globe,
-  Film,
-  Gamepad2,
-  Tv,
-  Bot,
-  MessageSquare,
-  Music,
-  Settings,
-  ChevronLeft,
-  ChevronRight,
-  RotateCcw,
+  FilmStrip,
+  GameController,
+  Television,
+  Robot,
+  ChatCircleText,
+  MusicNotes,
+  Gear,
+  CaretLeft,
+  CaretRight,
   X,
-  PanelLeft,
+  SidebarSimple,
+  ShieldCheck,
+  Sparkle,
+  ArrowClockwise,
   User,
-  Shield,
-  Sparkles,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface SidebarProps {
@@ -52,21 +53,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isHaloUnlocked = false,
 }) => {
   const navItems = [
-    { id: 'home' as NavTab, label: 'Home', icon: Home, badge: '' },
-    { id: 'proxy' as NavTab, label: 'ProxyTab', icon: Globe, badge: 'PROXY' },
-    { id: 'movies' as NavTab, label: 'Movies & TV', icon: Film, badge: 'HD' },
-    { id: 'games' as NavTab, label: 'Arcade Games', icon: Gamepad2, badge: 'HOT' },
-    { id: 'youtube' as NavTab, label: 'Yunø Tube', icon: Tv, badge: 'NEW' },
-    { id: 'ai' as NavTab, label: 'Yunø AI Studio', icon: Bot, badge: 'GEMINI' },
+    { id: 'home' as NavTab, label: 'Home', icon: House },
+    { id: 'proxy' as NavTab, label: 'Proxy Browser', icon: Globe },
+    { id: 'movies' as NavTab, label: 'Movies & TV', icon: FilmStrip },
+    { id: 'games' as NavTab, label: 'Arcade Games', icon: GameController },
+    { id: 'youtube' as NavTab, label: 'Yunø Tube', icon: Television },
+    { id: 'ai' as NavTab, label: 'AI Studio', icon: Robot },
     ...(isHaloUnlocked
-      ? [{ id: 'halo' as NavTab, label: 'Halo Faith AI', icon: Sparkles, badge: 'HOLY' }]
+      ? [{ id: 'halo' as NavTab, label: 'Halo Faith AI', icon: Sparkle }]
       : []),
-    { id: 'community' as NavTab, label: 'Community Chat', icon: MessageSquare, badge: 'LIVE' },
+    { id: 'community' as NavTab, label: 'Community Chat', icon: ChatCircleText },
     ...(isPrivateChatUnlocked
-      ? [{ id: 'private_chat' as NavTab, label: 'VIP Watch Party', icon: Shield, badge: 'VIP' }]
+      ? [{ id: 'private_chat' as NavTab, label: 'Watch Party', icon: ShieldCheck }]
       : []),
-    { id: 'music' as NavTab, label: 'Music Vault', icon: Music, badge: '' },
-    { id: 'settings' as NavTab, label: 'Customization', icon: Settings, badge: '' },
+    { id: 'music' as NavTab, label: 'Music', icon: MusicNotes },
+    { id: 'settings' as NavTab, label: 'Settings', icon: Gear },
   ];
 
   const defaultAvatar =
@@ -78,10 +79,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {closed && (
         <button
           onClick={() => setClosed(false)}
-          className="fixed top-4 left-4 z-50 p-2.5 rounded-2xl bg-zinc-950/90 border border-zinc-800 text-cyan-400 hover:text-white hover:bg-zinc-900 shadow-2xl backdrop-blur-xl transition-all flex items-center space-x-2 group hover:scale-105 active:scale-95"
+          className="fixed top-4 left-4 z-50 p-2.5 rounded-2xl bg-zinc-950/90 border border-zinc-800 text-amber-400 hover:text-white hover:bg-zinc-900 shadow-2xl backdrop-blur-xl transition-all flex items-center space-x-2 group hover:scale-105 active:scale-95 cursor-pointer"
           title="Open Navigation Sidebar"
         >
-          <PanelLeft className="w-5 h-5 text-cyan-400" />
+          <SidebarSimple className="w-5 h-5 text-amber-400" />
           <span className="text-xs font-bold text-white pr-1">Menu</span>
         </button>
       )}
@@ -96,14 +97,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       >
         {/* Top Header Logo */}
         <div>
-          <div className="flex items-center justify-between p-4 border-b border-zinc-800/50">
+          <div className="flex items-center justify-between p-4 border-b border-white/10">
             <div
               onClick={() => setActiveTab('home')}
               className="flex items-center space-x-3 cursor-pointer group overflow-hidden"
             >
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 via-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold text-xl shadow-[0_0_15px_rgba(34,211,238,0.3)] group-hover:scale-105 transition-transform flex-shrink-0">
-                Ø
-              </div>
+              <YunoLogo className="w-10 h-10" variant="badge" />
               {!collapsed && (
                 <motion.div
                   initial={{ opacity: 0, x: -10 }}
@@ -111,10 +110,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   exit={{ opacity: 0, x: -10 }}
                   className="flex flex-col"
                 >
-                  <span className="font-extrabold text-lg text-white tracking-tight flex items-center gap-1">
-                    Yunø! <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 font-mono font-medium border border-cyan-500/30">PRO</span>
+                  <span className="font-bold text-lg text-white tracking-tight">
+                    Yunø
                   </span>
-                  <span className="text-[10px] text-zinc-400 font-mono">Workspace & Media</span>
+                  <span className="text-[11px] text-zinc-400 font-medium">Dashboard</span>
                 </motion.div>
               )}
             </div>
@@ -123,15 +122,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="flex items-center space-x-1">
               <button
                 onClick={() => setCollapsed(!collapsed)}
-                className="p-1.5 rounded-lg bg-zinc-900/80 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-800 transition-colors"
+                className="p-1.5 rounded-lg bg-black/40 hover:bg-black/80 text-zinc-400 hover:text-white border border-white/10 transition-colors cursor-pointer"
                 title={collapsed ? 'Expand sidebar' : 'Collapse to compact'}
               >
-                {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+                {collapsed ? <CaretRight className="w-4 h-4" /> : <CaretLeft className="w-4 h-4" />}
               </button>
 
               <button
                 onClick={() => setClosed(true)}
-                className="p-1.5 rounded-lg bg-zinc-900/80 hover:bg-red-500/20 text-zinc-400 hover:text-red-300 border border-zinc-800 transition-colors"
+                className="p-1.5 rounded-lg bg-black/40 hover:bg-red-500/20 text-zinc-400 hover:text-red-300 border border-white/10 transition-colors cursor-pointer"
                 title="Close sidebar completely"
               >
                 <X className="w-4 h-4" />
@@ -140,7 +139,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
 
           {/* Navigation list */}
-          <nav className="p-3 space-y-1.5 mt-2">
+          <nav className="p-3 space-y-1 mt-2">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
@@ -149,47 +148,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <button
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
-                  className={`relative w-full flex items-center space-x-3 px-3.5 py-3 rounded-xl text-sm font-medium transition-all group ${
+                  className={`relative w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all group cursor-pointer ${
                     isActive
-                      ? 'text-white bg-gradient-to-r from-cyan-500/15 via-blue-500/10 to-transparent border border-cyan-500/30 shadow-lg shadow-cyan-950/30'
-                      : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900/60'
+                      ? 'text-zinc-950 bg-amber-400 font-bold shadow-md'
+                      : 'text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent'
                   }`}
                 >
-                  {/* Active side indicator */}
-                  {isActive && (
-                    <motion.div
-                      layoutId="activeNavIndicator"
-                      className="absolute left-0 top-2 bottom-2 w-1 bg-gradient-to-b from-cyan-400 to-blue-600 rounded-r-full shadow-[0_0_10px_#22d3ee]"
-                    />
-                  )}
-
                   <Icon
-                    className={`w-5 h-5 flex-shrink-0 transition-colors ${
-                      isActive ? 'text-cyan-400' : 'text-zinc-400 group-hover:text-zinc-200'
+                    className={`w-4 h-4 flex-shrink-0 transition-colors ${
+                      isActive ? 'text-zinc-950' : 'text-zinc-400 group-hover:text-amber-300'
                     }`}
                   />
 
                   {!collapsed && (
-                    <span className="truncate flex-1 text-left">{item.label}</span>
-                  )}
-
-                  {!collapsed && item.badge && (
-                    <span
-                      className={`text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded ${
-                        item.badge === 'GEMINI'
-                          ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                          : item.badge === 'LIVE'
-                          ? 'bg-red-500/20 text-red-300 border border-red-500/30 animate-pulse'
-                          : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
-                      }`}
-                    >
-                      {item.badge}
+                    <span className="truncate flex-1 text-left font-medium tracking-normal text-xs">
+                      {item.label}
                     </span>
                   )}
 
                   {/* Collapsed Tooltip */}
                   {collapsed && (
-                    <div className="absolute left-full ml-3 px-2.5 py-1.5 bg-zinc-900 text-white text-xs rounded-lg shadow-xl border border-zinc-800 opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity">
+                    <div className="absolute left-full ml-3 px-2.5 py-1.5 bg-black/90 text-white text-xs rounded-lg shadow-xl border border-white/10 opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity">
                       {item.label}
                     </div>
                   )}
@@ -209,7 +188,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             }`}
             title="Replay Yunø Boot Animation"
           >
-            <RotateCcw className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+            <ArrowClockwise className="w-4 h-4 text-amber-400 flex-shrink-0" />
             {!collapsed && <span>Replay Boot Sequence</span>}
           </button>
 

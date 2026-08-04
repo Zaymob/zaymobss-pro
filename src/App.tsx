@@ -28,8 +28,24 @@ import { motion, AnimatePresence } from 'motion/react';
 export default function App() {
   const [showBootScreen, setShowBootScreen] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<NavTab>('home');
-  const [collapsedSidebar, setCollapsedSidebar] = useState<boolean>(false);
+  const [collapsedSidebar, setCollapsedSidebar] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth < 1280;
+    }
+    return false;
+  });
   const [closedSidebar, setClosedSidebar] = useState<boolean>(false);
+
+  // Auto-collapse sidebar on smaller laptop viewports (< 1280px) to prevent layout crowding
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 1280) {
+        setCollapsedSidebar(true);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   const [currentWallpaper, setCurrentWallpaper] = useState<string>(() => {
     try {
       const saved = localStorage.getItem('yuno_current_wallpaper');
@@ -446,7 +462,9 @@ export default function App() {
     // Fallback: Pick a random track from local MUSIC_TRACKS
     const pool = MUSIC_TRACKS.filter(t => t.title !== currentTrack.title);
     const fallbackTrack = pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : MUSIC_TRACKS[0];
-    handlePlayTrack(fallbackTrack, { type: 'general' });
+    if (fallbackTrack) {
+      handlePlayTrack(fallbackTrack, { type: 'general' });
+    }
   };
 
   const handlePlayPrev = () => {
@@ -503,7 +521,9 @@ export default function App() {
 
   const handleTogglePlay = () => {
     if (!currentTrack) {
-      handlePlayTrack(MUSIC_TRACKS[0]);
+      if (MUSIC_TRACKS.length > 0) {
+        handlePlayTrack(MUSIC_TRACKS[0]);
+      }
       return;
     }
 
@@ -535,7 +555,7 @@ export default function App() {
         <BootScreen onComplete={() => setShowBootScreen(false)} />
       )}
 
-      {/* Dynamic Background Wallpaper */}
+      {/* Dynamic Background Wallpaper & Handcrafted Paper Texture Overlay */}
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
         {currentWallpaper.startsWith('data:video') || currentWallpaper.includes('.mp4') || currentWallpaper.includes('.mov') ? (
           <video
@@ -544,16 +564,18 @@ export default function App() {
             loop
             muted
             playsInline
-            className="w-full h-full object-cover opacity-35 filter blur-[1px] transition-all duration-700 scale-105"
+            className="w-full h-full object-cover opacity-25 filter blur-[1px] transition-all duration-700 scale-105"
           />
         ) : (
           <img
             src={currentWallpaper}
             alt="Workspace Wallpaper"
-            className="w-full h-full object-cover opacity-30 filter blur-[2px] transition-all duration-700 scale-105"
+            className="w-full h-full object-cover opacity-20 filter blur-[2px] transition-all duration-700 scale-105"
           />
         )}
-        <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/80 via-zinc-950/90 to-zinc-950" />
+        {/* Handcrafted Notebook Grid Texture */}
+        <div className="absolute inset-0 notebook-paper-texture notebook-grid-pattern opacity-90" />
+        <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/70 via-zinc-950/85 to-zinc-950" />
       </div>
 
       {/* Main Workspace Layout with Left Sidebar */}
@@ -578,7 +600,7 @@ export default function App() {
 
         {/* Content Area offset by Sidebar width */}
         <main
-          className={`flex-1 transition-all duration-300 p-4 sm:p-8 ${
+          className={`flex-1 min-w-0 transition-all duration-300 p-3 sm:p-5 lg:p-6 xl:p-8 ${
             closedSidebar ? 'ml-0' : collapsedSidebar ? 'ml-20' : 'ml-64'
           } ${currentTrack ? 'pb-24' : 'pb-12'}`}
         >

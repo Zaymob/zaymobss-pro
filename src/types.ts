@@ -52,7 +52,7 @@ export interface MovieItem {
   episodesCount?: number;
 }
 
-export type StreamSource = 'vidcore' | 'streamrip' | 'viduki' | 'vidsrc' | 'streamrip-anime';
+export type StreamSource = 'vidcore' | 'vidfast' | 'streamrip' | 'viduki' | 'vidsrc' | 'streamrip-anime';
 
 export interface GameItem {
   id: string;

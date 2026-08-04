@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { NavTab, MusicTrack } from '../types';
 import { WeatherWidget } from './WeatherWidget';
+import { BrandIcon } from './BrandIcon';
 import {
   Image,
   Sparkles,
@@ -187,19 +188,27 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
   const categoryPills = [
     { id: 'Popular', label: 'Popular', action: () => setActiveCategory('Popular') },
-    { id: 'Web Proxy', label: 'Web Proxy', action: () => onNavigate('proxy') },
     { id: 'Games', label: 'Games', action: () => onNavigate('games') },
     { id: 'AI Tools', label: 'AI Tools', action: () => onNavigate('ai') },
-    { id: 'Yunø Tube', label: 'Yunø Tube', action: () => onNavigate('youtube') },
-    { id: 'Yunø Flix', label: 'Yunø Flix', action: () => onNavigate('movies') },
-    { id: 'Music', label: 'Music', action: () => onNavigate('music') },
-    { id: 'Community', label: 'Community', action: () => onNavigate('community') },
+    { id: 'Websites', label: 'Websites', action: () => onNavigate('proxy') },
+    { id: 'Media', label: 'Media', action: () => onNavigate('movies') },
+    { id: 'Apps', label: 'Apps', action: () => onNavigate('youtube') },
+  ];
+
+  const appShortcutCards = [
+    { id: 'youtube', name: 'YouTube', brand: 'youtube', bg: 'bg-[#FF0000]', color: 'text-white', action: () => onNavigate('youtube') },
+    { id: 'reddit', name: 'Reddit', brand: 'reddit', bg: 'bg-[#FF4500]', color: 'text-white', action: () => onLaunchProxy ? onLaunchProxy('https://reddit.com') : onNavigate('proxy') },
+    { id: 'google', name: 'Google', brand: 'google', bg: 'bg-white shadow-md', color: '', action: () => onLaunchProxy ? onLaunchProxy('https://google.com') : onNavigate('proxy') },
+    { id: 'tiktok', name: 'TikTok', brand: 'tiktok', bg: 'bg-zinc-950 border border-zinc-800', color: '', action: () => onLaunchProxy ? onLaunchProxy('https://tiktok.com') : onNavigate('proxy') },
+    { id: 'instagram', name: 'Instagram', brand: 'instagram', bg: 'bg-gradient-to-tr from-[#f09433] via-[#e6683c] to-[#bc1888]', color: 'text-white', action: () => onLaunchProxy ? onLaunchProxy('https://instagram.com') : onNavigate('proxy') },
+    { id: 'spotify', name: 'Spotify', brand: 'spotify', bg: 'bg-[#1DB954]', color: 'text-black', action: () => onNavigate('music') },
+    { id: 'discord', name: 'Discord', brand: 'discord', bg: 'bg-[#5865F2]', color: 'text-white', action: () => onNavigate('community') },
   ];
 
   return (
-    <div className="relative w-full min-h-[85vh] rounded-3xl overflow-hidden shadow-2xl border border-amber-900/30 flex flex-col justify-between p-6 md:p-12 text-white select-none transition-all">
+    <div className="relative w-full min-h-[88vh] rounded-3xl overflow-hidden shadow-2xl border border-white/10 flex flex-col justify-between p-6 md:p-10 text-white select-none transition-all font-sans">
       
-      {/* BACKGROUND WALLPAPER WITH SOFT ATMOSPHERIC LIGHTING */}
+      {/* BACKGROUND WALLPAPER WITH RICH AUTUMN LANDSCAPE & ATMOSPHERIC GLOW */}
       <div className="absolute inset-0 z-0 overflow-hidden">
         {isVideoWallpaper ? (
           <video
@@ -208,65 +217,53 @@ export const HomeView: React.FC<HomeViewProps> = ({
             loop
             muted
             playsInline
-            className="w-full h-full object-cover object-center scale-105 transition-all duration-700 brightness-90 contrast-[1.05]"
+            className="w-full h-full object-cover object-center scale-105 transition-all duration-700 brightness-[0.95] contrast-[1.05]"
           />
         ) : (
           <img
             src={activeWallpaperUrl}
             alt="Wallpaper"
-            className="w-full h-full object-cover object-center scale-105 transition-all duration-700 brightness-90 contrast-[1.05]"
+            className="w-full h-full object-cover object-center scale-105 transition-all duration-700 brightness-[0.95] contrast-[1.05]"
           />
         )}
-        {/* Soft Vignette and Warm Gradient Overlay */}
+        {/* Soft Dark Vignette and Golden Cinematic Radial Overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/40 backdrop-blur-[0.5px]" />
-        <div className="absolute inset-0 bg-amber-950/20 mix-blend-color-burn" />
+        <div className="absolute inset-0 bg-amber-950/15 mix-blend-color-burn" />
       </div>
 
       {/* TOP BAR: CLOCK STATUS & WEATHER WIDGET */}
       <div className="relative z-20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-center space-x-2 bg-black/40 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white/10 text-xs font-mono text-zinc-300 shadow-lg">
-          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-          <span>{timeStr || '11:47 PM'}</span>
+        <div className="flex items-center space-x-2.5 bg-black/60 backdrop-blur-xl px-4 py-2 rounded-xl border border-white/10 text-xs text-zinc-300 shadow-lg">
+          <span className="font-semibold text-amber-300">{timeStr || '11:47 PM'}</span>
+          <span className="text-zinc-600">•</span>
+          <span className="text-zinc-400 font-medium">{dayStr}</span>
         </div>
 
-        {/* Live Weather Widget Card */}
+        {/* Weather Widget */}
         <div className="w-full sm:w-auto sm:max-w-sm">
           <WeatherWidget />
         </div>
       </div>
 
-      {/* CENTER HERO DISPLAY: DAY OF WEEK, TITLE & TAGLINE */}
-      <div className="relative z-20 flex flex-col items-center justify-center text-center my-auto py-12 space-y-3">
+      {/* CENTER HERO DISPLAY: DAY OF WEEK, SEARCH BAR, CATEGORIES & APPS */}
+      <div className="relative z-20 flex flex-col items-center justify-center text-center my-auto py-6 space-y-6 max-w-4xl mx-auto w-full">
         
-        {/* Day Name Display (e.g. "Thursday") */}
-        <motion.h1
-          initial={{ opacity: 0, y: -15 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-6xl sm:text-7xl md:text-8xl font-extralight text-white tracking-tight font-sans drop-shadow-[0_4px_20px_rgba(0,0,0,0.8)]"
-        >
-          {dayStr}
-        </motion.h1>
+        {/* Centered Day Name Display */}
+        <div className="space-y-1">
+          <motion.h1
+            initial={{ opacity: 0, y: -15 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-6xl sm:text-7xl md:text-8xl font-light text-white tracking-tight drop-shadow-md font-sans"
+          >
+            {dayStr}
+          </motion.h1>
+        </div>
 
-        {/* Randomized Bible Verse Slogan */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
-          className="max-w-xl mx-auto space-y-1.5 px-4 drop-shadow-md"
-        >
-          <p className="text-sm sm:text-base italic text-amber-100/95 font-serif leading-relaxed">
-            &quot;{bibleVerse.text}&quot;
-          </p>
-          <p className="text-xs font-mono tracking-widest text-amber-300/80 uppercase font-semibold">
-            — {bibleVerse.reference}
-          </p>
-        </motion.div>
-
-        {/* HOMEPAGE WEB PROXY SEARCH BAR */}
+        {/* SLEEK FROSTED GLASS SEARCH BAR */}
         <motion.form
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.22 }}
+          transition={{ delay: 0.15 }}
           onSubmit={(e) => {
             e.preventDefault();
             if (homeProxyInput.trim()) {
@@ -277,33 +274,33 @@ export const HomeView: React.FC<HomeViewProps> = ({
               }
             }
           }}
-          className="w-full max-w-xl mx-auto my-4 flex items-center bg-black/60 hover:bg-black/75 backdrop-blur-2xl border border-amber-300/30 hover:border-amber-300/60 rounded-2xl p-1.5 sm:p-2 shadow-2xl transition-all group"
+          className="w-full max-w-2xl mx-auto my-1 flex items-center bg-black/60 hover:bg-black/75 backdrop-blur-2xl border border-white/15 hover:border-amber-400/50 rounded-2xl p-2 sm:p-2.5 shadow-xl transition-all group"
         >
-          <div className="pl-3 pr-2 text-amber-300 flex items-center justify-center">
-            <Search className="w-4 h-4 sm:w-5 sm:h-5 text-amber-300 group-hover:scale-110 transition-transform flex-shrink-0" />
+          <div className="pl-3 pr-2 text-zinc-400 flex items-center justify-center">
+            <Search className="w-4 h-4 sm:w-5 sm:h-5 text-zinc-400 group-hover:text-amber-300 transition-colors flex-shrink-0" />
           </div>
           <input
             type="text"
             value={homeProxyInput}
             onChange={(e) => setHomeProxyInput(e.target.value)}
             placeholder="Search the web or enter a URL..."
-            className="w-full py-1.5 bg-transparent text-xs sm:text-sm text-white placeholder-zinc-300/80 focus:outline-none font-sans"
+            className="w-full py-1.5 bg-transparent text-sm sm:text-base text-white placeholder-zinc-400 focus:outline-none font-sans"
           />
           <button
             type="submit"
-            className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 hover:from-amber-300 hover:to-amber-500 text-zinc-950 font-extrabold text-xs shadow-lg transition-all flex items-center space-x-1.5 flex-shrink-0 cursor-pointer active:scale-95"
+            className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs shadow-md transition-all flex items-center space-x-1.5 flex-shrink-0 cursor-pointer active:scale-95"
           >
             <span>Search</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </motion.form>
 
-        {/* CATEGORY PILLS BAR (IN PLACE OF APPS) */}
+        {/* CATEGORY PILLS BAR */}
         <motion.div
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="mt-8 pt-4 flex flex-wrap items-center justify-center gap-2 max-w-3xl"
+          transition={{ delay: 0.22 }}
+          className="flex flex-wrap items-center justify-center gap-2 max-w-2xl"
         >
           {categoryPills.map((pill) => {
             const isActive = activeCategory === pill.id;
@@ -311,10 +308,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
               <button
                 key={pill.id}
                 onClick={pill.action}
-                className={`px-5 py-2 rounded-full text-xs font-medium tracking-wide transition-all duration-300 backdrop-blur-md shadow-lg ${
+                className={`px-4 py-1.5 rounded-full text-xs font-semibold tracking-wide transition-all duration-300 backdrop-blur-md shadow-lg ${
                   isActive
-                    ? 'bg-amber-100/90 text-zinc-950 font-bold shadow-amber-500/20 scale-105'
-                    : 'bg-black/40 text-zinc-200 hover:bg-black/60 hover:text-white border border-white/10 hover:border-white/25 hover:scale-105'
+                    ? 'bg-amber-400 text-zinc-950 font-bold shadow-amber-500/30 scale-105'
+                    : 'bg-black/40 text-zinc-300 hover:bg-black/60 hover:text-white border border-white/10 hover:border-amber-400/40 hover:scale-105'
                 }`}
               >
                 {pill.label}
@@ -323,15 +320,53 @@ export const HomeView: React.FC<HomeViewProps> = ({
           })}
         </motion.div>
 
+        {/* APP SHORTCUT CARDS GRID */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.28 }}
+          className="pt-4 flex flex-wrap items-center justify-center gap-3.5 max-w-3xl"
+        >
+          {appShortcutCards.map((app) => (
+            <button
+              key={app.id}
+              onClick={app.action}
+              className="group flex flex-col items-center p-3 rounded-2xl bg-black/40 hover:bg-black/65 border border-white/10 hover:border-amber-400/50 backdrop-blur-xl transition-all duration-300 hover:scale-105 w-20 sm:w-22 shadow-lg"
+            >
+              <div className={`w-12 h-12 rounded-[18px] ${app.bg} flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform mb-2 p-2.5 overflow-hidden`}>
+                <BrandIcon name={app.brand} className={`w-full h-full ${app.color}`} />
+              </div>
+              <span className="text-[11px] font-semibold text-zinc-200 group-hover:text-white transition-colors truncate w-full text-center">
+                {app.name}
+              </span>
+            </button>
+          ))}
+        </motion.div>
+
+        {/* BIBLE VERSE INSPIRED BANNER */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.35 }}
+          className="max-w-xl mx-auto space-y-1.5 px-4 pt-2"
+        >
+          <p className="text-xs sm:text-sm italic text-amber-100/90 font-serif leading-relaxed">
+            &quot;{bibleVerse.text}&quot;
+          </p>
+          <p className="text-[10px] font-mono tracking-widest text-amber-300/80 uppercase font-semibold">
+            — {bibleVerse.reference}
+          </p>
+        </motion.div>
+
         {/* BASED OFF WHAT YOU LISTENED TO MUSIC RECOMMENDATIONS SECTION */}
         {listenedTracks.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.38 }}
-            className="w-full max-w-4xl mx-auto mt-10 pt-6 border-t border-white/10"
+            transition={{ delay: 0.4 }}
+            className="w-full max-w-4xl mx-auto mt-6 pt-5 border-t border-white/10"
           >
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-3">
               <div className="flex items-center space-x-2">
                 <Headphones className="w-4 h-4 text-amber-400 animate-pulse" />
                 <h3 className="text-sm font-bold text-white tracking-wide">
@@ -392,3 +427,4 @@ export const HomeView: React.FC<HomeViewProps> = ({
     </div>
   );
 };
+

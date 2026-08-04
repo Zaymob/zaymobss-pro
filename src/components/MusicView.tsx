@@ -77,7 +77,7 @@ export const MusicView: React.FC<MusicViewProps> = ({
   currentTime = 0,
 }) => {
   const [activeTab, setActiveTab] = useState<'home' | 'liked' | 'playlists' | 'lyrics'>('home');
-  const [selectedAlbum, setSelectedAlbum] = useState<FeaturedAlbum>(EDITORS_PICKS_ALBUMS[0]);
+  const [selectedAlbum, setSelectedAlbum] = useState<FeaturedAlbum | null>(EDITORS_PICKS_ALBUMS[0] || null);
   const [searchQuery, setSearchQuery] = useState('');
   const [metingTracks, setMetingTracks] = useState<MusicTrack[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -334,37 +334,39 @@ export const MusicView: React.FC<MusicViewProps> = ({
   };
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto pb-24">
+    <div className="space-y-8 max-w-7xl mx-auto pb-24 text-white">
       {/* Top Header & Tab Navigation */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-zinc-800/80 pb-6">
-        <div>
-          <div className="flex items-center space-x-2 text-xs font-mono text-cyan-400">
-            <Radio className="w-4 h-4 animate-pulse" />
-            <span>Yunø Audio Vault</span>
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-zinc-800 pb-6">
+        <div className="flex items-center space-x-3">
+          <div className="w-10 h-10 rounded-full bg-[#1DB954] text-black flex items-center justify-center font-black text-xl shadow-lg shadow-[#1DB954]/20">
+            <Disc3 className="w-6 h-6 animate-spin" />
           </div>
-          <h1 className="text-3xl font-extrabold text-white mt-1">Music Studio</h1>
+          <div>
+            <h1 className="text-3xl font-extrabold tracking-tight text-white">Music</h1>
+            <p className="text-xs text-zinc-400">Search, stream, and organize your favorite tracks</p>
+          </div>
         </div>
 
         {/* Tab Buttons */}
-        <div className="flex items-center space-x-2 bg-zinc-950 p-1.5 rounded-2xl border border-zinc-800">
+        <div className="flex items-center space-x-2 bg-[#181818] p-1.5 rounded-full border border-zinc-800">
           <button
             onClick={() => setActiveTab('home')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 ${
+            className={`px-5 py-2 rounded-full text-xs font-bold transition-all flex items-center space-x-2 ${
               activeTab === 'home'
-                ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/20'
-                : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+                ? 'bg-[#1DB954] text-black shadow-lg shadow-[#1DB954]/20'
+                : 'text-zinc-400 hover:text-white'
             }`}
           >
             <Music className="w-4 h-4" />
-            <span>Featured & Search</span>
+            <span>Home</span>
           </button>
 
           <button
             onClick={() => setActiveTab('liked')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 ${
+            className={`px-5 py-2 rounded-full text-xs font-bold transition-all flex items-center space-x-2 ${
               activeTab === 'liked'
-                ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/20'
-                : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+                ? 'bg-[#1DB954] text-black shadow-lg shadow-[#1DB954]/20'
+                : 'text-zinc-400 hover:text-white'
             }`}
           >
             <Heart className="w-4 h-4 fill-current" />
@@ -373,191 +375,197 @@ export const MusicView: React.FC<MusicViewProps> = ({
 
           <button
             onClick={() => setActiveTab('playlists')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 ${
+            className={`px-5 py-2 rounded-full text-xs font-bold transition-all flex items-center space-x-2 ${
               activeTab === 'playlists'
-                ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/20'
-                : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+                ? 'bg-[#1DB954] text-black shadow-lg shadow-[#1DB954]/20'
+                : 'text-zinc-400 hover:text-white'
             }`}
           >
             <ListMusic className="w-4 h-4" />
             <span>Playlists ({playlists.length})</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('lyrics')}
+            className={`px-5 py-2 rounded-full text-xs font-bold transition-all flex items-center space-x-2 ${
+              activeTab === 'lyrics'
+                ? 'bg-[#1DB954] text-black shadow-lg shadow-[#1DB954]/20'
+                : 'text-zinc-400 hover:text-white'
+            }`}
+          >
+            <FileText className="w-4 h-4" />
+            <span>Lyrics</span>
+          </button>
         </div>
       </div>
 
-      {/* TAB 1: FEATURED ALBUMS & SEARCH */}
+      {/* TAB 1: HOME PAGE */}
       {activeTab === 'home' && (
         <div className="space-y-8">
-          {/* PERSONALIZED TASTE SECTION: BASED ON WHAT YOU LISTEN TO */}
-          <div className="p-6 rounded-3xl bg-gradient-to-r from-purple-900/40 via-indigo-950/60 to-zinc-950 border border-purple-500/30 shadow-2xl relative overflow-hidden space-y-5">
-            <div className="absolute top-0 right-0 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
-            
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
-              <div className="space-y-1">
-                <div className="flex items-center space-x-2 text-xs font-mono font-bold text-purple-400">
-                  <Disc3 className="w-4 h-4 animate-spin text-cyan-400" />
-                  <span>Personalized Taste Engine</span>
-                </div>
-                <h2 className="text-2xl font-black text-white tracking-tight flex items-center space-x-2">
-                  <span>Based on What You Listen To</span>
-                </h2>
-                <p className="text-xs text-zinc-300">
-                  Curated mixes inspired by your affinity for <span className="text-cyan-300 font-bold">{topListenedArtist}</span>, Malcolm Todd & Kanye West.
+          {/* IF BLANK / NO LISTENED SONGS YET */}
+          {recentlyPlayed.length === 0 ? (
+            <div className="p-8 sm:p-12 rounded-3xl bg-[#181818] border border-zinc-800 text-center space-y-6 shadow-2xl relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-80 h-80 bg-[#1DB954]/10 rounded-full blur-3xl pointer-events-none" />
+              <div className="w-20 h-20 rounded-full bg-[#1DB954]/10 border border-[#1DB954]/30 text-[#1DB954] flex items-center justify-center mx-auto shadow-xl shadow-[#1DB954]/10">
+                <Music className="w-10 h-10" />
+              </div>
+              <div className="space-y-2 max-w-md mx-auto relative z-10">
+                <h2 className="text-2xl font-bold text-white tracking-tight">Your Music Feed is Blank</h2>
+                <p className="text-sm text-zinc-400 leading-relaxed">
+                  Start listening to any song from the search bar or collections below. Once you play a track, it will automatically save and populate your personalized home feed!
                 </p>
               </div>
-
-              <button
-                onClick={() => handleMetingSearch(topListenedArtist)}
-                className="px-4 py-2 rounded-xl bg-purple-500 hover:bg-purple-400 text-white font-bold text-xs shadow-lg shadow-purple-500/30 transition-all flex items-center space-x-2 self-start sm:self-auto"
-              >
-                <Radio className="w-3.5 h-3.5" />
-                <span>Launch {topListenedArtist.split(' ')[0]} Radio Station</span>
-              </button>
             </div>
+          ) : (
+            /* IF USER HAS LISTENED TO SONGS - SHOW SAVED HISTORY & RECOMMENDATIONS */
+            <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-[#1DB954]/20 via-[#181818] to-zinc-950 border border-[#1DB954]/30 shadow-2xl relative overflow-hidden space-y-6">
+              <div className="absolute top-0 right-0 w-80 h-80 bg-[#1DB954]/10 rounded-full blur-3xl pointer-events-none" />
 
-            {/* Recently Listened Quick Replay Row (If History Exists) */}
-            {recentlyPlayed.length > 0 && (
-              <div className="space-y-2 relative z-10 pt-2 border-t border-purple-500/20">
-                <span className="text-[10px] font-mono uppercase tracking-wider text-purple-300 font-bold block">
-                  Recently Listened Tracks ({recentlyPlayed.length})
-                </span>
-                <div className="flex items-center space-x-3 overflow-x-auto pb-2 scrollbar-none">
-                  {recentlyPlayed.slice(0, 10).map((track, i) => (
-                    <div
-                      key={`hist-${track.id}-${i}`}
-                      onClick={() => onPlayTrack(track, { type: 'general' })}
-                      className="group/hist flex items-center space-x-2.5 p-2 rounded-2xl bg-zinc-900/90 border border-zinc-800 hover:border-purple-400 cursor-pointer flex-shrink-0 transition-all hover:scale-105"
-                    >
-                      <img src={track.cover} alt={track.title} className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
-                      <div className="min-w-0 pr-1">
-                        <p className="text-xs font-bold text-white group-hover/hist:text-purple-300 truncate max-w-[110px]">
-                          {track.title}
-                        </p>
-                        <p className="text-[10px] text-zinc-400 truncate max-w-[110px]">{track.artist}</p>
-                      </div>
-                    </div>
-                  ))}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
+                <div className="space-y-1">
+                  <div className="flex items-center space-x-2 text-xs font-bold text-[#1DB954]">
+                    <Disc3 className="w-4 h-4 animate-spin" />
+                    <span>Personalized Sound Engine</span>
+                  </div>
+                  <h2 className="text-2xl font-black text-white tracking-tight">
+                    Saved Music History
+                  </h2>
+                  <p className="text-xs text-zinc-300">
+                    Inspired by your affinity for <span className="text-[#1DB954] font-bold">{topListenedArtist}</span>.
+                  </p>
                 </div>
-              </div>
-            )}
 
-            {/* Taste Recommendation Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 relative z-10">
-              <div
-                onClick={() => handleMetingSearch('Kanye West Graduation Yeezus')}
-                className="p-4 rounded-2xl bg-zinc-900/80 border border-zinc-800 hover:border-amber-500/60 cursor-pointer transition-all hover:bg-zinc-850 group"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-mono font-bold border border-amber-500/30">
-                    Hip-Hop / Synth
-                  </span>
-                  <Play className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
-                </div>
-                <h4 className="text-sm font-bold text-white group-hover:text-amber-300 transition-colors">Kanye West Essential Vault</h4>
-                <p className="text-[11px] text-zinc-400 mt-1">Flashing Lights, Bound 2, Father Stretch My Hands & classic Ye beats.</p>
-              </div>
-
-              <div
-                onClick={() => handleMetingSearch('Malcolm Todd Roommates Sweet Boy')}
-                className="p-4 rounded-2xl bg-zinc-900/80 border border-zinc-800 hover:border-cyan-500/60 cursor-pointer transition-all hover:bg-zinc-850 group"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 text-[10px] font-mono font-bold border border-cyan-500/30">
-                    Indie R&B / Soul
-                  </span>
-                  <Play className="w-4 h-4 text-cyan-400 group-hover:scale-110 transition-transform" />
-                </div>
-                <h4 className="text-sm font-bold text-white group-hover:text-cyan-300 transition-colors">Malcolm Todd Atmosphere</h4>
-                <p className="text-[11px] text-zinc-400 mt-1">Roommates, Art House, Chest Press & smooth, bedroom R&B groove.</p>
-              </div>
-
-              <div
-                onClick={() => handleMetingSearch('Tyler The Creator Don Toliver Frank Ocean')}
-                className="p-4 rounded-2xl bg-zinc-900/80 border border-zinc-800 hover:border-purple-500/60 cursor-pointer transition-all hover:bg-zinc-850 group"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-[10px] font-mono font-bold border border-purple-500/30">
-                    Alternative Vibe
-                  </span>
-                  <Play className="w-4 h-4 text-purple-400 group-hover:scale-110 transition-transform" />
-                </div>
-                <h4 className="text-sm font-bold text-white group-hover:text-purple-300 transition-colors">Tyler, Don Toliver & Frank Ocean</h4>
-                <p className="text-[11px] text-zinc-400 mt-1">See You Again, Bandit, Pink + White & high-energy futuristic tracks.</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Featured Essential Albums (Kanye, Malcolm Todd, Tyler, Don Toliver) */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="flex items-center space-x-2 text-xs font-mono text-cyan-400">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Curated Collections</span>
-                </div>
-                <h2 className="text-xl font-black text-white">Essential Artist Vaults</h2>
-              </div>
-              <span className="text-xs font-mono text-zinc-500 hidden sm:inline">Kanye • Malcolm Todd • Tyler • Don Toliver</span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {EDITORS_PICKS_ALBUMS.map((album) => (
-                <div
-                  key={album.id}
-                  className="group relative rounded-2xl p-4 bg-zinc-900/90 border border-zinc-800 hover:border-cyan-500/50 transition-all hover:bg-zinc-850 flex flex-col justify-between space-y-3"
+                <button
+                  onClick={() => handleMetingSearch(topListenedArtist)}
+                  className="px-5 py-2.5 rounded-full bg-[#1DB954] hover:bg-[#1ed760] text-black font-extrabold text-xs shadow-lg shadow-[#1DB954]/20 transition-all flex items-center space-x-2 self-start sm:self-auto cursor-pointer"
                 >
-                  <div className="space-y-3">
-                    <div className="aspect-square w-full rounded-xl overflow-hidden bg-zinc-800 relative">
-                      <img
-                        src={album.cover}
-                        alt={album.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-                      <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-black bg-cyan-400 px-2 py-0.5 rounded-full font-mono">
-                          {album.artist}
-                        </span>
-                        <span className="text-[10px] text-zinc-300 font-mono">{album.year}</span>
+                  <Radio className="w-4 h-4" />
+                  <span>Launch {topListenedArtist.split(' ')[0]} Radio</span>
+                </button>
+              </div>
+
+              {/* SAVED LISTENED TRACKS GRID */}
+              <div className="space-y-3 relative z-10 pt-2 border-t border-zinc-800">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-zinc-400 block">
+                    Recently Played Tracks ({recentlyPlayed.length})
+                  </span>
+                  <span className="text-[11px] text-[#1DB954] font-mono">Auto-Saved</span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5">
+                  {recentlyPlayed.map((track, i) => {
+                    const isCurrentlyPlaying = currentTrack?.id === track.id && isPlaying;
+                    return (
+                      <div
+                        key={`saved-${track.id}-${i}`}
+                        onClick={() => onPlayTrack(track, { type: 'general' })}
+                        className="group/saved p-3 rounded-2xl bg-[#181818] hover:bg-[#282828] border border-zinc-800 hover:border-[#1DB954]/50 cursor-pointer transition-all duration-300 flex flex-col justify-between space-y-2 shadow-lg"
+                      >
+                        <div className="relative aspect-square w-full rounded-xl overflow-hidden bg-zinc-900">
+                          <img
+                            src={track.cover}
+                            alt={track.title}
+                            className="w-full h-full object-cover group-hover/saved:scale-105 transition-transform duration-300"
+                          />
+                          <div className={`absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity ${isCurrentlyPlaying ? 'opacity-100' : 'opacity-0 group-hover/saved:opacity-100'}`}>
+                            <div className="w-10 h-10 rounded-full bg-[#1DB954] text-black flex items-center justify-center shadow-lg transform group-hover/saved:scale-110 transition-transform">
+                              {isCurrentlyPlaying ? (
+                                <Pause className="w-5 h-5 fill-current" />
+                              ) : (
+                                <Play className="w-5 h-5 fill-current ml-0.5" />
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-white group-hover/saved:text-[#1DB954] transition-colors truncate">
+                            {track.title}
+                          </p>
+                          <p className="text-[11px] text-zinc-400 truncate mt-0.5">{track.artist}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Essential Featured Artist Vaults */}
+          {EDITORS_PICKS_ALBUMS.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center space-x-2 text-xs font-bold text-[#1DB954]">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Curated Vaults</span>
+                  </div>
+                  <h2 className="text-xl font-bold text-white">Essential Artist Collections</h2>
+                </div>
+                <span className="text-xs text-zinc-400 hidden sm:inline">Kanye • Malcolm Todd • Tyler • Don Toliver</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {EDITORS_PICKS_ALBUMS.map((album) => (
+                  <div
+                    key={album.id}
+                    className="group relative rounded-2xl p-4 bg-[#181818] border border-zinc-800 hover:border-[#1DB954]/50 transition-all hover:bg-[#282828] flex flex-col justify-between space-y-3 shadow-xl"
+                  >
+                    <div className="space-y-3">
+                      <div className="aspect-square w-full rounded-xl overflow-hidden bg-zinc-900 relative">
+                        <img
+                          src={album.cover}
+                          alt={album.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                        <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-black bg-[#1DB954] px-2 py-0.5 rounded-full">
+                            {album.artist}
+                          </span>
+                          <span className="text-[10px] text-zinc-300 font-mono">{album.year}</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h3 className="text-sm font-bold text-white group-hover:text-[#1DB954] transition-colors truncate">
+                          {album.title}
+                        </h3>
+                        <p className="text-[11px] text-zinc-400 line-clamp-2 mt-0.5">{album.description}</p>
                       </div>
                     </div>
 
-                    <div>
-                      <h3 className="text-sm font-extrabold text-white group-hover:text-cyan-300 transition-colors truncate">
-                        {album.title}
-                      </h3>
-                      <p className="text-[11px] text-zinc-400 line-clamp-2 mt-0.5">{album.description}</p>
+                    {/* Album Tracks Quick Launcher */}
+                    <div className="pt-2 border-t border-zinc-800 space-y-1">
+                      <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-1">Featured Tracks</span>
+                      {album.tracks.slice(0, 3).map((track, tIdx) => (
+                        <button
+                          key={tIdx}
+                          onClick={() => handlePlayAlbumTrack(album, track.title)}
+                          className="w-full flex items-center justify-between p-1.5 rounded-lg hover:bg-zinc-800 text-left transition-colors text-[11px] group/trk"
+                        >
+                          <div className="flex items-center space-x-2 truncate">
+                            <Play className="w-3 h-3 text-[#1DB954] fill-current flex-shrink-0 group-hover/trk:scale-110 transition-transform" />
+                            <span className="text-zinc-300 group-hover/trk:text-white font-medium truncate">{track.title}</span>
+                          </div>
+                          <span className="text-[9px] font-mono text-zinc-500">{track.duration}</span>
+                        </button>
+                      ))}
                     </div>
                   </div>
-
-                  {/* Album Tracks Quick Launcher */}
-                  <div className="pt-2 border-t border-zinc-800 space-y-1">
-                    <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider block mb-1">Featured Tracks</span>
-                    {album.tracks.slice(0, 3).map((track, tIdx) => (
-                      <button
-                        key={tIdx}
-                        onClick={() => handlePlayAlbumTrack(album, track.title)}
-                        className="w-full flex items-center justify-between p-1.5 rounded-lg hover:bg-zinc-800 text-left transition-colors text-[11px] group/trk"
-                      >
-                        <div className="flex items-center space-x-2 truncate">
-                          <Play className="w-3 h-3 text-cyan-400 fill-current flex-shrink-0 group-hover/trk:scale-110 transition-transform" />
-                          <span className="text-zinc-300 group-hover/trk:text-white font-medium truncate">{track.title}</span>
-                        </div>
-                        <span className="text-[9px] font-mono text-zinc-500">{track.duration}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Searchable Songs Engine */}
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <h2 className="text-lg font-bold text-white flex items-center space-x-2">
-                <Search className="w-4 h-4 text-cyan-400" />
-                <span>Search Music Vault</span>
+                <Search className="w-4 h-4 text-[#1DB954]" />
+                <span>Search & Discover Tracks</span>
               </h2>
 
               <form
@@ -573,14 +581,14 @@ export const MusicView: React.FC<MusicViewProps> = ({
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Artist or song name..."
-                    className="w-full px-3 py-2 pl-8 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500"
+                    className="w-full px-3 py-2 pl-8 bg-[#181818] border border-zinc-800 rounded-full text-xs text-white focus:outline-none focus:border-[#1DB954]"
                   />
                   <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-3" />
                 </div>
                 <button
                   type="submit"
                   disabled={isSearching}
-                  className="px-4 py-2 bg-cyan-500 text-black font-bold text-xs rounded-xl hover:bg-cyan-400 disabled:opacity-50"
+                  className="px-4 py-2 bg-[#1DB954] text-black font-extrabold text-xs rounded-full hover:bg-[#1ed760] disabled:opacity-50 transition-all cursor-pointer"
                 >
                   {isSearching ? 'Searching...' : 'Search'}
                 </button>
@@ -596,7 +604,7 @@ export const MusicView: React.FC<MusicViewProps> = ({
                     setSearchQuery(artist);
                     handleMetingSearch(artist);
                   }}
-                  className="px-3 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-400 hover:text-white hover:border-cyan-500/50 transition-colors whitespace-nowrap"
+                  className="px-3.5 py-1.5 rounded-full bg-[#181818] border border-zinc-800 text-[11px] text-zinc-300 hover:text-white hover:border-[#1DB954] transition-colors whitespace-nowrap cursor-pointer"
                 >
                   {artist}
                 </button>
@@ -612,21 +620,21 @@ export const MusicView: React.FC<MusicViewProps> = ({
                 return (
                   <div
                     key={track.id}
-                    className={`group p-3 rounded-2xl bg-zinc-900/60 border transition-all flex items-center justify-between space-x-3 ${
+                    className={`group p-3 rounded-2xl bg-[#181818] border transition-all flex items-center justify-between space-x-3 shadow-md ${
                       isCurrentlyPlaying
-                        ? 'border-cyan-500 bg-cyan-950/20 shadow-lg'
-                        : 'border-zinc-800/80 hover:border-zinc-700 hover:bg-zinc-850'
+                        ? 'border-[#1DB954] bg-[#181818]'
+                        : 'border-zinc-800 hover:border-zinc-700 hover:bg-[#282828]'
                     }`}
                   >
                     <div
                       onClick={() => onPlayTrack(track, { type: 'general' })}
                       className="flex items-center space-x-3 min-w-0 flex-1 cursor-pointer"
                     >
-                      <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-zinc-800 flex-shrink-0">
+                      <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-zinc-900 flex-shrink-0">
                         <img src={track.cover} alt={track.title} className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                        <div className={`absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity ${isCurrentlyPlaying ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                           {isCurrentlyPlaying ? (
-                            <Pause className="w-5 h-5 text-cyan-400 fill-current" />
+                            <Pause className="w-5 h-5 text-[#1DB954] fill-current" />
                           ) : (
                             <Play className="w-5 h-5 text-white fill-current ml-0.5" />
                           )}
@@ -634,7 +642,7 @@ export const MusicView: React.FC<MusicViewProps> = ({
                       </div>
 
                       <div className="truncate">
-                        <h4 className="text-xs font-bold text-white group-hover:text-cyan-300 transition-colors truncate">
+                        <h4 className="text-xs font-bold text-white group-hover:text-[#1DB954] transition-colors truncate">
                           {track.title}
                         </h4>
                         <p className="text-[10px] text-zinc-400 truncate mt-0.5">{track.artist}</p>
@@ -648,17 +656,17 @@ export const MusicView: React.FC<MusicViewProps> = ({
                           e.stopPropagation();
                           setTrackForPlaylist(track);
                         }}
-                        className="px-2.5 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 hover:text-purple-200 border border-purple-500/30 text-xs font-bold transition-all flex items-center space-x-1 shadow-md"
+                        className="px-2.5 py-1.5 rounded-full bg-[#1DB954]/10 hover:bg-[#1DB954]/20 text-[#1DB954] border border-[#1DB954]/30 text-xs font-bold transition-all flex items-center space-x-1 cursor-pointer"
                         title="Add to Playlist"
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Add to Playlist</span>
+                        <span className="hidden sm:inline">Add</span>
                       </button>
 
                       <button
                         onClick={() => toggleLikeSong(track)}
-                        className={`p-1.5 rounded-lg transition-colors ${
-                          liked ? 'text-rose-500 bg-rose-500/10' : 'text-zinc-500 hover:text-white'
+                        className={`p-1.5 rounded-full transition-colors cursor-pointer ${
+                          liked ? 'text-[#1DB954] bg-[#1DB954]/10' : 'text-zinc-500 hover:text-white'
                         }`}
                         title={liked ? 'Unlike' : 'Like'}
                       >
@@ -676,8 +684,8 @@ export const MusicView: React.FC<MusicViewProps> = ({
       {/* TAB 2: LIKED SONGS */}
       {activeTab === 'liked' && (
         <div className="space-y-6">
-          <div className="p-6 rounded-3xl bg-gradient-to-r from-rose-900/30 via-zinc-900 to-zinc-950 border border-rose-500/30 flex items-center space-x-4">
-            <div className="p-4 rounded-2xl bg-rose-500 text-white shadow-xl">
+          <div className="p-6 rounded-3xl bg-gradient-to-r from-[#1DB954]/20 via-[#181818] to-zinc-950 border border-[#1DB954]/30 flex items-center space-x-4">
+            <div className="p-4 rounded-full bg-[#1DB954] text-black shadow-xl">
               <Heart className="w-8 h-8 fill-current" />
             </div>
             <div>
@@ -687,7 +695,7 @@ export const MusicView: React.FC<MusicViewProps> = ({
           </div>
 
           {likedSongs.length === 0 ? (
-            <div className="text-center py-16 border border-dashed border-zinc-800 rounded-3xl space-y-3">
+            <div className="text-center py-16 border border-dashed border-zinc-800 rounded-3xl space-y-3 bg-[#181818]">
               <Heart className="w-10 h-10 text-zinc-600 mx-auto" />
               <p className="text-sm font-bold text-zinc-400">No liked songs yet</p>
               <p className="text-xs text-zinc-500 max-w-sm mx-auto">
@@ -699,7 +707,7 @@ export const MusicView: React.FC<MusicViewProps> = ({
               {likedSongs.map((track) => (
                 <div
                   key={track.id}
-                  className="p-3 rounded-2xl bg-zinc-900/80 border border-zinc-800 flex items-center justify-between space-x-3"
+                  className="p-3 rounded-2xl bg-[#181818] border border-zinc-800 hover:border-[#1DB954]/50 flex items-center justify-between space-x-3 transition-colors"
                 >
                   <div
                     onClick={() => onPlayTrack(track, { type: 'general' })}
@@ -718,7 +726,7 @@ export const MusicView: React.FC<MusicViewProps> = ({
                         e.stopPropagation();
                         setTrackForPlaylist(track);
                       }}
-                      className="px-2.5 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 hover:text-purple-200 border border-purple-500/30 text-xs font-bold transition-all flex items-center space-x-1"
+                      className="px-2.5 py-1.5 rounded-full bg-[#1DB954]/10 hover:bg-[#1DB954]/20 text-[#1DB954] border border-[#1DB954]/30 text-xs font-bold transition-all flex items-center space-x-1 cursor-pointer"
                       title="Add to Playlist"
                     >
                       <Plus className="w-3.5 h-3.5" />
@@ -727,7 +735,7 @@ export const MusicView: React.FC<MusicViewProps> = ({
 
                     <button
                       onClick={() => toggleLikeSong(track)}
-                      className="p-2 text-rose-500 hover:text-rose-400"
+                      className="p-2 text-[#1DB954] hover:text-[#1ed760] cursor-pointer"
                       title="Remove from Liked"
                     >
                       <Heart className="w-4 h-4 fill-current" />
@@ -755,11 +763,11 @@ export const MusicView: React.FC<MusicViewProps> = ({
                 placeholder="New playlist name..."
                 value={newPlaylistName}
                 onChange={(e) => setNewPlaylistName(e.target.value)}
-                className="flex-1 px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-purple-500"
+                className="flex-1 px-4 py-2 bg-[#181818] border border-zinc-800 rounded-full text-xs text-white focus:outline-none focus:border-[#1DB954]"
               />
               <button
                 type="submit"
-                className="px-4 py-2 bg-purple-500 hover:bg-purple-400 text-white font-bold text-xs rounded-xl flex items-center space-x-1"
+                className="px-5 py-2 bg-[#1DB954] hover:bg-[#1ed760] text-black font-extrabold text-xs rounded-full flex items-center space-x-1 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>Create</span>
@@ -769,10 +777,10 @@ export const MusicView: React.FC<MusicViewProps> = ({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {playlists.map((pl) => (
-              <div key={pl.id} className="p-5 rounded-3xl bg-zinc-900/80 border border-zinc-800 space-y-4">
+              <div key={pl.id} className="p-5 rounded-3xl bg-[#181818] border border-zinc-800 space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 rounded-2xl bg-purple-500/20 text-purple-400 flex items-center justify-center border border-purple-500/30">
+                    <div className="w-10 h-10 rounded-full bg-[#1DB954]/20 text-[#1DB954] flex items-center justify-center border border-[#1DB954]/30">
                       <ListMusic className="w-5 h-5" />
                     </div>
                     <div>
@@ -784,7 +792,7 @@ export const MusicView: React.FC<MusicViewProps> = ({
                     <span className="text-xs font-mono text-zinc-500">{pl.tracks.length} tracks</span>
                     <button
                       onClick={() => handleDeletePlaylist(pl.id)}
-                      className="p-1.5 rounded-lg bg-zinc-800 hover:bg-rose-500/20 text-zinc-400 hover:text-rose-400 transition-colors"
+                      className="p-1.5 rounded-full bg-zinc-800 hover:bg-rose-500/20 text-zinc-400 hover:text-rose-400 transition-colors cursor-pointer"
                       title="Delete Playlist"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -799,16 +807,16 @@ export const MusicView: React.FC<MusicViewProps> = ({
                     pl.tracks.map((t) => (
                       <div
                         key={t.id}
-                        className="flex items-center justify-between p-2 rounded-xl bg-zinc-950/60 hover:bg-zinc-800 text-xs"
+                        className="flex items-center justify-between p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-xs transition-colors"
                       >
                         <div onClick={() => onPlayTrack(t, { type: 'playlist', playlistId: pl.id, playlistTracks: pl.tracks })} className="flex items-center space-x-2 cursor-pointer truncate">
-                          <Play className="w-3 h-3 text-purple-400 fill-current" />
+                          <Play className="w-3 h-3 text-[#1DB954] fill-current" />
                           <span className="text-white font-medium truncate">{t.title}</span>
                           <span className="text-zinc-500 text-[10px]">— {t.artist}</span>
                         </div>
                         <button
                           onClick={() => removeTrackFromPlaylist(pl.id, t.id)}
-                          className="text-zinc-500 hover:text-rose-400 p-1"
+                          className="text-zinc-500 hover:text-rose-400 p-1 cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -824,18 +832,18 @@ export const MusicView: React.FC<MusicViewProps> = ({
 
       {/* TAB 4: SYNCHRONIZED LYRICS */}
       {activeTab === 'lyrics' && (
-        <div className="p-8 rounded-3xl bg-zinc-950 border border-zinc-800 space-y-6 text-center max-w-2xl mx-auto shadow-2xl">
+        <div className="p-8 rounded-3xl bg-[#181818] border border-zinc-800 space-y-6 text-center max-w-2xl mx-auto shadow-2xl">
           <div className="flex flex-col items-center space-y-2">
-            <FileText className="w-8 h-8 text-amber-400 animate-bounce" />
+            <FileText className="w-8 h-8 text-[#1DB954] animate-bounce" />
             <h2 className="text-2xl font-black text-white">
               {currentTrack ? currentTrack.title : 'No Track Playing'}
             </h2>
-            <p className="text-xs font-mono text-amber-400">
+            <p className="text-xs font-mono text-[#1DB954]">
               {currentTrack ? currentTrack.artist : 'Select a song to view lyrics'}
             </p>
           </div>
 
-          <div className="p-6 rounded-2xl bg-zinc-900/60 border border-zinc-800 max-h-96 overflow-y-auto space-y-3 scrollbar-thin">
+          <div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800 max-h-96 overflow-y-auto space-y-3 scrollbar-thin">
             {isLoadingLyrics ? (
               <p className="text-zinc-500 animate-pulse py-8 text-sm font-mono">Fetching live lyrics for track...</p>
             ) : (() => {
@@ -869,7 +877,7 @@ export const MusicView: React.FC<MusicViewProps> = ({
                         key={idx}
                         className={`transition-all duration-300 text-center font-sans ${
                           isActive
-                            ? 'text-amber-300 font-extrabold text-base sm:text-lg scale-105 drop-shadow-[0_0_12px_rgba(245,158,11,0.5)]'
+                            ? 'text-[#1DB954] font-extrabold text-base sm:text-lg scale-105 drop-shadow-[0_0_12px_rgba(29,185,84,0.5)]'
                             : 'text-zinc-500 text-xs sm:text-sm hover:text-zinc-300'
                         }`}
                       >
@@ -886,8 +894,8 @@ export const MusicView: React.FC<MusicViewProps> = ({
 
       {/* Toast Notification Banner */}
       {toastMsg && (
-        <div className="fixed bottom-20 right-6 z-50 px-4 py-3 rounded-2xl bg-zinc-900 border border-purple-500/50 text-purple-300 text-xs font-bold shadow-2xl shadow-purple-500/20 flex items-center space-x-2 animate-bounce">
-          <Sparkles className="w-4 h-4 text-purple-400" />
+        <div className="fixed bottom-20 right-6 z-50 px-4 py-3 rounded-full bg-[#181818] border border-[#1DB954] text-[#1DB954] text-xs font-bold shadow-2xl flex items-center space-x-2 animate-bounce">
+          <Sparkles className="w-4 h-4 text-[#1DB954]" />
           <span>{toastMsg}</span>
         </div>
       )}

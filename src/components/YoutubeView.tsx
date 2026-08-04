@@ -549,7 +549,7 @@ export const YoutubeView: React.FC<YoutubeViewProps> = ({
       </AnimatePresence>
 
       {/* YOUTUBE TOP NAVBAR & SEARCH */}
-      <div className={`bg-zinc-950/90 border ${currentSkin.accentBorder} rounded-3xl p-5 shadow-2xl backdrop-blur-xl sticky top-2 z-40 transition-all`}>
+      <div className="bg-zinc-950/95 border-2 border-dashed border-red-500/40 handmade-box p-5 shadow-2xl backdrop-blur-xl sticky top-2 z-40 transition-all">
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
           
           {/* Logo & Brand */}
@@ -557,20 +557,17 @@ export const YoutubeView: React.FC<YoutubeViewProps> = ({
             className="flex items-center space-x-3 cursor-pointer group"
             onClick={() => { setSelectedVideo(null); setActiveTabMode('home'); }}
           >
-            <div className={`w-11 h-11 rounded-2xl bg-gradient-to-br ${currentSkin.gradient} flex items-center justify-center text-white ${currentSkin.glow} transition-transform group-hover:scale-105`}>
+            <div className="w-11 h-11 handmade-box bg-gradient-to-br from-red-600 to-red-800 flex items-center justify-center text-white shadow-lg transition-transform group-hover:rotate-3">
               <Tv className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <h1 className="text-xl font-black text-white tracking-tight flex items-center gap-1">
-                  Yunø<span className={`${currentSkin.accentText} font-extrabold`}>Tube</span>
+                <h1 className="text-2xl font-sketch font-bold text-amber-100 tracking-tight flex items-center gap-1">
+                  Yunø<span className="text-red-500 font-extrabold">Tube</span>
                 </h1>
-                <span className={`px-2 py-0.5 rounded-full bg-zinc-900 border ${currentSkin.accentBorder} text-[10px] font-mono font-bold flex items-center gap-1 ${currentSkin.accentText}`}>
-                  <Radio className="w-3 h-3 animate-pulse" />
-                  API v3
-                </span>
+                <span className="handmade-stamp text-[9px] py-0 px-1.5 text-red-400">HANDMADE</span>
               </div>
-              <p className="text-[11px] text-zinc-400">Stream YouTube Data API v3 videos with full embedded player</p>
+              <p className="text-[11px] font-handwriting text-amber-200/70">Hand-curated streaming player for YouTube Data API v3</p>
             </div>
           </div>
 

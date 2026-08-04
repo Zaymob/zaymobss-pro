@@ -262,13 +262,85 @@ app.get("/api/tmdb/details", async (req, res) => {
     if (!id) return res.status(400).json({ error: "Missing ID" });
 
     const response = await fetch(
-      `https://api.themoviedb.org/3/${type}/${id}?api_key=${TMDB_API_KEY}&append_to_response=videos,credits`
+      `https://api.themoviedb.org/3/${type}/${id}?api_key=${TMDB_API_KEY}&append_to_response=videos,credits,similar,recommendations`
     );
     const data = await response.json();
     res.json(data);
   } catch (error: any) {
     console.error("TMDB Details Error:", error);
     res.status(500).json({ error: "Failed to fetch TMDB details" });
+  }
+});
+
+app.get("/api/tmdb/popular_movies", async (req, res) => {
+  try {
+    const response = await fetch(
+      `https://api.themoviedb.org/3/movie/popular?api_key=${TMDB_API_KEY}`
+    );
+    const data = await response.json();
+    res.json(data);
+  } catch (error: any) {
+    console.error("TMDB Popular Movies Error:", error);
+    res.status(500).json({ error: "Failed to fetch popular movies" });
+  }
+});
+
+app.get("/api/tmdb/popular_tv", async (req, res) => {
+  try {
+    const response = await fetch(
+      `https://api.themoviedb.org/3/tv/popular?api_key=${TMDB_API_KEY}`
+    );
+    const data = await response.json();
+    res.json(data);
+  } catch (error: any) {
+    console.error("TMDB Popular TV Error:", error);
+    res.status(500).json({ error: "Failed to fetch popular TV" });
+  }
+});
+
+app.get("/api/tmdb/top_rated", async (req, res) => {
+  try {
+    const response = await fetch(
+      `https://api.themoviedb.org/3/movie/top_rated?api_key=${TMDB_API_KEY}`
+    );
+    const data = await response.json();
+    res.json(data);
+  } catch (error: any) {
+    console.error("TMDB Top Rated Error:", error);
+    res.status(500).json({ error: "Failed to fetch top rated" });
+  }
+});
+
+app.get("/api/tmdb/discover", async (req, res) => {
+  try {
+    const genre = req.query.genre as string;
+    const mediaType = (req.query.mediaType as string) || "movie";
+    const url = genre
+      ? `https://api.themoviedb.org/3/discover/${mediaType}?api_key=${TMDB_API_KEY}&with_genres=${genre}&sort_by=popularity.desc`
+      : `https://api.themoviedb.org/3/discover/${mediaType}?api_key=${TMDB_API_KEY}&sort_by=popularity.desc`;
+    const response = await fetch(url);
+    const data = await response.json();
+    res.json(data);
+  } catch (error: any) {
+    console.error("TMDB Discover Error:", error);
+    res.status(500).json({ error: "Failed to discover TMDB content" });
+  }
+});
+
+app.get("/api/tmdb/tv_season", async (req, res) => {
+  try {
+    const id = req.query.id as string;
+    const season = req.query.season as string || "1";
+    if (!id) return res.status(400).json({ error: "Missing TV ID" });
+
+    const response = await fetch(
+      `https://api.themoviedb.org/3/tv/${id}/season/${season}?api_key=${TMDB_API_KEY}`
+    );
+    const data = await response.json();
+    res.json(data);
+  } catch (error: any) {
+    console.error("TMDB Season Fetch Error:", error);
+    res.status(500).json({ error: "Failed to fetch season info" });
   }
 });
 

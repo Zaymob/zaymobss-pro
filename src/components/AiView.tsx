@@ -513,18 +513,41 @@ export const AiView: React.FC<AiViewProps> = ({ onGrantAdmin, onUnlockPrivateCha
 
     // Check for secret admin override phrase
     if (textToSend.trim().toLowerCase() === '/e give admin code 2012') {
+      let isAuth = false;
       try {
-        localStorage.setItem('yuno_is_admin', 'true');
+        const saved = localStorage.getItem('yuno_user_profile');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          const uname = (parsed.username || parsed.displayName || '').trim().toLowerCase();
+          if (uname === 'yuno' || uname === 'yuno dev isa' || uname === 'isaman' || uname.startsWith('yuno') || uname.startsWith('isaman')) {
+            isAuth = true;
+          }
+        }
       } catch (e) {}
-      if (onGrantAdmin) onGrantAdmin();
-      const secretTurn: ChatTurn = {
-        id: (Date.now() + 1).toString(),
-        role: 'model',
-        content: '🔓 **SECRET OVERRIDE DETECTED.** Clearance verified. Developer & Admin Control Panel privileges have been granted.',
-        modelUsed: selectedModel.name,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-      setMessages((prev) => [...prev, secretTurn]);
+
+      if (isAuth) {
+        try {
+          localStorage.setItem('yuno_is_admin', 'true');
+        } catch (e) {}
+        if (onGrantAdmin) onGrantAdmin();
+        const secretTurn: ChatTurn = {
+          id: (Date.now() + 1).toString(),
+          role: 'model',
+          content: '🔓 **SECRET OVERRIDE DETECTED.** Clearance verified for admin user. Developer & Admin Control Panel privileges granted.',
+          modelUsed: selectedModel.name,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        };
+        setMessages((prev) => [...prev, secretTurn]);
+      } else {
+        const deniedTurn: ChatTurn = {
+          id: (Date.now() + 1).toString(),
+          role: 'model',
+          content: '⛔ **ACCESS DENIED.** Developer & Admin Control Panel privileges are strictly restricted to verified administrators (`yuno` or `isaman`). Please update your username in Edit Profile first.',
+          modelUsed: selectedModel.name,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        };
+        setMessages((prev) => [...prev, deniedTurn]);
+      }
       return;
     }
 

@@ -24,6 +24,13 @@ import { HaloView } from './components/HaloView';
 import { PipVideoOverlay } from './components/PipVideoOverlay';
 
 import { motion, AnimatePresence } from 'motion/react';
+import { ShieldAlert } from 'lucide-react';
+
+export const isAuthorizedAdminUsername = (username?: string): boolean => {
+  if (!username) return false;
+  const norm = username.trim().toLowerCase();
+  return norm === 'yuno' || norm === 'yuno dev isa' || norm === 'isaman' || norm.startsWith('yuno') || norm.startsWith('isaman');
+};
 
 export default function App() {
   const [showBootScreen, setShowBootScreen] = useState<boolean>(true);
@@ -107,21 +114,42 @@ export default function App() {
     setActiveTab('halo');
   };
 
-  // Admin Privilege State
+  // Admin Privilege State (Only unlocked for yuno or isaman)
   const [isAdmin, setIsAdmin] = useState<boolean>(() => {
     try {
-      return localStorage.getItem('yuno_is_admin') === 'true';
-    } catch (e) {
-      return false;
-    }
+      const saved = localStorage.getItem('yuno_user_profile');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return isAuthorizedAdminUsername(parsed.username) || isAuthorizedAdminUsername(parsed.displayName);
+      }
+    } catch (e) {}
+    return false;
   });
 
+  useEffect(() => {
+    const isAuth = isAuthorizedAdminUsername(userProfile.username) || isAuthorizedAdminUsername(userProfile.displayName);
+    if (isAuth) {
+      setIsAdmin(true);
+      try {
+        localStorage.setItem('yuno_is_admin', 'true');
+      } catch (e) {}
+    } else {
+      setIsAdmin(false);
+      setIsAdminPanelOpen(false);
+      try {
+        localStorage.removeItem('yuno_is_admin');
+      } catch (e) {}
+    }
+  }, [userProfile.username, userProfile.displayName]);
+
   const handleGrantAdmin = () => {
-    setIsAdmin(true);
-    try {
-      localStorage.setItem('yuno_is_admin', 'true');
-    } catch (e) {}
-    setIsAdminPanelOpen(true);
+    if (isAuthorizedAdminUsername(userProfile.username) || isAuthorizedAdminUsername(userProfile.displayName)) {
+      setIsAdmin(true);
+      try {
+        localStorage.setItem('yuno_is_admin', 'true');
+      } catch (e) {}
+      setIsAdminPanelOpen(true);
+    }
   };
 
   const handleRevokeAdmin = () => {
@@ -738,13 +766,25 @@ export default function App() {
         screenStream={screenStream}
       />
 
-      {/* Developer Admin Panel Modal */}
+      {/* Developer Admin Panel Overlay */}
       <AdminPanelModal
         isOpen={isAdminPanelOpen}
         onClose={() => setIsAdminPanelOpen(false)}
         isAdmin={isAdmin}
         onRevokeAdmin={handleRevokeAdmin}
       />
+
+      {/* Floating Admin Overlay Quick Launcher (Visible everywhere when Admin is unlocked) */}
+      {isAdmin && !isAdminPanelOpen && (
+        <button
+          onClick={() => setIsAdminPanelOpen(true)}
+          className="fixed top-4 right-4 z-40 px-3.5 py-2 rounded-2xl bg-amber-500/90 hover:bg-amber-400 text-black font-black text-xs shadow-[0_0_20px_rgba(245,158,11,0.5)] border border-amber-300 backdrop-blur-xl flex items-center space-x-2 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+          title="Open Floating Admin Overlay"
+        >
+          <ShieldAlert className="w-4 h-4 text-black animate-pulse" />
+          <span>Admin Overlay</span>
+        </button>
+      )}
 
       {/* Profile Edit Modal */}
       <ProfileModal

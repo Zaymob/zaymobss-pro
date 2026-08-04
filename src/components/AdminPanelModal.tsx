@@ -32,6 +32,9 @@ import {
   Award,
   Star,
   Users,
+  Minimize2,
+  Maximize2,
+  GripHorizontal,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { motion, AnimatePresence } from 'motion/react';
@@ -72,6 +75,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   isAdmin,
   onRevokeAdmin,
 }) => {
+  const [isMinimized, setIsMinimized] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<
     'moderation' | 'roles' | 'telemetry' | 'announcements' | 'site_controls' | 'trolls' | 'filters'
   >('moderation');
@@ -361,37 +365,133 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     addTelemetryLog(`Maintenance Mode set to ${nextVal}`);
   };
 
+  const handleResetChat = async () => {
+    try {
+      const res = await fetch('/api/admin/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requester: 'Yuno dev isa',
+          action: 'reset_chat',
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showFeedback(data.message || 'Chat history purged & 1-hour auto-reset active!');
+        addTelemetryLog('Admin purged chat & activated 1-hour auto-reset loop.');
+      } else {
+        showFeedback(data.error || 'Failed to reset chat', true);
+      }
+    } catch (e) {
+      showFeedback('Error resetting chat', true);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  if (isMinimized) {
+    return (
+      <AnimatePresence>
+        <motion.div
+          drag
+          dragMomentum={false}
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.9 }}
+          className="fixed top-6 right-6 z-50 pointer-events-auto bg-zinc-950/95 border-2 border-amber-500/60 p-3 rounded-2xl shadow-[0_0_35px_rgba(245,158,11,0.35)] backdrop-blur-2xl flex items-center space-x-3 text-white cursor-grab active:cursor-grabbing select-none"
+        >
+          <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40">
+            <ShieldAlert className="w-5 h-5 animate-pulse" />
+          </div>
+          <div className="flex flex-col">
+            <span className="text-xs font-black tracking-tight text-white flex items-center gap-1.5">
+              Yunø Admin Overlay
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+            </span>
+            <span className="text-[10px] font-mono text-amber-400 font-semibold uppercase">
+              Tab: {activeTab}
+            </span>
+          </div>
+
+          <div className="flex items-center space-x-1 pl-2 border-l border-zinc-800">
+            <button
+              type="button"
+              onClick={() => setIsMinimized(false)}
+              className="p-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-bold transition-all shadow"
+              title="Expand Admin Overlay"
+            >
+              <Maximize2 className="w-3.5 h-3.5" />
+            </button>
+            {onRevokeAdmin && (
+              <button
+                type="button"
+                onClick={() => {
+                  onRevokeAdmin();
+                  onClose();
+                }}
+                className="p-1.5 rounded-lg bg-red-950 hover:bg-red-900 border border-red-500/40 text-red-300 transition-all"
+                title="Lock Admin"
+              >
+                <Lock className="w-3.5 h-3.5" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-all"
+              title="Close Admin Overlay"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </motion.div>
+      </AnimatePresence>
+    );
+  }
+
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+      <div className="fixed inset-0 z-50 pointer-events-none flex items-center justify-center p-4">
         <motion.div
+          drag
+          dragMomentum={false}
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="relative w-full max-w-5xl bg-zinc-950 border border-amber-500/40 rounded-3xl shadow-[0_0_60px_rgba(245,158,11,0.25)] overflow-hidden flex flex-col max-h-[90vh]"
+          className="pointer-events-auto relative w-full max-w-5xl bg-zinc-950 border border-amber-500/40 rounded-3xl shadow-[0_0_60px_rgba(245,158,11,0.25)] overflow-hidden flex flex-col max-h-[88vh]"
         >
-          {/* Top Bar Header */}
-          <div className="p-5 bg-gradient-to-r from-amber-950/80 via-zinc-900 to-zinc-950 border-b border-amber-500/30 flex items-center justify-between">
+          {/* Top Bar Header (Drag Handle) */}
+          <div className="p-4 sm:p-5 bg-gradient-to-r from-amber-950/80 via-zinc-900 to-zinc-950 border-b border-amber-500/30 flex items-center justify-between cursor-grab active:cursor-grabbing select-none">
             <div className="flex items-center space-x-3">
-              <div className="p-3 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/40 shadow-inner">
-                <ShieldAlert className="w-6 h-6 animate-pulse" />
+              <GripHorizontal className="w-5 h-5 text-amber-500/70" />
+              <div className="p-2.5 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/40 shadow-inner">
+                <ShieldAlert className="w-5 h-5 animate-pulse" />
               </div>
               <div>
                 <div className="flex items-center space-x-2">
-                  <h2 className="text-xl font-black text-white tracking-tight">
-                    Yunø Developer & Admin System Controls
+                  <h2 className="text-base sm:text-lg font-black text-white tracking-tight">
+                    Yunø Developer & Admin Controls Overlay
                   </h2>
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500 text-black shadow">
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-amber-500 text-black shadow">
                     SECRET ACCESS GRANTED
                   </span>
                 </div>
-                <p className="text-xs text-zinc-400">
-                  User moderation, real-time telemetry, site controls, global announcements & troll tools
+                <p className="text-[11px] text-zinc-400 hidden sm:block">
+                  User moderation, real-time telemetry, site controls & troll tools (Drag header to move around screen)
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-1.5">
+              <button
+                type="button"
+                onClick={() => setIsMinimized(true)}
+                className="p-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 transition-colors"
+                title="Minimize Admin Overlay Window"
+              >
+                <Minimize2 className="w-4 h-4" />
+              </button>
+
               {onRevokeAdmin && (
                 <button
                   type="button"
@@ -399,19 +499,20 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                     onRevokeAdmin();
                     onClose();
                   }}
-                  className="px-3 py-1.5 rounded-xl bg-red-950/80 hover:bg-red-900 border border-red-500/40 text-red-300 font-mono text-xs transition-colors flex items-center space-x-1"
+                  className="px-2.5 py-1.5 rounded-xl bg-red-950/80 hover:bg-red-900 border border-red-500/40 text-red-300 font-mono text-xs transition-colors flex items-center space-x-1"
                   title="Lock & Revoke Admin Clearance"
                 >
                   <Lock className="w-3.5 h-3.5" />
-                  <span>Lock Admin</span>
+                  <span className="hidden sm:inline">Lock Admin</span>
                 </button>
               )}
               <button
                 type="button"
                 onClick={onClose}
                 className="p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
+                title="Close Admin Panel"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -539,100 +640,151 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
 
               {/* Tab Contents */}
               <div className="p-6 overflow-y-auto space-y-6 flex-1 text-sm text-zinc-200">
-                {/* TAB 1: MODERATION */}
+                {/* TAB 1: MODERATION (DEATH NOTE THEME) */}
                 {activeTab === 'moderation' && (
                   <div className="space-y-6">
-                    <div className="p-4 rounded-2xl bg-zinc-900/80 border border-zinc-800 space-y-3">
-                      <h3 className="text-xs font-mono font-bold text-amber-400 uppercase tracking-wider">
-                        Target User Action
-                      </h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <input
-                          type="text"
-                          placeholder="Target Username (e.g. Vortex_99)"
-                          value={targetUser}
-                          onChange={(e) => setTargetUser(e.target.value)}
-                          className="px-3.5 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-500"
-                        />
-
+                    {/* Chat Purge & Auto 1-Hour Reset Top Control */}
+                    <div className="p-4 rounded-2xl bg-gradient-to-r from-red-950/60 via-zinc-900 to-zinc-950 border border-red-500/40 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                      <div>
                         <div className="flex items-center space-x-2">
-                          <span className="text-xs text-zinc-400">Timeout:</span>
-                          <select
-                            value={timeoutMins}
-                            onChange={(e) => setTimeoutMins(Number(e.target.value))}
-                            className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-white focus:outline-none focus:border-amber-500 flex-1"
-                          >
-                            <option value={5}>5 Minutes</option>
-                            <option value={15}>15 Minutes</option>
-                            <option value={60}>1 Hour</option>
-                            <option value={1440}>24 Hours</option>
-                          </select>
+                          <RefreshCw className="w-5 h-5 text-red-400 animate-spin" />
+                          <h3 className="text-sm font-extrabold text-white tracking-wide">
+                            Admin Chat Purge & Hourly Auto-Reset Loop
+                          </h3>
                         </div>
-
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={handleTimeoutUser}
-                            disabled={!targetUser}
-                            className="flex-1 py-2 px-3 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 text-xs font-bold disabled:opacity-50 transition-all"
-                          >
-                            Timeout
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleBanUser}
-                            disabled={!targetUser}
-                            className="flex-1 py-2 px-3 rounded-xl bg-red-500/20 text-red-300 border border-red-500/40 hover:bg-red-500/30 text-xs font-bold disabled:opacity-50 transition-all"
-                          >
-                            Ban User
-                          </button>
-                        </div>
+                        <p className="text-xs text-zinc-400 mt-1">
+                          Purges all current chat history immediately and schedules automated 1-hour recurring chat resets.
+                        </p>
                       </div>
+
+                      <button
+                        type="button"
+                        onClick={handleResetChat}
+                        className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-black text-xs transition-all shadow-[0_0_20px_rgba(220,38,38,0.4)] flex items-center space-x-2 flex-shrink-0"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        <span>Purge & Reset Chat Now (1-Hr Cycle)</span>
+                      </button>
                     </div>
 
-                    {/* Active Banned List */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-3">
-                        <h4 className="text-xs font-mono font-bold text-red-400 uppercase flex items-center justify-between">
-                          <span>Banned Users ({bannedUsers.length})</span>
-                        </h4>
-                        {bannedUsers.length === 0 ? (
-                          <p className="text-xs text-zinc-500 italic">No banned users.</p>
-                        ) : (
-                          <div className="space-y-2">
-                            {bannedUsers.map((u) => (
-                              <div
-                                key={u}
-                                className="flex items-center justify-between p-2.5 rounded-xl bg-red-950/20 border border-red-500/30"
-                              >
-                                <span className="text-xs font-bold text-red-200">{u}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleUnbanUser(u)}
-                                  className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold hover:bg-emerald-500/30"
-                                >
-                                  Unban
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                    {/* DEATH NOTE NOTEBOOK CONTAINER */}
+                    <div className="relative p-6 sm:p-8 rounded-3xl bg-stone-950 border-2 border-stone-800 shadow-[0_0_60px_rgba(0,0,0,0.95)] font-serif overflow-hidden">
+                      {/* Leather texture overlay */}
+                      <div className="absolute inset-0 bg-[radial-gradient(#262626_1px,transparent_1px)] [background-size:16px_16px] opacity-20 pointer-events-none" />
 
-                      <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-3">
-                        <h4 className="text-xs font-mono font-bold text-amber-400 uppercase">
-                          Timed Out Chatters ({timedOutUsers.length})
-                        </h4>
-                        <div className="space-y-2">
-                          {timedOutUsers.map((t, idx) => (
-                            <div
-                              key={idx}
-                              className="flex items-center justify-between p-2.5 rounded-xl bg-amber-950/20 border border-amber-500/30"
-                            >
-                              <span className="text-xs font-bold text-amber-200">{t.name}</span>
-                              <span className="text-[10px] font-mono text-amber-400">{t.until}</span>
+                      <div className="relative z-10 space-y-6">
+                        {/* Death Note Header */}
+                        <div className="text-center border-b-2 border-stone-800 pb-5 space-y-2">
+                          <h2 className="text-3xl sm:text-4xl font-extrabold text-stone-100 tracking-[0.25em] uppercase font-serif drop-shadow-[0_2px_12px_rgba(255,255,255,0.15)]">
+                            DEATH NOTE
+                          </h2>
+                          <p className="text-xs italic text-stone-400 font-mono tracking-wider max-w-lg mx-auto">
+                            "The human whose name is written in this notebook shall be banished or timed out from the realm."
+                          </p>
+                          <div className="text-[10px] text-stone-500 font-mono">
+                            How to Use: I • This note will not take effect unless the writer has the person's username in mind.
+                          </div>
+                        </div>
+
+                        {/* Death Note Input Entry */}
+                        <div className="space-y-4 bg-stone-900/60 p-5 rounded-2xl border border-stone-800">
+                          <label className="block text-xs font-mono text-stone-300 font-bold uppercase tracking-widest">
+                            ✍️ Write Target Human Name in Death Note
+                          </label>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <input
+                              type="text"
+                              placeholder="Type target username here..."
+                              value={targetUser}
+                              onChange={(e) => setTargetUser(e.target.value)}
+                              className="px-4 py-2.5 rounded-xl bg-black border border-stone-700 font-serif text-sm text-stone-100 placeholder-stone-600 focus:outline-none focus:border-red-500/80 shadow-inner"
+                            />
+
+                            <div className="flex items-center space-x-2">
+                              <span className="text-xs font-mono text-stone-400">Duration:</span>
+                              <select
+                                value={timeoutMins}
+                                onChange={(e) => setTimeoutMins(Number(e.target.value))}
+                                className="px-3 py-2.5 rounded-xl bg-black border border-stone-700 text-xs font-mono text-stone-200 focus:outline-none focus:border-red-500 flex-1"
+                              >
+                                <option value={5}>5 Minutes</option>
+                                <option value={15}>15 Minutes</option>
+                                <option value={60}>1 Hour</option>
+                                <option value={1440}>24 Hours</option>
+                              </select>
                             </div>
-                          ))}
+
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={handleTimeoutUser}
+                                disabled={!targetUser}
+                                className="flex-1 py-2.5 px-3 rounded-xl bg-amber-950/80 hover:bg-amber-900 text-amber-200 border border-amber-600/50 text-xs font-mono font-bold disabled:opacity-40 transition-all"
+                              >
+                                Spell Timeout
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleBanUser}
+                                disabled={!targetUser}
+                                className="flex-1 py-2.5 px-3 rounded-xl bg-red-950 hover:bg-red-900 text-red-200 border border-red-600/60 text-xs font-mono font-extrabold disabled:opacity-40 transition-all shadow-[0_0_15px_rgba(185,28,28,0.3)]"
+                              >
+                                💀 Write Ban
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Active Death Note Inscriptions List */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* Ban Inscriptions */}
+                          <div className="p-4 rounded-2xl bg-stone-900/40 border border-stone-800 space-y-3">
+                            <h4 className="text-xs font-mono font-bold text-red-400 uppercase tracking-widest flex items-center justify-between border-b border-stone-800 pb-2">
+                              <span>💀 Banished Souls ({bannedUsers.length})</span>
+                            </h4>
+                            {bannedUsers.length === 0 ? (
+                              <p className="text-xs text-stone-600 italic font-mono">No names written in Death Note yet.</p>
+                            ) : (
+                              <div className="space-y-2">
+                                {bannedUsers.map((u) => (
+                                  <div
+                                    key={u}
+                                    className="flex items-center justify-between p-2.5 rounded-xl bg-stone-900 border border-red-900/40"
+                                  >
+                                    <span className="text-xs font-serif italic text-red-300 tracking-wide">
+                                      ~ {u} ~
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUnbanUser(u)}
+                                      className="px-2.5 py-1 rounded-lg bg-emerald-950 text-emerald-300 border border-emerald-700/50 text-[10px] font-mono hover:bg-emerald-900"
+                                    >
+                                      Erase Name
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Timeout Binding Inscriptions */}
+                          <div className="p-4 rounded-2xl bg-stone-900/40 border border-stone-800 space-y-3">
+                            <h4 className="text-xs font-mono font-bold text-amber-400 uppercase tracking-widest border-b border-stone-800 pb-2">
+                              ⏳ Timed Out Inscriptions ({timedOutUsers.length})
+                            </h4>
+                            <div className="space-y-2">
+                              {timedOutUsers.map((t, idx) => (
+                                <div
+                                  key={idx}
+                                  className="flex items-center justify-between p-2.5 rounded-xl bg-stone-900 border border-amber-900/40"
+                                >
+                                  <span className="text-xs font-serif italic text-amber-300">~ {t.name} ~</span>
+                                  <span className="text-[10px] font-mono text-amber-500">{t.until}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>

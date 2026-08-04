@@ -67,7 +67,8 @@ const VOICE_CHANNELS = [
 ];
 
 const PROFANITY_WORDS = [
-  'shit', 'fuck', 'bitch', 'asshole', 'crap', 'bastard', 'dick', 'pussy', 'slut', 'whore', 'fucking', 'bullshit'
+  'shit', 'fuck', 'bitch', 'asshole', 'crap', 'bastard', 'dick', 'pussy', 'slut', 'whore', 'fucking', 'bullshit',
+  'vibecoded', 'vibe coded', 'vibe-coded', 'vibecoded slop', 'slop'
 ];
 
 // Helper to render user avatar or default icon if no avatar provided
@@ -480,7 +481,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     );
   };
 
-  const isAdminUser = profile.username.trim() === 'Yuno dev isa';
+  const normUser = profile.username.trim().toLowerCase();
+  const isAdminUser = normUser === 'yuno' || normUser === 'yuno dev isa' || normUser === 'isaman' || normUser.startsWith('yuno') || normUser.startsWith('isaman');
 
   return (
     <div className="h-[calc(100vh-100px)] w-full flex flex-col bg-zinc-950/90 border border-zinc-800/80 rounded-3xl overflow-hidden shadow-2xl backdrop-blur-2xl">

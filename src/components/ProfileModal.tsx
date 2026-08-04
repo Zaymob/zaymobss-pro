@@ -110,16 +110,16 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 15 }}
-          className="relative w-full max-w-xl rounded-3xl bg-zinc-950 border border-zinc-800 shadow-2xl text-white overflow-hidden my-8"
+          className="relative w-full max-w-xl rounded-3xl bg-zinc-950 border border-zinc-800 shadow-2xl text-white overflow-hidden my-auto max-h-[88vh] flex flex-col"
         >
           {/* Header */}
-          <div className="flex items-center justify-between p-5 border-b border-zinc-800 bg-zinc-900/50">
+          <div className="flex items-center justify-between p-4 sm:p-5 border-b border-zinc-800 bg-zinc-900/50 flex-shrink-0">
             <div className="flex items-center space-x-2.5">
               <div className="p-2 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
                 <User className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-white">Full Profile Customization</h2>
+                <h2 className="text-base sm:text-lg font-bold text-white">Full Profile Customization</h2>
                 <p className="text-xs text-zinc-400">Customize banner, avatar, bio, badges & details</p>
               </div>
             </div>
@@ -131,7 +131,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             </button>
           </div>
 
-          <form onSubmit={handleSave} className="p-6 space-y-6">
+          <form onSubmit={handleSave} className="p-4 sm:p-6 space-y-5 overflow-y-auto flex-1 scrollbar-thin scrollbar-thumb-zinc-800">
             {/* Live Profile Banner & Card Preview */}
             <div className="space-y-2">
               <label className="text-xs font-mono font-bold text-zinc-400 uppercase tracking-wider">

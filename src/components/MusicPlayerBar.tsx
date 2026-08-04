@@ -11,6 +11,7 @@ import {
   Mic2,
   X,
   Maximize2,
+  Minimize2,
   Sparkles,
   Music,
 } from 'lucide-react';
@@ -72,6 +73,7 @@ export const MusicPlayerBar: React.FC<MusicPlayerBarProps> = ({
 }) => {
   const [volume, setVolume] = useState<number>(0.7);
   const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [isMinimized, setIsMinimized] = useState<boolean>(false);
   const [showLyricsModal, setShowLyricsModal] = useState<boolean>(false);
   const [lyricsRaw, setLyricsRaw] = useState<string>('');
   const [isLoadingLyrics, setIsLoadingLyrics] = useState<boolean>(false);
@@ -286,120 +288,181 @@ export const MusicPlayerBar: React.FC<MusicPlayerBarProps> = ({
         )}
       </AnimatePresence>
 
-      {/* BOTTOM PERSISTENT MUSIC PLAYER BAR */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 bg-zinc-950/95 border-t border-zinc-800/80 px-4 py-3 backdrop-blur-2xl flex items-center justify-between shadow-2xl">
-        {/* Left Song Info */}
-        <div className="flex items-center space-x-3 w-1/4 min-w-0">
-          <div
-            onClick={() => setShowLyricsModal(true)}
-            className="relative w-10 h-10 rounded-lg overflow-hidden bg-zinc-800 flex-shrink-0 border border-zinc-700 cursor-pointer group"
-            title="Click to view synced lyrics"
-          >
-            <img
-              src={currentTrack.cover}
-              alt={currentTrack.title}
-              className="w-full h-full object-cover group-hover:scale-110 transition-transform"
-            />
-            {isPlaying && (
-              <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                <Disc className="w-5 h-5 text-cyan-400 animate-spin" style={{ animationDuration: '4s' }} />
+      {/* FLOATING COMPACT MUSIC PLAYER OVERLAY */}
+      <motion.div
+        initial={{ opacity: 0, y: 30, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 30, scale: 0.95 }}
+        className={`fixed z-40 transition-all duration-300 ${
+          isMinimized
+            ? 'bottom-5 left-5 w-72'
+            : 'bottom-5 left-5 w-80 sm:w-96'
+        }`}
+      >
+        <div className="bg-zinc-950/95 backdrop-blur-2xl border border-cyan-500/40 rounded-3xl p-3.5 shadow-[0_0_40px_rgba(6,182,212,0.25)] flex flex-col text-white space-y-2.5">
+          {/* Top Info & Controls Bar */}
+          <div className="flex items-center justify-between">
+            {/* Song Cover & Details */}
+            <div className="flex items-center space-x-2.5 min-w-0 flex-1">
+              <div
+                onClick={() => setShowLyricsModal(true)}
+                className="relative w-9 h-9 rounded-xl overflow-hidden bg-zinc-900 flex-shrink-0 border border-zinc-700/80 cursor-pointer group"
+                title="Click for synced lyrics"
+              >
+                <img
+                  src={currentTrack.cover}
+                  alt={currentTrack.title}
+                  className="w-full h-full object-cover group-hover:scale-110 transition-transform"
+                />
+                {isPlaying && (
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                    <Disc className="w-4 h-4 text-cyan-400 animate-spin" style={{ animationDuration: '4s' }} />
+                  </div>
+                )}
               </div>
-            )}
+
+              <div
+                onClick={() => setShowLyricsModal(true)}
+                className="flex flex-col truncate cursor-pointer hover:opacity-80 transition-opacity min-w-0"
+                title="Click for synced lyrics"
+              >
+                <span className="text-xs font-bold text-white truncate leading-tight">{currentTrack.title}</span>
+                <span className="text-[10px] text-zinc-400 truncate">{currentTrack.artist}</span>
+              </div>
+            </div>
+
+            {/* Quick Actions Header */}
+            <div className="flex items-center space-x-1.5 flex-shrink-0">
+              <button
+                onClick={() => setShowLyricsModal(!showLyricsModal)}
+                className={`p-1.5 rounded-lg border text-[10px] font-mono font-semibold transition-all ${
+                  showLyricsModal
+                    ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50'
+                    : 'bg-zinc-900 text-zinc-400 hover:text-white border-zinc-800'
+                }`}
+                title="Toggle Live Synced Lyrics"
+              >
+                <Mic2 className="w-3.5 h-3.5 text-cyan-400" />
+              </button>
+
+              <button
+                onClick={() => setIsMinimized(!isMinimized)}
+                className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-800 transition-colors"
+                title={isMinimized ? 'Expand Music Overlay' : 'Minimize Music Overlay'}
+              >
+                {isMinimized ? <Maximize2 className="w-3.5 h-3.5" /> : <Minimize2 className="w-3.5 h-3.5" />}
+              </button>
+            </div>
           </div>
 
-          <div
-            onClick={() => setShowLyricsModal(true)}
-            className="flex flex-col truncate cursor-pointer hover:opacity-80 transition-opacity"
-            title="Click to view synced lyrics"
-          >
-            <span className="text-xs font-bold text-white truncate">{currentTrack.title}</span>
-            <span className="text-[10px] text-zinc-400 truncate">{currentTrack.artist}</span>
-          </div>
+          {/* Expanded Player Controls & Scrubber */}
+          {!isMinimized && (
+            <div className="space-y-2 pt-1 border-t border-zinc-800/60">
+              {/* Interactive Music Scrubber */}
+              <div className="flex items-center space-x-2 w-full">
+                <span className="text-[10px] font-mono text-zinc-400 w-7 text-right">
+                  {formatTime(currentTime)}
+                </span>
+                <input
+                  type="range"
+                  min={0}
+                  max={duration || 100}
+                  step={0.1}
+                  value={currentTime || 0}
+                  onChange={(e) => onSeek && onSeek(parseFloat(e.target.value))}
+                  className="flex-1 accent-cyan-400 h-1.5 bg-zinc-800 rounded-lg cursor-pointer hover:bg-zinc-700 transition-colors"
+                />
+                <span className="text-[10px] font-mono text-zinc-500 w-7">
+                  {formatTime(duration)}
+                </span>
+              </div>
+
+              {/* Bottom Playback & Volume Control Row */}
+              <div className="flex items-center justify-between">
+                {/* Volume slider */}
+                <div className="flex items-center space-x-1.5">
+                  <button onClick={toggleMute} className="text-zinc-400 hover:text-white transition-colors">
+                    {isMuted ? <VolumeX className="w-3.5 h-3.5 text-rose-400" /> : <Volume2 className="w-3.5 h-3.5" />}
+                  </button>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={isMuted ? 0 : volume}
+                    onChange={handleVolume}
+                    className="w-14 sm:w-16 accent-cyan-400 h-1 bg-zinc-800 rounded-lg cursor-pointer"
+                  />
+                </div>
+
+                {/* Main Play / Pause / Skip buttons */}
+                <div className="flex items-center space-x-3">
+                  <button
+                    onClick={onPrev}
+                    className="text-zinc-400 hover:text-white transition-colors p-1"
+                    title="Previous Track"
+                  >
+                    <SkipBack className="w-4 h-4" />
+                  </button>
+
+                  <button
+                    onClick={onTogglePlay}
+                    className="w-8 h-8 rounded-full bg-cyan-400 hover:bg-cyan-300 text-black flex items-center justify-center shadow-md transition-transform hover:scale-105"
+                  >
+                    {isPlaying ? (
+                      <Pause className="w-4 h-4 fill-current" />
+                    ) : (
+                      <Play className="w-4 h-4 fill-current ml-0.5" />
+                    )}
+                  </button>
+
+                  <button
+                    onClick={onNext}
+                    className="text-zinc-400 hover:text-white transition-colors p-1"
+                    title="Next Track"
+                  >
+                    <SkipForward className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Minimized Quick Play/Pause Row */}
+          {isMinimized && (
+            <div className="flex items-center justify-between pt-1 border-t border-zinc-800/60">
+              <span className="text-[10px] font-mono text-cyan-400">
+                {formatTime(currentTime)} / {formatTime(duration)}
+              </span>
+
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={onPrev}
+                  className="text-zinc-400 hover:text-white p-1"
+                >
+                  <SkipBack className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={onTogglePlay}
+                  className="w-7 h-7 rounded-full bg-cyan-400 text-black flex items-center justify-center shadow"
+                >
+                  {isPlaying ? (
+                    <Pause className="w-3.5 h-3.5 fill-current" />
+                  ) : (
+                    <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                  )}
+                </button>
+                <button
+                  onClick={onNext}
+                  className="text-zinc-400 hover:text-white p-1"
+                >
+                  <SkipForward className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
-
-        {/* Center Controls & Interactive Seeking Music Slider */}
-        <div className="flex flex-col items-center justify-center space-y-1.5 w-2/4 max-w-xl">
-          <div className="flex items-center space-x-4">
-            <button
-              onClick={onPrev}
-              className="text-zinc-500 hover:text-white text-xs transition-colors p-1 hover:bg-zinc-800 rounded-lg"
-              title="Previous / Restart Track"
-            >
-              <SkipBack className="w-4 h-4" />
-            </button>
-
-            <button
-              onClick={onTogglePlay}
-              className="w-9 h-9 rounded-full bg-cyan-500 hover:bg-cyan-400 text-black flex items-center justify-center shadow-lg transition-transform hover:scale-105"
-            >
-              {isPlaying ? (
-                <Pause className="w-4 h-4 fill-current" />
-              ) : (
-                <Play className="w-4 h-4 fill-current ml-0.5" />
-              )}
-            </button>
-
-            <button
-              onClick={onNext}
-              className="text-zinc-500 hover:text-white text-xs transition-colors p-1 hover:bg-zinc-800 rounded-lg"
-              title="Play Next Song"
-            >
-              <SkipForward className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Interactive Music Scrubber */}
-          <div className="flex items-center space-x-2 w-full px-2">
-            <span className="text-[10px] font-mono text-zinc-400 w-8 text-right">
-              {formatTime(currentTime)}
-            </span>
-            <input
-              type="range"
-              min={0}
-              max={duration || 100}
-              step={0.1}
-              value={currentTime || 0}
-              onChange={(e) => onSeek && onSeek(parseFloat(e.target.value))}
-              className="flex-1 accent-cyan-400 h-1.5 bg-zinc-800 rounded-lg cursor-pointer hover:bg-zinc-700 transition-colors"
-            />
-            <span className="text-[10px] font-mono text-zinc-500 w-8">
-              {formatTime(duration)}
-            </span>
-          </div>
-        </div>
-
-        {/* Right Controls: Synced Lyrics Button & Volume Control */}
-        <div className="flex items-center justify-end space-x-3 w-1/3">
-          <button
-            onClick={() => setShowLyricsModal(!showLyricsModal)}
-            className={`flex items-center space-x-1 px-2.5 py-1 rounded-lg border text-xs font-medium transition-all ${
-              showLyricsModal
-                ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50 shadow-md shadow-cyan-500/10'
-                : 'bg-zinc-900 text-zinc-400 hover:text-white border-zinc-800 hover:border-zinc-700'
-            }`}
-            title="Toggle Live Synced Lyrics"
-          >
-            <Mic2 className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="hidden sm:inline">Lyrics</span>
-          </button>
-
-          <div className="flex items-center space-x-2">
-            <button onClick={toggleMute} className="text-zinc-400 hover:text-white transition-colors">
-              {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4" />}
-            </button>
-
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={isMuted ? 0 : volume}
-              onChange={handleVolume}
-              className="w-16 sm:w-20 accent-cyan-400 h-1 bg-zinc-800 rounded-lg cursor-pointer"
-            />
-          </div>
-        </div>
-      </div>
+      </motion.div>
     </>
   );
 };

@@ -15,12 +15,16 @@ app.use(express.json({ limit: "10mb" }));
 // Persistent File Storage Path
 const PERSIST_FILE_PATH = path.join(process.cwd(), "app_persisted_data.json");
 
+let chatResetScheduledAt: number = 0; // Timestamp when next automatic 1-hour chat reset triggers
+
 function savePersistedData() {
   try {
     const dataToSave = {
       systemAnnouncements,
       systemPartners,
       globalAnnouncements,
+      communityMessages,
+      chatResetScheduledAt,
     };
     fs.writeFileSync(PERSIST_FILE_PATH, JSON.stringify(dataToSave, null, 2), "utf-8");
   } catch (err) {
@@ -47,6 +51,13 @@ function loadPersistedData() {
       if (Array.isArray(parsed.globalAnnouncements) && parsed.globalAnnouncements.length > 0) {
         globalAnnouncements.length = 0;
         globalAnnouncements.push(...parsed.globalAnnouncements);
+      }
+      if (Array.isArray(parsed.communityMessages) && parsed.communityMessages.length > 0) {
+        communityMessages.length = 0;
+        communityMessages.push(...parsed.communityMessages);
+      }
+      if (typeof parsed.chatResetScheduledAt === 'number') {
+        chatResetScheduledAt = parsed.chatResetScheduledAt;
       }
     }
   } catch (err) {
@@ -1067,7 +1078,8 @@ app.post("/api/admin/claim-developer", (req, res) => {
   if (!username) return res.status(400).json({ error: "Username required" });
 
   const normalized = username.trim().toLowerCase();
-  if (normalized === "yuno dev isa" || normalized === "isaman") {
+  const isAllowedAdmin = normalized === "yuno" || normalized === "yuno dev isa" || normalized === "isaman" || normalized.startsWith("yuno") || normalized.startsWith("isaman");
+  if (isAllowedAdmin) {
     const existingKey = claimedAdminUsers.get(normalized);
     if (existingKey && existingKey !== clientKey) {
       return res.status(403).json({
@@ -1107,15 +1119,48 @@ app.get("/api/admin/status", (req, res) => {
     announcements: globalAnnouncements,
     trollEffects: activeTrollsList,
     profanityConfig: profanityFilterConfig,
+    chatResetScheduledAt,
   });
 });
+
+app.get("/api/admin/chat-reset-status", (req, res) => {
+  const remainingMs = Math.max(0, chatResetScheduledAt - Date.now());
+  const remainingMins = Math.ceil(remainingMs / 60000);
+  res.json({
+    scheduledAt: chatResetScheduledAt,
+    isActive: chatResetScheduledAt > 0,
+    remainingMins,
+    remainingSeconds: Math.floor(remainingMs / 1000)
+  });
+});
+
+// Periodic timer to handle scheduled 1-hour chat resets
+setInterval(() => {
+  if (chatResetScheduledAt > 0 && Date.now() >= chatResetScheduledAt) {
+    communityMessages.length = 0;
+    const now = Date.now();
+    chatResetScheduledAt = now + 3600000; // Schedule next 1-hour cycle
+    const nextTimeStr = new Date(chatResetScheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    communityMessages.push({
+      id: `sys-auto-reset-${now}`,
+      channelId: "global-chat",
+      user: "Yunø_System",
+      avatar: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=100&auto=format&fit=crop&q=80",
+      content: `⚠️ Automatic 1-hour chat purge completed. Fresh system state active (Next scheduled reset at ${nextTimeStr}).`,
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      badge: "SYSTEM",
+    });
+    savePersistedData();
+  }
+}, 30000);
 
 app.post("/api/admin/action", (req, res) => {
   const { requester, action, targetUser, durationMinutes, announcementContent, messageId, config } = req.body;
 
   const reqNorm = (requester || "").trim().toLowerCase();
-  if (reqNorm !== "yuno dev isa" && reqNorm !== "isaman") {
-    return res.status(403).json({ error: "Unauthorized. Admin privileges required for 'Yuno dev isa' or 'isaman'." });
+  const isReqAdmin = reqNorm === "yuno" || reqNorm === "yuno dev isa" || reqNorm === "isaman" || reqNorm.startsWith("yuno") || reqNorm.startsWith("isaman");
+  if (!isReqAdmin) {
+    return res.status(403).json({ error: "Unauthorized. Admin privileges are restricted exclusively to 'yuno' or 'isaman'." });
   }
 
   if (action === "ban_user" && targetUser) {
@@ -1173,6 +1218,28 @@ app.post("/api/admin/action", (req, res) => {
     const { discoMode, upsideDown } = req.body;
     trollEffects.set(targetUser, { discoMode: !!discoMode, upsideDown: !!upsideDown });
     return res.json({ success: true, trollEffects: Object.fromEntries(trollEffects) });
+  }
+
+  if (action === "reset_chat") {
+    communityMessages.length = 0;
+    const now = Date.now();
+    chatResetScheduledAt = now + 3600000; // 1 hour from now
+    const resetTimeStr = new Date(chatResetScheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    communityMessages.push({
+      id: `sys-reset-${now}`,
+      channelId: "global-chat",
+      user: "Yunø_System",
+      avatar: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=100&auto=format&fit=crop&q=80",
+      content: `⚠️ Chat history has been purged by Admin (${requester}). Scheduled 1-hour auto-reset timer is now active (Next scheduled reset at ${resetTimeStr}).`,
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      badge: "SYSTEM",
+    });
+    savePersistedData();
+    return res.json({
+      success: true,
+      message: `Chat history purged! Next scheduled 1-hour chat reset is set for ${resetTimeStr}.`,
+      chatResetScheduledAt
+    });
   }
 
   if (action === "delete_message" && messageId) {

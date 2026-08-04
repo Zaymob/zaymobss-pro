@@ -30,6 +30,12 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import autumnBg from '../assets/images/autumn_landscape_1785047200293.jpg';
 
+const CrossIcon = ({ className = "w-3.5 h-3.5" }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M10.5 2h3v6.5h6v3h-6V22h-3V11.5h-6v-3h6V2z" />
+  </svg>
+);
+
 interface HomeViewProps {
   onNavigate: (tab: NavTab) => void;
   onLaunchProxy?: (urlOrQuery: string) => void;
@@ -69,6 +75,39 @@ const BIBLE_VERSES = [
   { text: "The name of the Lord is a fortified tower; the righteous run to it and are safe.", reference: "Proverbs 18:10" },
   { text: "Cast all your anxiety on him because he cares for you.", reference: "1 Peter 5:7" },
   { text: "Create in me a pure heart, O God, and renew a steadfast spirit within me.", reference: "Psalm 51:10" },
+  { text: "So do not fear, for I am with you; do not be dismayed, for I am your God. I will strengthen you and help you; I will uphold you with my righteous right hand.", reference: "Isaiah 41:10" },
+  { text: "Do not conform to the pattern of this world, but be transformed by the renewing of your mind.", reference: "Romans 12:2" },
+  { text: "Therefore, if anyone is in Christ, the new creation has come: The old has gone, the new is here!", reference: "2 Corinthians 5:17" },
+  { text: "I have hidden your word in my heart that I might not sin against you.", reference: "Psalm 119:11" },
+  { text: "But the fruit of the Spirit is love, joy, peace, forbearance, kindness, goodness, faithfulness, gentleness and self-control.", reference: "Galatians 5:22-23" },
+  { text: "For it is by grace you have been saved, through faith—and this is not from yourselves, it is the gift of God.", reference: "Ephesians 2:8-9" },
+  { text: "May the God of hope fill you with all joy and peace as you trust in him, so that you may overflow with hope by the power of the Holy Spirit.", reference: "Romans 15:13" },
+  { text: "For God has not given us a spirit of fear, but of power and of love and of a sound mind.", reference: "2 Timothy 1:7" },
+  { text: "Taste and see that the Lord is good; blessed is the one who takes refuge in him.", reference: "Psalm 34:8" },
+  { text: "I lift up my eyes to the mountains—where does my help come from? My help comes from the Lord, the Maker of heaven and earth.", reference: "Psalm 121:1-2" },
+  { text: "Whatever you do, work at it with all your heart, as working for the Lord, not for human masters.", reference: "Colossians 3:23" },
+  { text: "Commit to the Lord whatever you do, and he will establish your plans.", reference: "Proverbs 16:3" },
+  { text: "Take delight in the Lord, and he will give you the desires of your heart.", reference: "Psalm 37:4" },
+  { text: "Whoever dwells in the shelter of the Most High will rest in the shadow of the Almighty. I will say of the Lord, 'He is my refuge and my fortress, my God, in whom I trust.'", reference: "Psalm 91:1-2" },
+  { text: "But seek first his kingdom and his righteousness, and all these things will be given to you as well.", reference: "Matthew 6:33" },
+  { text: "Rejoice always, pray continually, give thanks in all circumstances; for this is God’s will for you in Christ Jesus.", reference: "1 Thessalonians 5:16-18" },
+  { text: "Now faith is confidence in what we hope for and assurance about what we do not see.", reference: "Hebrews 11:1" },
+  { text: "Consider it pure joy, my brothers and sisters, whenever you face trials of many kinds, because you know that the testing of your faith produces perseverance.", reference: "James 1:2-3" },
+  { text: "What, then, shall we say in response to these things? If God is for us, who can be against us?", reference: "Romans 8:31" },
+  { text: "I praise you because I am fearfully and wonderfully made; your works are wonderful, I know that full well.", reference: "Psalm 139:14" },
+  { text: "When Jesus spoke again to the people, he said, 'I am the light of the world. Whoever follows me will never walk in darkness, but will have the light of life.'", reference: "John 8:12" },
+  { text: "Praise the Lord, my soul, and forget not all his benefits—who forgives all your sins and heals all your diseases.", reference: "Psalm 103:2-3" },
+  { text: "You will keep in perfect peace those whose minds are steadfast, because they trust in you.", reference: "Isaiah 26:3" },
+  { text: "He has shown you, O mortal, what is good. And what does the Lord require of you? To act justly and to love mercy and to walk humbly with your God.", reference: "Micah 6:8" },
+  { text: "You make known to me the path of life; you will fill me with joy in your presence, with eternal pleasures at your right hand.", reference: "Psalm 16:11" },
+  { text: "I am the vine; you are the branches. If you remain in me and I in you, you will bear much fruit; apart from me you can do nothing.", reference: "John 15:5" },
+  { text: "May these words of my mouth and this meditation of my heart be pleasing in your sight, Lord, my Rock and my Redeemer.", reference: "Psalm 19:14" },
+  { text: "Above all else, guard your heart, for everything you do flows from it.", reference: "Proverbs 4:23" },
+  { text: "We love because he first loved us.", reference: "1 John 4:19" },
+  { text: "Because of the Lord’s great love we are not consumed, for his compassions never fail. They are new every morning; great is your faithfulness.", reference: "Lamentations 3:22-23" },
+  { text: "For the Lord is good and his love endures forever; his faithfulness continues through all generations.", reference: "Psalm 100:5" },
+  { text: "Ask and it will be given to you; seek and you will find; knock and the door will be opened to you.", reference: "Matthew 7:7" },
+  { text: "Do not be anxious about anything, but in every situation, by prayer and petition, with thanksgiving, present your requests to God. And the peace of God, which transcends all understanding, will guard your hearts and your minds in Christ Jesus.", reference: "Philippians 4:6-7" },
 ];
 
 const WALLPAPERS: WallpaperOption[] = [
@@ -106,7 +145,16 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const [timeStr, setTimeStr] = useState<string>('');
   const [activeCategory, setActiveCategory] = useState<string>('Popular');
   const [homeProxyInput, setHomeProxyInput] = useState<string>('');
-  const [bibleVerse] = useState(() => BIBLE_VERSES[Math.floor(Math.random() * BIBLE_VERSES.length)]);
+  
+  // Calculate daily verse based on day of year so it stays consistent for the day without re-rolling
+  const bibleVerse = React.useMemo(() => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), 0, 0);
+    const diff = now.getTime() - start.getTime();
+    const oneDay = 1000 * 60 * 60 * 24;
+    const dayOfYear = Math.floor(diff / oneDay);
+    return BIBLE_VERSES[dayOfYear % BIBLE_VERSES.length] || BIBLE_VERSES[0];
+  }, []);
 
   // Listening History Recommendations
   const [listenedTracks, setListenedTracks] = useState<MusicTrack[]>([]);
@@ -248,8 +296,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
       {/* CENTER HERO DISPLAY: DAY OF WEEK, SEARCH BAR, CATEGORIES & APPS */}
       <div className="relative z-20 flex flex-col items-center justify-center text-center my-auto py-6 space-y-6 max-w-4xl mx-auto w-full">
         
-        {/* Centered Day Name Display */}
-        <div className="space-y-1">
+        {/* Centered Day Name Display & Bible Verse directly underneath */}
+        <div className="space-y-3 flex flex-col items-center">
           <motion.h1
             initial={{ opacity: 0, y: -15 }}
             animate={{ opacity: 1, y: 0 }}
@@ -257,6 +305,27 @@ export const HomeView: React.FC<HomeViewProps> = ({
           >
             {dayStr}
           </motion.h1>
+
+          {/* BIBLE VERSE DISPLAY DIRECTLY UNDER THE DAY */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="relative max-w-xl mx-auto px-5 py-3 bg-black/45 border border-amber-500/30 backdrop-blur-xl rounded-2xl shadow-xl text-center select-none"
+          >
+            <div className="flex items-center justify-center space-x-1.5 text-amber-300 mb-1">
+              <CrossIcon className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-[10px] font-mono tracking-widest uppercase font-bold text-amber-300">
+                Verse of the Day
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm italic text-amber-100/95 font-serif leading-relaxed px-2">
+              &quot;{bibleVerse.text}&quot;
+            </p>
+            <p className="text-[11px] font-mono tracking-wider text-amber-300/90 uppercase font-semibold mt-1">
+              — {bibleVerse.reference}
+            </p>
+          </motion.div>
         </div>
 
         {/* SLEEK FROSTED GLASS SEARCH BAR */}
@@ -341,21 +410,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
               </span>
             </button>
           ))}
-        </motion.div>
-
-        {/* BIBLE VERSE INSPIRED BANNER */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.35 }}
-          className="max-w-xl mx-auto space-y-1.5 px-4 pt-2"
-        >
-          <p className="text-xs sm:text-sm italic text-amber-100/90 font-serif leading-relaxed">
-            &quot;{bibleVerse.text}&quot;
-          </p>
-          <p className="text-[10px] font-mono tracking-widest text-amber-300/80 uppercase font-semibold">
-            — {bibleVerse.reference}
-          </p>
         </motion.div>
 
         {/* BASED OFF WHAT YOU LISTENED TO MUSIC RECOMMENDATIONS SECTION */}

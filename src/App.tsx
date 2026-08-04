@@ -450,6 +450,24 @@ export default function App() {
   const [audioCurrentTime, setAudioCurrentTime] = useState<number>(0);
   const [audioDuration, setAudioDuration] = useState<number>(0);
   const [playbackContext, setPlaybackContext] = useState<PlaybackContext | null>(null);
+  const [playQueue, setPlayQueue] = useState<MusicTrack[]>([]);
+
+  const handleAddToQueue = (track: MusicTrack, playNext: boolean = false) => {
+    setPlayQueue((prev) => {
+      if (playNext) {
+        return [track, ...prev];
+      }
+      return [...prev, track];
+    });
+  };
+
+  const handleRemoveFromQueue = (index: number) => {
+    setPlayQueue((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleClearQueue = () => {
+    setPlayQueue([]);
+  };
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playNextRef = useRef<() => void>(() => {});
@@ -499,6 +517,14 @@ export default function App() {
 
   const handlePlayNext = async () => {
     if (!currentTrack) return;
+
+    // 0. Dequeue and play next item if playQueue is not empty
+    if (playQueue.length > 0) {
+      const nextTrack = playQueue[0];
+      setPlayQueue((prev) => prev.slice(1));
+      handlePlayTrack(nextTrack, playbackContext || undefined);
+      return;
+    }
 
     // 1. If playing from a playlist -> play next song listed in that playlist
     if (playbackContext?.type === 'playlist' && playbackContext.playlistTracks && playbackContext.playlistTracks.length > 0) {
@@ -764,6 +790,10 @@ export default function App() {
                   onPlayTrack={handlePlayTrack}
                   onTogglePlay={handleTogglePlay}
                   currentTime={audioCurrentTime}
+                  playQueue={playQueue}
+                  onAddToQueue={handleAddToQueue}
+                  onRemoveFromQueue={handleRemoveFromQueue}
+                  onClearQueue={handleClearQueue}
                 />
               )}
 
@@ -794,6 +824,11 @@ export default function App() {
         onSeek={handleSeek}
         onNext={handlePlayNext}
         onPrev={handlePlayPrev}
+        playQueue={playQueue}
+        onAddToQueue={handleAddToQueue}
+        onRemoveFromQueue={handleRemoveFromQueue}
+        onClearQueue={handleClearQueue}
+        onPlayTrack={handlePlayTrack}
       />
 
       {/* Persistent Global WebRTC Call Overlay (Stays connected across tabs!) */}

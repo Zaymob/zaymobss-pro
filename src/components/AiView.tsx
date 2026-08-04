@@ -33,8 +33,26 @@ import {
   Terminal,
   Code2,
   ExternalLink,
+  Paperclip,
+  Image as ImageIcon,
+  Camera,
+  FileText,
+  File,
+  Trash2,
+  UploadCloud,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+
+export interface AttachedFile {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  dataUrl: string;
+  previewUrl?: string;
+  isImage: boolean;
+  textContent?: string;
+}
 
 interface ChatTurn {
   id: string;
@@ -42,6 +60,7 @@ interface ChatTurn {
   content: string;
   modelUsed?: string;
   timestamp: string;
+  attachments?: AttachedFile[];
 }
 
 const CATEGORIES = [
@@ -490,22 +509,132 @@ export const AiView: React.FC<AiViewProps> = ({ onGrantAdmin, onUnlockPrivateCha
   ]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
+  const [previewModalImg, setPreviewModalImg] = useState<string | null>(null);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isGenerating]);
 
+  // Support pasting images or files directly into AI assistant
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      if (!e.clipboardData) return;
+      const files: File[] = [];
+      for (const item of Array.from(e.clipboardData.items)) {
+        if (item.kind === 'file') {
+          const file = item.getAsFile();
+          if (file) files.push(file);
+        }
+      }
+      if (files.length > 0) {
+        processFiles(files);
+      }
+    };
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, []);
+
+  const processFiles = (files: FileList | File[]) => {
+    Array.from(files).forEach((file) => {
+      if (file.size > 15 * 1024 * 1024) {
+        alert(`File "${file.name}" exceeds 15MB limit.`);
+        return;
+      }
+      const isImage = file.type.startsWith('image/');
+      const reader = new FileReader();
+
+      if (isImage) {
+        reader.onload = (e) => {
+          const dataUrl = e.target?.result as string;
+          setAttachedFiles((prev) => [
+            ...prev,
+            {
+              id: `att-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+              name: file.name,
+              type: file.type || 'image/png',
+              size: file.size,
+              dataUrl,
+              previewUrl: dataUrl,
+              isImage: true,
+            },
+          ]);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        reader.onload = (e) => {
+          const textContent = e.target?.result as string;
+          setAttachedFiles((prev) => [
+            ...prev,
+            {
+              id: `att-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+              name: file.name,
+              type: file.type || 'text/plain',
+              size: file.size,
+              dataUrl: textContent,
+              textContent,
+              isImage: false,
+            },
+          ]);
+        };
+        reader.readAsText(file);
+      }
+    });
+  };
+
+  const handleCaptureScreenshot = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: { displaySurface: 'browser' } });
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      await video.play();
+      await new Promise((res) => setTimeout(res, 300));
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx?.drawImage(video, 0, 0);
+      const dataUrl = canvas.toDataURL('image/png');
+      stream.getTracks().forEach((track) => track.stop());
+
+      setAttachedFiles((prev) => [
+        ...prev,
+        {
+          id: `screen-${Date.now()}`,
+          name: `Screenshot-${new Date().toLocaleTimeString().replace(/:/g, '-')}.png`,
+          type: 'image/png',
+          size: Math.round(dataUrl.length * 0.75),
+          dataUrl,
+          previewUrl: dataUrl,
+          isImage: true,
+        },
+      ]);
+    } catch (err) {
+      console.warn('Screen capture cancelled or unavailable:', err);
+    }
+  };
+
+  const removeAttachment = (id: string) => {
+    setAttachedFiles((prev) => prev.filter((f) => f.id !== id));
+  };
+
   const handleSendMessage = async (customPrompt?: string) => {
     const textToSend = (customPrompt || promptInput).trim();
-    if (!textToSend || isGenerating) return;
+    if ((!textToSend && attachedFiles.length === 0) || isGenerating) return;
+
+    const currentAtts = [...attachedFiles];
+    setAttachedFiles([]);
 
     const userTurn: ChatTurn = {
       id: Date.now().toString(),
       role: 'user',
-      content: textToSend,
+      content: textToSend || (currentAtts.length > 0 ? '[Uploaded Attachments/Screenshots]' : ''),
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      attachments: currentAtts,
     };
 
     setMessages((prev) => [...prev, userTurn]);
@@ -586,11 +715,18 @@ export const AiView: React.FC<AiViewProps> = ({ onGrantAdmin, onUnlockPrivateCha
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: textToSend,
+          prompt: textToSend || 'Please analyze the attached files/screenshots.',
           model: selectedModel.id,
           history: messages.slice(-6).map((m) => ({
             role: m.role,
             content: m.content,
+          })),
+          attachments: currentAtts.map((f) => ({
+            name: f.name,
+            type: f.type,
+            isImage: f.isImage,
+            data: f.dataUrl,
+            textContent: f.textContent,
           })),
         }),
       });
@@ -727,6 +863,40 @@ export const AiView: React.FC<AiViewProps> = ({ onGrantAdmin, onUnlockPrivateCha
                 <span>{msg.timestamp}</span>
               </div>
 
+              {/* Render User Attached Images or Files */}
+              {msg.attachments && msg.attachments.length > 0 && (
+                <div className="flex flex-wrap gap-2 py-1.5 border-b border-white/10">
+                  {msg.attachments.map((att) => (
+                    <div key={att.id} className="group relative">
+                      {att.isImage ? (
+                        <div
+                          onClick={() => setPreviewModalImg(att.dataUrl)}
+                          className="relative cursor-pointer overflow-hidden rounded-xl border border-white/20 bg-black/40 hover:border-amber-400 transition-all shadow-sm"
+                        >
+                          <img
+                            src={att.dataUrl}
+                            alt={att.name}
+                            className="h-28 w-44 object-cover group-hover:scale-105 transition-transform"
+                          />
+                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-xs font-semibold text-white gap-1.5">
+                            <Eye className="w-4 h-4 text-amber-400" />
+                            <span>Preview</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center space-x-2 bg-black/40 border border-white/10 px-3 py-2 rounded-xl text-xs text-zinc-200">
+                          <FileText className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                          <div className="max-w-[140px] truncate">
+                            <p className="font-mono text-[11px] truncate">{att.name}</p>
+                            <p className="text-[9px] text-zinc-400">{(att.size / 1024).toFixed(1)} KB</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <FormattedMessage content={msg.content} />
 
               {msg.role === 'model' && (
@@ -774,32 +944,137 @@ export const AiView: React.FC<AiViewProps> = ({ onGrantAdmin, onUnlockPrivateCha
         <div ref={chatEndRef} />
       </div>
 
+      {/* Hidden File Input */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        multiple
+        accept="image/*,.txt,.js,.ts,.tsx,.jsx,.json,.py,.html,.css,.md,.csv,.pdf,.doc,.docx"
+        onChange={(e) => {
+          if (e.target.files) processFiles(e.target.files);
+          e.target.value = '';
+        }}
+        className="hidden"
+      />
+
       {/* Input Prompt Box */}
       <form
         onSubmit={(e) => {
           e.preventDefault();
           handleSendMessage();
         }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setIsDraggingOver(true);
+        }}
+        onDragLeave={() => setIsDraggingOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setIsDraggingOver(false);
+          if (e.dataTransfer.files) processFiles(e.dataTransfer.files);
+        }}
         className="mt-4 relative"
       >
-        <div className="relative flex items-center bg-zinc-900 border border-zinc-700/80 rounded-2xl shadow-2xl p-1.5 focus-within:border-amber-500 focus-within:ring-2 focus-within:ring-amber-500/20 transition-all">
+        {/* Attached Files Preview Bar */}
+        {attachedFiles.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2.5 p-2 bg-zinc-900/90 border border-zinc-800 rounded-2xl">
+            {attachedFiles.map((att) => (
+              <div
+                key={att.id}
+                className="flex items-center space-x-2 bg-zinc-950 border border-zinc-700/80 px-2.5 py-1.5 rounded-xl text-xs text-zinc-200"
+              >
+                {att.isImage ? (
+                  <img src={att.dataUrl} alt={att.name} className="w-7 h-7 object-cover rounded-md border border-zinc-700" />
+                ) : (
+                  <FileText className="w-4 h-4 text-amber-400" />
+                )}
+                <span className="max-w-[120px] truncate font-mono text-[11px]">{att.name}</span>
+                <button
+                  type="button"
+                  onClick={() => removeAttachment(att.id)}
+                  className="p-0.5 hover:bg-zinc-800 rounded-md text-zinc-400 hover:text-red-400 transition-colors"
+                  title="Remove attachment"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div
+          className={`relative flex items-center bg-zinc-900 border ${
+            isDraggingOver ? 'border-amber-400 ring-2 ring-amber-500/40 bg-amber-500/5' : 'border-zinc-700/80'
+          } rounded-2xl shadow-2xl p-1.5 focus-within:border-amber-500 focus-within:ring-2 focus-within:ring-amber-500/20 transition-all`}
+        >
+          {/* Action Buttons: Attach File & Capture Screenshot */}
+          <div className="flex items-center pl-2 space-x-1">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="p-2 text-zinc-400 hover:text-amber-400 hover:bg-zinc-800 rounded-xl transition-all"
+              title="Upload file or image (PNG, JPG, Code, Docs)"
+            >
+              <Paperclip className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={handleCaptureScreenshot}
+              className="p-2 text-zinc-400 hover:text-amber-400 hover:bg-zinc-800 rounded-xl transition-all"
+              title="Take live screenshot & send to AI"
+            >
+              <Camera className="w-4 h-4" />
+            </button>
+          </div>
+
           <input
             type="text"
             value={promptInput}
             onChange={(e) => setPromptInput(e.target.value)}
-            placeholder={`Ask ${selectedModel.name} anything...`}
-            className="w-full bg-transparent px-4 py-3 text-sm text-white placeholder-zinc-500 focus:outline-none"
+            placeholder={
+              attachedFiles.length > 0
+                ? 'Add prompt describing what you want to analyze...'
+                : `Ask ${selectedModel.name} anything, paste screenshots or drop files...`
+            }
+            className="w-full bg-transparent px-3 py-3 text-sm text-white placeholder-zinc-500 focus:outline-none"
           />
+
           <button
             type="submit"
-            disabled={!promptInput.trim() || isGenerating}
-            className="px-5 py-3 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 disabled:opacity-40 text-black font-extrabold rounded-xl shadow-md transition-all flex items-center space-x-2"
+            disabled={(!promptInput.trim() && attachedFiles.length === 0) || isGenerating}
+            className="px-5 py-3 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 disabled:opacity-40 text-black font-extrabold rounded-xl shadow-md transition-all flex items-center space-x-2 flex-shrink-0"
           >
             <span>Send</span>
             <Send className="w-3.5 h-3.5" />
           </button>
         </div>
       </form>
+
+      {/* Image Preview Modal */}
+      <AnimatePresence>
+        {previewModalImg && (
+          <div
+            onClick={() => setPreviewModalImg(null)}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md cursor-zoom-out"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="relative max-w-4xl max-h-[85vh] rounded-2xl overflow-hidden border border-zinc-700 bg-zinc-950 p-2 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <img src={previewModalImg} alt="Screenshot Preview" className="max-w-full max-h-[80vh] object-contain rounded-xl" />
+              <button
+                onClick={() => setPreviewModalImg(null)}
+                className="absolute top-4 right-4 p-2 bg-black/60 hover:bg-zinc-800 text-white rounded-full transition-colors border border-zinc-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* MODEL SELECTION OVERLAY MODAL (Matching video design) */}
       <AnimatePresence>

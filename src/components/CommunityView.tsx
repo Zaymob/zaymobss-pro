@@ -485,28 +485,28 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   const isAdminUser = normUser === 'yuno' || normUser === 'yuno dev isa' || normUser === 'isaman' || normUser.startsWith('yuno') || normUser.startsWith('isaman');
 
   return (
-    <div className="h-[calc(100vh-100px)] w-full flex flex-col bg-zinc-950/90 border border-zinc-800/80 rounded-3xl overflow-hidden shadow-2xl backdrop-blur-2xl">
+    <div className="h-[calc(100vh-100px)] w-full flex flex-col bg-[#121212] border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl">
       {/* Setup Profile Modal */}
       {isEditingProfile && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="w-full max-w-md bg-zinc-900 border border-cyan-500/30 rounded-3xl p-6 shadow-2xl space-y-5">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-[#181818] border border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-5">
             <div className="text-center space-y-1">
-              <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 mx-auto flex items-center justify-center mb-2">
+              <div className="w-12 h-12 rounded-xl bg-zinc-800 border border-zinc-700 text-white mx-auto flex items-center justify-center mb-2">
                 <User className="w-6 h-6" />
               </div>
-              <h3 className="text-xl font-black text-white">Join Yunø Community</h3>
+              <h3 className="text-xl font-bold text-white">Join Yunø Community</h3>
               <p className="text-xs text-zinc-400">Choose your handle to start chatting and sharing calls.</p>
             </div>
 
             {profileError && (
-              <div className="p-3 rounded-xl bg-red-500/20 border border-red-500/40 text-xs text-red-300 font-bold text-center">
+              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-400 font-semibold text-center">
                 {profileError}
               </div>
             )}
 
             <form onSubmit={handleSaveProfile} className="space-y-4">
               <div className="space-y-1.5">
-                <label className="text-xs font-mono font-bold text-zinc-300 uppercase">
+                <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
                   DISPLAY NAME / HANDLE *
                 </label>
                 <input
@@ -515,14 +515,14 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   placeholder="Enter Here"
                   value={tempName}
                   onChange={(e) => setTempName(e.target.value)}
-                  className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-2xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500"
+                  className="w-full px-4 py-3 bg-[#121212] border border-zinc-800 rounded-xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500"
                 />
               </div>
 
               {/* Profile Avatar Upload / URL / Go Without */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-mono font-bold text-zinc-300 uppercase">
+                  <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
                     Profile Picture (Optional)
                   </label>
                   {tempAvatar && (
@@ -536,18 +536,18 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   )}
                 </div>
 
-                <div className="flex items-center space-x-3 p-3 rounded-2xl bg-zinc-950 border border-zinc-800">
+                <div className="flex items-center space-x-3 p-3 rounded-xl bg-[#121212] border border-zinc-800">
                   {tempAvatar ? (
-                    <img src={tempAvatar} alt="Preview" className="w-12 h-12 rounded-xl object-cover ring-2 ring-cyan-500/40" />
+                    <img src={tempAvatar} alt="Preview" className="w-12 h-12 rounded-xl object-cover ring-1 ring-zinc-700" />
                   ) : (
-                    <div className="w-12 h-12 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center text-cyan-400">
+                    <div className="w-12 h-12 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-400">
                       <User className="w-6 h-6" />
                     </div>
                   )}
 
                   <div className="flex-1 space-y-1.5 min-w-0">
-                    <label className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-200 font-bold cursor-pointer transition-colors border border-zinc-700">
-                      <Image className="w-3.5 h-3.5 mr-1.5 text-cyan-400" />
+                    <label className="inline-flex items-center justify-center px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-200 font-semibold cursor-pointer transition-colors border border-zinc-700">
+                      <Image className="w-3.5 h-3.5 mr-1.5 text-zinc-300" />
                       <span>Upload Picture...</span>
                       <input
                         type="file"
@@ -573,7 +573,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                       placeholder="or paste image URL..."
                       value={tempAvatar}
                       onChange={(e) => setTempAvatar(e.target.value)}
-                      className="w-full px-2.5 py-1 bg-zinc-900 border border-zinc-800 rounded-lg text-[11px] text-white focus:outline-none focus:border-cyan-500 truncate"
+                      className="w-full px-2.5 py-1 bg-zinc-900 border border-zinc-800 rounded-md text-[11px] text-white focus:outline-none focus:border-zinc-600 truncate"
                     />
                   </div>
                 </div>
@@ -584,9 +584,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
               <button
                 type="submit"
-                className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 text-black font-black text-sm shadow-xl hover:brightness-110 transition-all"
+                className="w-full py-3 rounded-xl bg-white hover:bg-zinc-200 text-black font-bold text-sm shadow-md transition-all cursor-pointer"
               >
-                JOIN COMMUNITY CHAT
+                Join Community Chat
               </button>
             </form>
           </div>
@@ -596,17 +596,17 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       {/* Main 3-Column Desktop Chat Grid */}
       <div className="flex-1 flex overflow-hidden">
         {/* COLUMN 1: LEFT SIDEBAR (Channels & Direct Messages) */}
-        <div className="w-64 bg-zinc-950 border-r border-zinc-800/80 flex flex-col justify-between select-none">
+        <div className="w-64 bg-[#181818] border-r border-zinc-800 flex flex-col justify-between select-none">
           {/* Header */}
-          <div className="p-4 border-b border-zinc-800/80 flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+          <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-white">
                 <MessageSquare className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-sm font-black text-white tracking-tight">Yunø Community</h3>
+                <h3 className="text-sm font-bold text-white tracking-tight">Yunø Community</h3>
                 <span className="text-[10px] text-emerald-400 font-mono flex items-center space-x-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                   <span>Live Network</span>
                 </span>
               </div>
@@ -617,7 +617,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           <div className="flex-1 overflow-y-auto p-3 space-y-6">
             {/* Text Channels */}
             <div className="space-y-1">
-              <span className="px-2 text-[10px] font-mono font-bold text-zinc-500 uppercase tracking-wider block">
+              <span className="px-2 text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">
                 TEXT CHANNELS
               </span>
               {DEFAULT_CHANNELS.map((ch) => {
@@ -626,13 +626,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   <button
                     key={ch.id}
                     onClick={() => setActiveChannel(ch.id)}
-                    className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+                    className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
                       isActive
-                        ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 shadow-lg'
-                        : 'text-zinc-400 hover:bg-zinc-900 hover:text-white'
+                        ? 'bg-[#282828] text-white'
+                        : 'text-zinc-400 hover:bg-[#202020] hover:text-white'
                     }`}
                   >
-                    <Hash className="w-4 h-4 text-cyan-400/80" />
+                    <Hash className="w-4 h-4 text-zinc-400" />
                     <span className="truncate">{ch.name}</span>
                   </button>
                 );
@@ -641,21 +641,21 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
             {/* Voice & Video Party Channels */}
             <div className="space-y-1">
-              <span className="px-2 text-[10px] font-mono font-bold text-zinc-500 uppercase tracking-wider block">
+              <span className="px-2 text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">
                 VOICE & WATCH PARTIES
               </span>
               {VOICE_CHANNELS.map((vc) => (
                 <button
                   key={vc.id}
                   onClick={() => onStartCall(vc.id, vc.name, vc.type)}
-                  className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-zinc-300 hover:bg-emerald-500/10 hover:text-emerald-300 border border-transparent hover:border-emerald-500/30 transition-all group"
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold text-zinc-300 hover:bg-[#202020] hover:text-white transition-colors group cursor-pointer"
                 >
                   <div className="flex items-center space-x-2.5 min-w-0">
-                    <Volume2 className="w-4 h-4 text-emerald-400 group-hover:animate-bounce" />
+                    <Volume2 className="w-4 h-4 text-emerald-400" />
                     <span className="truncate">{vc.name}</span>
                   </div>
-                  <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                    JOIN
+                  <span className="text-[9px] font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    Join
                   </span>
                 </button>
               ))}
@@ -664,12 +664,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             {/* GROUPS / CUSTOM SERVERS */}
             <div className="space-y-1">
               <div className="flex items-center justify-between px-2">
-                <span className="text-[10px] font-mono font-bold text-zinc-500 uppercase tracking-wider">
+                <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
                   GROUPS & SERVERS
                 </span>
                 <button
                   onClick={() => setShowAddGroupModal(true)}
-                  className="text-zinc-500 hover:text-cyan-400 p-0.5 rounded transition-colors"
+                  className="text-zinc-500 hover:text-white p-0.5 rounded transition-colors cursor-pointer"
                   title="Create New Group"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -677,13 +677,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               </div>
 
               {groupsList.map((grp) => (
-                <div key={grp.id} className="space-y-1 rounded-2xl bg-zinc-900/60 p-2 border border-zinc-800/60 my-1">
+                <div key={grp.id} className="space-y-1 rounded-xl bg-[#202020] p-2 border border-zinc-800 my-1">
                   {/* Group Header Banner & Picture */}
-                  <div className="relative h-12 w-full rounded-xl overflow-hidden border border-zinc-800">
+                  <div className="relative h-10 w-full rounded-lg overflow-hidden border border-zinc-700">
                     <img src={grp.banner} alt={grp.name} className="w-full h-full object-cover brightness-75" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-2 space-x-2">
-                      <img src={grp.picture} alt={grp.name} className="w-6 h-6 rounded-lg object-cover ring-1 ring-cyan-400 flex-shrink-0" />
-                      <span className="text-xs font-black text-white truncate drop-shadow">{grp.name}</span>
+                      <img src={grp.picture} alt={grp.name} className="w-5 h-5 rounded object-cover ring-1 ring-zinc-500 flex-shrink-0" />
+                      <span className="text-xs font-bold text-white truncate drop-shadow">{grp.name}</span>
                     </div>
                   </div>
 
@@ -695,13 +695,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         <button
                           key={c.id}
                           onClick={() => setActiveChannel(c.id)}
-                          className={`w-full flex items-center space-x-2 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          className={`w-full flex items-center space-x-2 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
                             isActive
-                              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
-                              : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
+                              ? 'bg-[#282828] text-white'
+                              : 'text-zinc-400 hover:bg-[#282828] hover:text-white'
                           }`}
                         >
-                          <Hash className="w-3.5 h-3.5 text-cyan-400/80" />
+                          <Hash className="w-3.5 h-3.5 text-zinc-400" />
                           <span className="truncate">{c.name}</span>
                         </button>
                       );
@@ -714,12 +714,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             {/* Direct Messages */}
             <div className="space-y-1">
               <div className="flex items-center justify-between px-2">
-                <span className="text-[10px] font-mono font-bold text-zinc-500 uppercase tracking-wider">
+                <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
                   DIRECT MESSAGES
                 </span>
                 <button
                   onClick={() => setShowAddDmModal(true)}
-                  className="text-zinc-500 hover:text-cyan-400 p-0.5 rounded transition-colors"
+                  className="text-zinc-500 hover:text-white p-0.5 rounded transition-colors cursor-pointer"
                   title="New DM"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -727,7 +727,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               </div>
 
               {dmsList.length === 0 ? (
-                <div className="p-2 text-[11px] text-zinc-600 font-mono text-center">
+                <div className="p-2 text-[11px] text-zinc-500 text-center">
                   No DMs yet. Click + to add!
                 </div>
               ) : (
@@ -737,13 +737,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     <button
                       key={dm.id}
                       onClick={() => setActiveChannel(dm.id)}
-                      className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+                      className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
                         isActive
-                          ? 'bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 shadow-lg'
-                          : 'text-zinc-400 hover:bg-zinc-900 hover:text-white'
+                          ? 'bg-[#282828] text-white'
+                          : 'text-zinc-400 hover:bg-[#202020] hover:text-white'
                       }`}
                     >
-                      {renderUserAvatar(dm.avatar, dm.username, "w-5 h-5", "border border-zinc-800")}
+                      {renderUserAvatar(dm.avatar, dm.username, "w-5 h-5", "border border-zinc-700")}
                       <span className="truncate">{dm.username}</span>
                     </button>
                   );
@@ -753,12 +753,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           </div>
 
           {/* User Footer Card */}
-          <div className="p-3 bg-zinc-900/80 border-t border-zinc-800 flex items-center justify-between">
+          <div className="p-3 bg-[#121212] border-t border-zinc-800 flex items-center justify-between">
             <div
               onClick={() => setIsEditingProfile(true)}
               className="flex items-center space-x-2.5 cursor-pointer hover:opacity-80 transition-opacity min-w-0"
             >
-              {renderUserAvatar(profile.avatar, profile.username || 'My Avatar', "w-8 h-8", "border border-cyan-500/50")}
+              {renderUserAvatar(profile.avatar, profile.username || 'My Avatar', "w-8 h-8", "border border-zinc-700")}
               <div className="truncate">
                 <div className="flex items-center space-x-1">
                   <span className="text-xs font-bold text-white truncate">{profile.username || 'Set Handle'}</span>
@@ -771,10 +771,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             {isAdminUser && (
               <button
                 onClick={onOpenAdminPanel}
-                className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 hover:bg-amber-500/30 transition-all"
-                title="Open Admin & Developer Control Panel"
+                className="p-2 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors cursor-pointer"
+                title="Open Admin Panel"
               >
-                <ShieldAlert className="w-4 h-4 animate-pulse" />
+                <ShieldAlert className="w-4 h-4" />
               </button>
             )}
           </div>
@@ -783,11 +783,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         {/* COLUMN 2: MIDDLE MAIN CHAT PANEL */}
         <div className="flex-1 flex flex-col bg-zinc-950/60 overflow-hidden">
           {/* Channel Header Bar */}
-          <div className="p-4 bg-zinc-900/80 border-b border-zinc-800 flex items-center justify-between">
+          <div className="p-4 bg-[#181818] border-b border-zinc-800 flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <Hash className="w-5 h-5 text-cyan-400" />
+              <Hash className="w-5 h-5 text-zinc-400" />
               <div>
-                <h2 className="text-sm font-black text-white">{activeChannel}</h2>
+                <h2 className="text-sm font-bold text-white">{activeChannel}</h2>
                 <p className="text-[11px] text-zinc-400">
                   {DEFAULT_CHANNELS.find((c) => c.id === activeChannel)?.topic || 'Direct Message Channel'}
                 </p>
@@ -798,35 +798,35 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               {/* Profanity Blur Toggle */}
               <button
                 onClick={() => setBlurProfanity(!blurProfanity)}
-                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all ${
+                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${
                   blurProfanity
-                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
                     : 'bg-zinc-800 text-zinc-400 border-zinc-700'
                 }`}
-                title="Toggle Profanity Blur Filter"
+                title="Toggle Profanity Filter"
               >
                 {blurProfanity ? <EyeOff className="w-3.5 h-3.5 text-emerald-400" /> : <Eye className="w-3.5 h-3.5" />}
-                <span>{blurProfanity ? 'blurProfanity ON' : 'blurProfanity OFF'}</span>
+                <span>{blurProfanity ? 'Filter ON' : 'Filter OFF'}</span>
               </button>
 
               {/* Start Call Launchers */}
               <button
                 onClick={() => onStartCall(activeChannel, `# ${activeChannel}`, 'voice')}
-                className="p-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-emerald-400 transition-colors"
+                className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer"
                 title="Start Voice Call"
               >
                 <Phone className="w-4 h-4" />
               </button>
               <button
                 onClick={() => onStartCall(activeChannel, `# ${activeChannel}`, 'video')}
-                className="p-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-cyan-400 transition-colors"
+                className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer"
                 title="Start Video Call"
               >
                 <Video className="w-4 h-4" />
               </button>
               <button
                 onClick={() => onStartCall(activeChannel, `# ${activeChannel}`, 'screen')}
-                className="p-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-indigo-400 transition-colors"
+                className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer"
                 title="Share Screen"
               >
                 <Monitor className="w-4 h-4" />
@@ -836,9 +836,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
           {/* Announcements Banner */}
           {announcements.length > 0 && (
-            <div className="bg-amber-500/10 border-b border-amber-500/30 p-2.5 px-4 flex items-center space-x-2 text-xs text-amber-300 font-medium">
-              <Radio className="w-4 h-4 text-amber-400 animate-pulse flex-shrink-0" />
-              <span className="font-bold">GLOBAL ANNOUNCEMENT:</span>
+            <div className="bg-amber-500/10 border-b border-amber-500/20 p-2.5 px-4 flex items-center space-x-2 text-xs text-amber-300 font-medium">
+              <Radio className="w-4 h-4 text-amber-400 flex-shrink-0" />
+              <span className="font-bold">ANNOUNCEMENT:</span>
               <span className="truncate">{announcements[0].content}</span>
             </div>
           )}
@@ -847,8 +847,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {messages.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-2">
-                <MessageSquare className="w-12 h-12 text-zinc-700" />
-                <h4 className="text-sm font-bold text-zinc-400">No messages in this channel yet</h4>
+                <MessageSquare className="w-10 h-10 text-zinc-700" />
+                <h4 className="text-sm font-semibold text-zinc-400">No messages in this channel yet</h4>
                 <p className="text-xs text-zinc-600">Be the first to say hello!</p>
               </div>
             ) : (
@@ -859,15 +859,15 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 return (
                   <div
                     key={msg.id}
-                    className={`group relative flex space-x-3 p-2.5 rounded-2xl transition-all ${
-                      isMe ? 'bg-cyan-950/20 border border-cyan-500/20' : 'hover:bg-zinc-900/50'
+                    className={`group relative flex space-x-3 p-2.5 rounded-xl transition-colors ${
+                      isMe ? 'bg-[#202020]' : 'hover:bg-[#1a1a1a]'
                     }`}
                   >
                     {renderUserAvatar(
                       msg.avatar,
                       msg.user,
-                      "w-9 h-9",
-                      isDevAdmin ? 'border-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.5)]' : 'border-zinc-700'
+                      "w-8 h-8",
+                      isDevAdmin ? 'border border-amber-500/50' : 'border border-zinc-700'
                     )}
 
                     <div className="flex-1 min-w-0 space-y-1">
@@ -877,8 +877,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         </span>
 
                         {isDevAdmin && (
-                          <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-mono font-bold">
-                            DEV / ADMIN
+                          <span className="px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30 text-[9px] font-bold">
+                            ADMIN
                           </span>
                         )}
 
@@ -887,8 +887,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
                       {/* Reply quote */}
                       {msg.replyTo && (
-                        <div className="p-2 rounded-xl bg-zinc-900 border-l-2 border-cyan-500 text-xs text-zinc-400">
-                          <span className="font-bold text-cyan-400 mr-1">@{msg.replyTo.user}:</span>
+                        <div className="p-2 rounded-lg bg-zinc-900 border-l-2 border-zinc-500 text-xs text-zinc-400">
+                          <span className="font-semibold text-zinc-300 mr-1">@{msg.replyTo.user}:</span>
                           <span>{msg.replyTo.content}</span>
                         </div>
                       )}
@@ -900,7 +900,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
                       {/* Image Attachment */}
                       {msg.attachment && msg.attachment.url && (
-                        <div className="mt-2 max-w-sm rounded-xl overflow-hidden border border-zinc-800">
+                        <div className="mt-2 max-w-sm rounded-lg overflow-hidden border border-zinc-800">
                           <img src={msg.attachment.url} alt="Attachment" className="w-full object-cover max-h-60" />
                         </div>
                       )}
@@ -912,10 +912,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                             <button
                               key={rIdx}
                               onClick={() => handleReact(msg.id, r.emoji)}
-                              className="px-2 py-0.5 rounded-lg bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-300 hover:border-cyan-500/40 flex items-center space-x-1"
+                              className="px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-300 hover:border-zinc-700 flex items-center space-x-1 cursor-pointer"
                             >
                               <span>{r.emoji}</span>
-                              <span className="font-mono text-[10px] text-cyan-400">{r.count}</span>
+                              <span className="font-mono text-[10px] text-zinc-400">{r.count}</span>
                             </button>
                           ))}
                         </div>
@@ -923,19 +923,19 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     </div>
 
                     {/* Quick Hover Toolbar */}
-                    <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-900 border border-zinc-800 rounded-xl p-1 flex items-center space-x-1 shadow-lg">
+                    <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-900 border border-zinc-800 rounded-lg p-1 flex items-center space-x-1 shadow-md">
                       {['👍', '❤️', '🔥', '👑'].map((emoji) => (
                         <button
                           key={emoji}
                           onClick={() => handleReact(msg.id, emoji)}
-                          className="p-1 hover:bg-zinc-800 rounded text-xs"
+                          className="p-1 hover:bg-zinc-800 rounded text-xs cursor-pointer"
                         >
                           {emoji}
                         </button>
                       ))}
                       <button
                         onClick={() => setReplyingTo(msg)}
-                        className="p-1 text-zinc-400 hover:text-white rounded"
+                        className="p-1 text-zinc-400 hover:text-white rounded cursor-pointer"
                         title="Reply"
                       >
                         <Reply className="w-3.5 h-3.5" />
@@ -950,17 +950,17 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
           {/* Replying Banner */}
           {replyingTo && (
-            <div className="px-4 py-2 bg-zinc-900 border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-300">
+            <div className="px-4 py-2 bg-[#181818] border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-300">
               <div className="flex items-center space-x-2 truncate">
-                <Reply className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Replying to <span className="font-bold text-cyan-300">@{replyingTo.user}</span>: {replyingTo.content}</span>
+                <Reply className="w-3.5 h-3.5 text-zinc-400" />
+                <span>Replying to <span className="font-bold text-white">@{replyingTo.user}</span>: {replyingTo.content}</span>
               </div>
               <X className="w-4 h-4 cursor-pointer text-zinc-500 hover:text-white" onClick={() => setReplyingTo(null)} />
             </div>
           )}
 
           {/* Input Bar */}
-          <div className="p-3 bg-zinc-900/90 border-t border-zinc-800">
+          <div className="p-3 bg-[#181818] border-t border-zinc-800">
             {showAttachmentInput && (
               <div className="mb-2 flex items-center space-x-2">
                 <input
@@ -968,7 +968,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   placeholder="Paste image URL attachment..."
                   value={attachmentUrl}
                   onChange={(e) => setAttachmentUrl(e.target.value)}
-                  className="flex-1 px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500"
+                  className="flex-1 px-3 py-1.5 bg-[#121212] border border-zinc-800 rounded-lg text-xs text-white focus:outline-none focus:border-zinc-600"
                 />
                 <X className="w-4 h-4 cursor-pointer text-zinc-400" onClick={() => setShowAttachmentInput(false)} />
               </div>
@@ -978,7 +978,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               <button
                 type="button"
                 onClick={() => setShowAttachmentInput(!showAttachmentInput)}
-                className="p-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-cyan-400 transition-colors"
+                className="p-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors cursor-pointer"
                 title="Attach Image"
               >
                 <Image className="w-4 h-4" />
@@ -989,13 +989,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 placeholder={`Message #${activeChannel}...`}
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
-                className="flex-1 px-4 py-3 bg-zinc-950 border border-zinc-800/80 rounded-2xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500"
+                className="flex-1 px-4 py-2.5 bg-[#121212] border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
               />
 
               <button
                 type="submit"
                 disabled={!inputMessage.trim() && !attachmentUrl.trim()}
-                className="p-3 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 text-black font-bold disabled:opacity-40 hover:brightness-110 shadow-lg transition-all"
+                className="p-2.5 rounded-xl bg-white hover:bg-zinc-200 text-black font-bold disabled:opacity-40 transition-colors cursor-pointer"
               >
                 <Send className="w-4 h-4" />
               </button>
@@ -1004,10 +1004,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         </div>
 
         {/* COLUMN 3: RIGHT SIDEBAR (Online Members) */}
-        <div className="w-56 bg-zinc-950 border-l border-zinc-800/80 p-4 hidden md:flex flex-col space-y-4 select-none">
+        <div className="w-56 bg-[#181818] border-l border-zinc-800 p-4 hidden md:flex flex-col space-y-4 select-none">
           <div className="flex items-center space-x-2 border-b border-zinc-800 pb-3">
-            <Users className="w-4 h-4 text-cyan-400" />
-            <h4 className="text-xs font-black text-white uppercase tracking-wider">ONLINE MEMBERS</h4>
+            <Users className="w-4 h-4 text-zinc-400" />
+            <h4 className="text-xs font-bold text-white uppercase tracking-wider">ONLINE MEMBERS</h4>
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-4">
@@ -1021,32 +1021,32 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   <img
                     src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=100&auto=format&fit=crop&q=80"
                     alt="Yuno dev isa"
-                    className="w-8 h-8 rounded-full object-cover border border-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.5)]"
+                    className="w-8 h-8 rounded-full object-cover border border-amber-500/50"
                   />
                   <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-black" />
                 </div>
                 <div className="truncate">
-                  <span className="text-xs font-bold text-amber-300 block truncate">Yuno dev isa</span>
-                  <span className="text-[9px] font-mono text-amber-400/80">DEV OWNER</span>
+                  <span className="text-xs font-bold text-amber-400 block truncate">Yuno dev isa</span>
+                  <span className="text-[9px] text-amber-400/80">DEV OWNER</span>
                 </div>
               </div>
             </div>
 
             {/* Active Online Members */}
             <div className="space-y-2">
-              <span className="text-[10px] font-mono font-bold text-zinc-500 uppercase tracking-wider block">
+              <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">
                 ONLINE MEMBERS ({activeOnlineUsers.length + (profile.username ? 1 : 0)})
               </span>
 
               {/* Current user */}
               {profile.username && (
-                <div className="flex items-center space-x-2.5 p-1.5 rounded-xl bg-cyan-950/30 border border-cyan-500/20">
+                <div className="flex items-center space-x-2.5 p-1.5 rounded-lg bg-[#202020] border border-zinc-800">
                   <div className="relative">
-                    {renderUserAvatar(profile.avatar, profile.username, "w-7 h-7", "border border-cyan-400")}
+                    {renderUserAvatar(profile.avatar, profile.username, "w-7 h-7", "border border-zinc-700")}
                     <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-emerald-500 border border-black" />
                   </div>
                   <div className="truncate">
-                    <span className="text-xs font-bold text-cyan-300 block truncate">{profile.username} (You)</span>
+                    <span className="text-xs font-bold text-white block truncate">{profile.username} (You)</span>
                     <span className="text-[9px] text-zinc-400 block truncate">{profile.badge || 'Online'}</span>
                   </div>
                 </div>
@@ -1054,7 +1054,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
               {/* Server Active Users */}
               {activeOnlineUsers.filter((u) => u.username !== profile.username).map((m) => (
-                <div key={m.username} className="flex items-center space-x-2.5 p-1.5 rounded-xl hover:bg-zinc-900 transition-colors">
+                <div key={m.username} className="flex items-center space-x-2.5 p-1.5 rounded-lg hover:bg-[#202020] transition-colors">
                   <div className="relative">
                     {renderUserAvatar(m.avatar, m.username, "w-7 h-7", "border border-zinc-700")}
                     <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-emerald-500 border border-black" />
@@ -1067,7 +1067,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               ))}
 
               {activeOnlineUsers.length === 0 && !profile.username && (
-                <div className="text-[10px] text-zinc-600 font-mono text-center p-2">
+                <div className="text-[10px] text-zinc-500 text-center p-2">
                   No other active members online right now.
                 </div>
               )}

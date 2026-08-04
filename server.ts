@@ -471,89 +471,66 @@ app.get("/api/music/lyrics", async (req, res) => {
       return `[${mStr}:${sStr}]`;
     };
 
-    // Helper to clean and format lyrics string
-    const sanitizeLyrics = (text: string) => {
-      if (!text) return "";
-      return text.replace(/\\n/g, "\n").replace(/\\r/g, "").replace(/\r\n/g, "\n");
+    // Helper to clean, format and filter lyrics string
+    const cleanAndFilterLyrics = (rawText: string, songTitle: string, songArtist: string) => {
+      if (!rawText) return "";
+      let text = rawText
+        .replace(/\\n/g, "\n")
+        .replace(/\\r/g, "")
+        .replace(/\r\n/g, "\n")
+        .replace(/\r/g, "\n");
+
+      const combinedMeta = (songTitle + " " + songArtist).toLowerCase();
+      // Check if track is natively Chinese/Japanese/Korean
+      const isCjkTrack = /[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]/.test(combinedMeta);
+
+      const lines = text.split("\n");
+      const cleaned: string[] = [];
+
+      for (let line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        if (/^\[(ti|ar|al|by|offset|length|re|ve):/i.test(trimmed)) continue;
+
+        if (!isCjkTrack) {
+          const sansTime = trimmed.replace(/\[\d{1,2}:\d{2}(?:\.\d{1,3})?\]/g, "").trim();
+          // Filter CJK translation lines if track is not CJK
+          if (/[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]/.test(sansTime)) {
+            if (!/[a-zA-Z0-9]/.test(sansTime)) {
+              continue; // Drop pure translation line
+            }
+            // If line contains both Latin and CJK, strip the CJK translation portion
+            const sansCjk = trimmed.replace(/[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]+/g, "").replace(/\s+/g, " ").trim();
+            if (sansCjk.replace(/\[\d{1,2}:\d{2}(?:\.\d{1,3})?\]/g, "").trim().length > 0) {
+              cleaned.push(sansCjk);
+            }
+            continue;
+          }
+        }
+        cleaned.push(trimmed);
+      }
+
+      return cleaned.join("\n").trim();
     };
 
-    // 1. Primary Provider: Lyrica API (test-0k.onrender.com)
-    if (title) {
-      try {
-        const lyricaUrl = `https://test-0k.onrender.com/lyrics/?artist=${encodeURIComponent(artist || title)}&song=${encodeURIComponent(title)}&fast=true&timestamps=true`;
-        const lyricaRes = await fetch(lyricaUrl, { signal: AbortSignal.timeout(8000) });
-        if (lyricaRes.ok) {
-          const lyricaData: any = await lyricaRes.json();
-          const songData = lyricaData?.data || lyricaData;
-
-          if (songData) {
-            // Check if timed_lyrics exists with synchronized lines
-            if (Array.isArray(songData.timed_lyrics) && songData.timed_lyrics.length > 0) {
-              const lrcText = songData.timed_lyrics
-                .map((item: any) => `${formatMsToLrcTag(item.start_time || 0)} ${item.text || ""}`)
-                .join("\n");
-              if (lrcText.length > 20) {
-                return res.json({ lyrics: sanitizeLyrics(lrcText), synced: true });
-              }
-            }
-
-            // Check if lyrics field already has LRC formatted timestamps
-            if (typeof songData.lyrics === "string" && songData.lyrics.length > 20) {
-              const sanitized = sanitizeLyrics(songData.lyrics);
-              const hasTimestamps = /\[\d{2}:\d{2}/.test(sanitized);
-              return res.json({ lyrics: sanitized, synced: hasTimestamps });
-            }
-          }
-        }
-      } catch (e) {
-        console.warn("Lyrica API fetch failed, trying fallbacks:", e);
-      }
-    }
-
-    // 2. Fallback: KuWo kw-api lyrics endpoint if songId or lrcUrl is provided
-    const targetLrcUrl = lrcUrl || (songId ? `https://kw-api.cenguigui.cn?id=${encodeURIComponent(songId)}&type=lyr&format=all` : "");
-    if (targetLrcUrl) {
-      try {
-        const lyricRes = await fetch(targetLrcUrl, { redirect: "follow", signal: AbortSignal.timeout(5000) });
-        if (lyricRes.ok) {
-          const rawText = await lyricRes.text();
-          if (rawText && rawText.length > 20 && !rawText.includes("404")) {
-            const normalizedText = sanitizeLyrics(rawText);
-            const lines = normalizedText.split("\n");
-            const cleanedLines = lines.filter((line) => {
-              if (line.startsWith("[ti:") || line.startsWith("[ar:") || line.startsWith("[al:")) return false;
-              if (hasChineseCharacters(line)) {
-                const sansTime = line.replace(/\[\d+:\d+(?:\.\d+)?\]/, "").trim();
-                if (/^[\u4e00-\u9fa5\s\u3000-\u303f.,!?'"()-]+$/.test(sansTime)) {
-                  return false;
-                }
-              }
-              return true;
-            });
-
-            const processedLyrics = cleanedLines.join("\n").trim();
-            if (processedLyrics.length > 20) {
-              return res.json({ lyrics: sanitizeLyrics(processedLyrics), synced: true });
-            }
-          }
-        }
-      } catch (e) {
-        console.warn("KuWo lyrics fetch failed:", e);
-      }
-    }
-
-    // 3. Fallback: LRCLIB API
+    // 1. Primary Provider: LRCLIB API (Pristine official synced lyrics for global music)
     if (title) {
       try {
         const lrcLibGetUrl = `https://lrclib.net/api/get?artist_name=${encodeURIComponent(artist)}&track_name=${encodeURIComponent(title)}`;
         const lrcRes = await fetch(lrcLibGetUrl, { signal: AbortSignal.timeout(5000) });
         if (lrcRes.ok) {
           const lrcData: any = await lrcRes.json();
-          if (lrcData.syncedLyrics) {
-            return res.json({ lyrics: sanitizeLyrics(lrcData.syncedLyrics), synced: true });
+          if (lrcData.syncedLyrics && lrcData.syncedLyrics.length > 20) {
+            const filtered = cleanAndFilterLyrics(lrcData.syncedLyrics, title, artist);
+            if (filtered.length > 15) {
+              return res.json({ lyrics: filtered, synced: true });
+            }
           }
-          if (lrcData.plainLyrics) {
-            return res.json({ lyrics: sanitizeLyrics(lrcData.plainLyrics), synced: false });
+          if (lrcData.plainLyrics && lrcData.plainLyrics.length > 20) {
+            const filtered = cleanAndFilterLyrics(lrcData.plainLyrics, title, artist);
+            if (filtered.length > 15) {
+              return res.json({ lyrics: filtered, synced: false });
+            }
           }
         }
       } catch (e) {}
@@ -567,14 +544,73 @@ app.get("/api/music/lyrics", async (req, res) => {
           if (Array.isArray(searchData) && searchData.length > 0) {
             const bestMatch = searchData.find((item: any) => item.syncedLyrics || item.plainLyrics) || searchData[0];
             if (bestMatch.syncedLyrics) {
-              return res.json({ lyrics: sanitizeLyrics(bestMatch.syncedLyrics), synced: true });
+              const filtered = cleanAndFilterLyrics(bestMatch.syncedLyrics, title, artist);
+              if (filtered.length > 15) {
+                return res.json({ lyrics: filtered, synced: true });
+              }
             }
             if (bestMatch.plainLyrics) {
-              return res.json({ lyrics: sanitizeLyrics(bestMatch.plainLyrics), synced: false });
+              const filtered = cleanAndFilterLyrics(bestMatch.plainLyrics, title, artist);
+              if (filtered.length > 15) {
+                return res.json({ lyrics: filtered, synced: false });
+              }
             }
           }
         }
       } catch (e) {}
+    }
+
+    // 2. Secondary Provider: Lyrica API (test-0k.onrender.com)
+    if (title) {
+      try {
+        const lyricaUrl = `https://test-0k.onrender.com/lyrics/?artist=${encodeURIComponent(artist || title)}&song=${encodeURIComponent(title)}&fast=true&timestamps=true`;
+        const lyricaRes = await fetch(lyricaUrl, { signal: AbortSignal.timeout(6000) });
+        if (lyricaRes.ok) {
+          const lyricaData: any = await lyricaRes.json();
+          const songData = lyricaData?.data || lyricaData;
+
+          if (songData) {
+            if (Array.isArray(songData.timed_lyrics) && songData.timed_lyrics.length > 0) {
+              const lrcText = songData.timed_lyrics
+                .map((item: any) => `${formatMsToLrcTag(item.start_time || 0)} ${item.text || ""}`)
+                .join("\n");
+              const filtered = cleanAndFilterLyrics(lrcText, title, artist);
+              if (filtered.length > 15) {
+                return res.json({ lyrics: filtered, synced: true });
+              }
+            }
+
+            if (typeof songData.lyrics === "string" && songData.lyrics.length > 20) {
+              const filtered = cleanAndFilterLyrics(songData.lyrics, title, artist);
+              const hasTimestamps = /\[\d{2}:\d{2}/.test(filtered);
+              if (filtered.length > 15) {
+                return res.json({ lyrics: filtered, synced: hasTimestamps });
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("Lyrica API fetch failed, trying fallbacks:", e);
+      }
+    }
+
+    // 3. Fallback: KuWo kw-api lyrics
+    const targetLrcUrl = lrcUrl || (songId ? `https://kw-api.cenguigui.cn?id=${encodeURIComponent(songId)}&type=lyr&format=all` : "");
+    if (targetLrcUrl) {
+      try {
+        const lyricRes = await fetch(targetLrcUrl, { redirect: "follow", signal: AbortSignal.timeout(5000) });
+        if (lyricRes.ok) {
+          const rawText = await lyricRes.text();
+          if (rawText && rawText.length > 20 && !rawText.includes("404")) {
+            const filtered = cleanAndFilterLyrics(rawText, title, artist);
+            if (filtered.length > 15) {
+              return res.json({ lyrics: filtered, synced: true });
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("KuWo lyrics fetch failed:", e);
+      }
     }
 
     // 4. Default synchronized fallback
@@ -1914,7 +1950,7 @@ app.post("/api/chat/react", (req, res) => {
 // Gemini AI Proxy Endpoint
 app.post("/api/gemini/chat", async (req, res) => {
   try {
-    const { prompt, model, systemInstruction, history } = req.body;
+    const { prompt, model, systemInstruction, history, attachments } = req.body;
 
     if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
       return res.status(400).json({ error: "Prompt is required" });
@@ -1945,8 +1981,35 @@ app.post("/api/gemini/chat", async (req, res) => {
       }
     }
 
+    // Build parts for current turn prompt & attachments (images, screenshots, code/text files)
+    const currentParts: any[] = [];
+    if (Array.isArray(attachments) && attachments.length > 0) {
+      for (const att of attachments) {
+        if (att.isImage || (att.type && att.type.startsWith("image/"))) {
+          let base64Data = att.data || "";
+          if (base64Data.includes(",")) {
+            base64Data = base64Data.split(",")[1];
+          }
+          if (base64Data) {
+            currentParts.push({
+              inlineData: {
+                mimeType: att.type || "image/png",
+                data: base64Data,
+              },
+            });
+          }
+        } else {
+          const fileText = att.textContent || att.data || "";
+          currentParts.push({
+            text: `\n\n[Attached File: ${att.name || "Document"}]\n\`\`\`\n${fileText.slice(0, 30000)}\n\`\`\``,
+          });
+        }
+      }
+    }
+    currentParts.push({ text: prompt.trim() });
+
     // Format and sanitize conversation history so it strictly starts with 'user' and alternates
-    let contents: any = prompt;
+    let contents: any = currentParts;
     if (history && Array.isArray(history) && history.length > 0) {
       const rawHistory = history
         .map((item: any) => ({
@@ -1959,7 +2022,7 @@ app.post("/api/gemini/chat", async (req, res) => {
       const firstUserIndex = rawHistory.findIndex((item) => item.role === "user");
 
       if (firstUserIndex !== -1) {
-        const validHistory: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+        const validHistory: Array<{ role: string; parts: Array<any> }> = [];
         let expectedRole = "user";
 
         for (let i = firstUserIndex; i < rawHistory.length; i++) {
@@ -1981,7 +2044,7 @@ app.post("/api/gemini/chat", async (req, res) => {
         if (validHistory.length > 0) {
           validHistory.push({
             role: "user",
-            parts: [{ text: prompt.trim() }],
+            parts: currentParts,
           });
           contents = validHistory;
         }
@@ -1990,7 +2053,7 @@ app.post("/api/gemini/chat", async (req, res) => {
 
     const defaultSysInstruction =
       systemInstruction ||
-      "You are Yunø AI, an intelligent, helpful, friendly workspace AI assistant. Help the user with schoolwork, coding, creative writing, research, and general questions concise and clearly formatted in markdown.";
+      "You are Yunø AI, an intelligent, helpful, friendly workspace AI assistant. Help the user with schoolwork, coding, creative writing, research, screenshot analysis, file inspection, and general questions concise and clearly formatted in markdown.";
 
     let generatedText = "";
 
@@ -2009,11 +2072,11 @@ app.post("/api/gemini/chat", async (req, res) => {
         "";
     } catch (primaryErr: any) {
       console.warn("Primary Gemini call failed, retrying without history:", primaryErr?.message || primaryErr);
-      // Retry without history (direct prompt call)
+      // Retry with direct prompt parts
       try {
         const retryResponse = await ai.models.generateContent({
           model: "gemini-3.6-flash",
-          contents: prompt.trim(),
+          contents: currentParts,
           config: {
             systemInstruction: defaultSysInstruction,
           },

@@ -491,7 +491,7 @@ export const ProxyTab: React.FC<ProxyTabProps> = ({ initialUrl = '', onNavigateH
               <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
                 <div className="flex items-center space-x-2 text-xs font-mono font-bold text-zinc-400 uppercase tracking-wider">
                   <Bookmark className="w-4 h-4 text-cyan-400" />
-                  <span>Popular Destinations</span>
+                  <span>Popular Links</span>
                 </div>
                 <span className="text-[11px] font-mono text-zinc-500">Click to launch unblocked</span>
               </div>

@@ -29,6 +29,10 @@ interface MusicViewProps {
   onPlayTrack: (track: MusicTrack, context?: PlaybackContext) => void;
   onTogglePlay: () => void;
   currentTime?: number;
+  playQueue?: MusicTrack[];
+  onAddToQueue?: (track: MusicTrack, playNext?: boolean) => void;
+  onRemoveFromQueue?: (index: number) => void;
+  onClearQueue?: () => void;
 }
 
 export interface Playlist {
@@ -43,8 +47,11 @@ interface ParsedLrcLine {
   text: string;
 }
 
-function parseLrcLyrics(lrc: string): ParsedLrcLine[] {
+function parseLrcLyrics(lrc: string, trackTitle?: string, trackArtist?: string): ParsedLrcLine[] {
   if (!lrc) return [];
+
+  const combined = ((trackTitle || '') + ' ' + (trackArtist || '')).toLowerCase();
+  const isCjkTrack = /[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]/.test(combined);
 
   // Normalize newline variations and escaped '\n' sequences
   const normalized = lrc
@@ -63,6 +70,21 @@ function parseLrcLyrics(lrc: string): ParsedLrcLine[] {
     // Skip metadata headers
     if (/^\[(ti|ar|al|by|offset|length|re|ve):/i.test(line)) continue;
 
+    // Clean text without timestamps
+    let cleanText = line.replace(/\[\d{1,2}:\d{2}(?:\.\d{1,3})?\]/g, '').trim();
+    cleanText = cleanText.replace(/\\n/g, ' ').replace(/\\/g, '').trim();
+
+    if (!cleanText) continue;
+
+    // Filter out CJK translation lines if track is English/Latin
+    if (!isCjkTrack && /[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]/.test(cleanText)) {
+      if (!/[a-zA-Z0-9]/.test(cleanText)) {
+        continue; // Drop pure CJK translation line
+      }
+      cleanText = cleanText.replace(/[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]+/g, '').replace(/\s+/g, ' ').trim();
+      if (!cleanText) continue;
+    }
+
     // Extract all timestamp tags
     const timestampRegex = /\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]/g;
     const timestamps: number[] = [];
@@ -75,12 +97,6 @@ function parseLrcLyrics(lrc: string): ParsedLrcLine[] {
       const fraction = parseFloat(`0.${msStr}`);
       timestamps.push(min * 60 + sec + fraction);
     }
-
-    // Remove timestamp tags to get clean text
-    let cleanText = line.replace(/\[\d{1,2}:\d{2}(?:\.\d{1,3})?\]/g, '').trim();
-    cleanText = cleanText.replace(/\\n/g, ' ').replace(/\\/g, '').trim();
-
-    if (!cleanText) continue;
 
     if (timestamps.length > 0) {
       for (const time of timestamps) {
@@ -118,8 +134,12 @@ export const MusicView: React.FC<MusicViewProps> = ({
   onPlayTrack,
   onTogglePlay,
   currentTime = 0,
+  playQueue = [],
+  onAddToQueue,
+  onRemoveFromQueue,
+  onClearQueue,
 }) => {
-  const [activeTab, setActiveTab] = useState<'home' | 'liked' | 'playlists' | 'lyrics'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'liked' | 'playlists' | 'lyrics' | 'queue'>('home');
   const [selectedAlbum, setSelectedAlbum] = useState<FeaturedAlbum | null>(EDITORS_PICKS_ALBUMS[0] || null);
   const [searchQuery, setSearchQuery] = useState('');
   const [metingTracks, setMetingTracks] = useState<MusicTrack[]>([]);
@@ -381,8 +401,8 @@ export const MusicView: React.FC<MusicViewProps> = ({
       {/* Top Header & Tab Navigation */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-zinc-800 pb-6">
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-full bg-[#1DB954] text-black flex items-center justify-center font-black text-xl shadow-lg shadow-[#1DB954]/20">
-            <Disc3 className="w-6 h-6 animate-spin" />
+          <div className="w-10 h-10 rounded-full bg-[#1DB954] text-black flex items-center justify-center font-bold text-xl shadow-md">
+            <Music className="w-5 h-5 fill-current" />
           </div>
           <div>
             <h1 className="text-3xl font-extrabold tracking-tight text-white">Music</h1>
@@ -439,6 +459,18 @@ export const MusicView: React.FC<MusicViewProps> = ({
             <FileText className="w-4 h-4" />
             <span>Lyrics</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('queue')}
+            className={`px-5 py-2 rounded-full text-xs font-bold transition-all flex items-center space-x-2 relative ${
+              activeTab === 'queue'
+                ? 'bg-[#1DB954] text-black shadow-lg shadow-[#1DB954]/20'
+                : 'text-zinc-400 hover:text-white'
+            }`}
+          >
+            <ListMusic className="w-4 h-4" />
+            <span>Queue ({playQueue.length})</span>
+          </button>
         </div>
       </div>
 
@@ -456,12 +488,6 @@ export const MusicView: React.FC<MusicViewProps> = ({
                 className="px-4 py-1.5 rounded-full bg-[#282828] hover:bg-[#333333] text-white font-semibold text-xs cursor-pointer transition-colors"
               >
                 Music
-              </button>
-              <button
-                onClick={() => handleMetingSearch('Podcast Commentary')}
-                className="px-4 py-1.5 rounded-full bg-[#282828] hover:bg-[#333333] text-white font-semibold text-xs cursor-pointer transition-colors"
-              >
-                Podcasts
               </button>
             </div>
 
@@ -807,7 +833,33 @@ export const MusicView: React.FC<MusicViewProps> = ({
                       </div>
 
                       {/* Action buttons */}
-                      <div className="col-span-5 sm:col-span-2 flex items-center justify-end space-x-2" onClick={(e) => e.stopPropagation()}>
+                      <div className="col-span-5 sm:col-span-2 flex items-center justify-end space-x-1 sm:space-x-1.5" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => {
+                            if (onAddToQueue) {
+                              onAddToQueue(track, true);
+                              showToast(`Added "${track.title}" to Play Next`);
+                            }
+                          }}
+                          className="p-1.5 text-zinc-400 hover:text-[#1DB954] transition-colors cursor-pointer"
+                          title="Play Next"
+                        >
+                          <ListPlus className="w-4 h-4" />
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            if (onAddToQueue) {
+                              onAddToQueue(track, false);
+                              showToast(`Added "${track.title}" to Queue`);
+                            }
+                          }}
+                          className="p-1.5 text-zinc-400 hover:text-[#1DB954] transition-colors cursor-pointer"
+                          title="Add to Queue"
+                        >
+                          <ListMusic className="w-4 h-4" />
+                        </button>
+
                         <button
                           onClick={() => toggleLikeSong(track)}
                           className={`p-1.5 transition-colors cursor-pointer ${
@@ -1001,7 +1053,7 @@ export const MusicView: React.FC<MusicViewProps> = ({
             {isLoadingLyrics ? (
               <p className="text-zinc-500 animate-pulse py-8 text-sm font-mono">Fetching live lyrics for track...</p>
             ) : (() => {
-              const lines = parseLrcLyrics(lyricsText);
+              const lines = parseLrcLyrics(lyricsText, currentTrack?.title, currentTrack?.artist);
               if (lines.length === 0) {
                 return <p className="text-zinc-500 text-xs font-mono">No lyrics text available for this song.</p>;
               }
@@ -1042,6 +1094,129 @@ export const MusicView: React.FC<MusicViewProps> = ({
                 </div>
               );
             })()}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 5: PLAY NEXT QUEUE */}
+      {activeTab === 'queue' && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-black text-white flex items-center space-x-2">
+                <span>Play Next Queue</span>
+                {playQueue.length > 0 && (
+                  <span className="text-xs px-2.5 py-1 rounded-full bg-[#1DB954]/20 text-[#1DB954] border border-[#1DB954]/30 font-mono font-bold">
+                    {playQueue.length} queued
+                  </span>
+                )}
+              </h2>
+              <p className="text-xs text-zinc-400">Manage songs set to play after the current track</p>
+            </div>
+
+            {playQueue.length > 0 && onClearQueue && (
+              <button
+                onClick={onClearQueue}
+                className="px-4 py-2 rounded-full bg-zinc-900 hover:bg-rose-950/80 text-zinc-400 hover:text-rose-300 border border-zinc-800 hover:border-rose-800/60 transition-colors text-xs font-bold flex items-center space-x-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Clear Entire Queue</span>
+              </button>
+            )}
+          </div>
+
+          {/* NOW PLAYING HIGHLIGHT CARD */}
+          {currentTrack ? (
+            <div className="p-5 rounded-3xl bg-[#181818] border border-zinc-800 space-y-3">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-[#1DB954] font-bold">
+                Currently Playing
+              </span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-4 min-w-0">
+                  <img src={currentTrack.cover} alt="" className="w-14 h-14 rounded-2xl object-cover shadow-lg flex-shrink-0" />
+                  <div className="min-w-0">
+                    <h3 className="text-base font-bold text-white truncate">{currentTrack.title}</h3>
+                    <p className="text-xs text-zinc-400 truncate mt-0.5">{currentTrack.artist}</p>
+                    {currentTrack.album && <p className="text-[11px] text-zinc-500 truncate">{currentTrack.album}</p>}
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <span className="px-3 py-1 rounded-full bg-[#1DB954]/20 border border-[#1DB954]/30 text-[#1DB954] text-xs font-mono font-bold flex items-center space-x-1.5">
+                    <Disc className="w-3.5 h-3.5 animate-spin" />
+                    <span>Active</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="p-6 rounded-3xl bg-[#181818] border border-zinc-800 text-center">
+              <p className="text-xs text-zinc-400">No song currently playing.</p>
+            </div>
+          )}
+
+          {/* QUEUED TRACKS LIST */}
+          <div className="space-y-3">
+            <h3 className="text-xs font-mono uppercase tracking-widest text-zinc-400 font-bold">
+              Up Next In Order
+            </h3>
+
+            {playQueue.length === 0 ? (
+              <div className="p-12 rounded-3xl bg-[#181818] border border-dashed border-zinc-800 text-center space-y-3">
+                <ListMusic className="w-12 h-12 text-zinc-600 mx-auto" />
+                <h4 className="text-sm font-bold text-zinc-300">Your queue is empty</h4>
+                <p className="text-xs text-zinc-500 max-w-sm mx-auto">
+                  Browse songs in Home or search above and click <span className="text-[#1DB954] font-bold">Play Next</span> (<ListPlus className="w-3.5 h-3.5 inline text-[#1DB954]" />) to queue tracks!
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {playQueue.map((track, idx) => (
+                  <div
+                    key={`queue-tab-${track.id}-${idx}`}
+                    className="p-3.5 rounded-2xl bg-[#181818] hover:bg-[#222222] border border-zinc-800 hover:border-zinc-700 flex items-center justify-between transition-colors group"
+                  >
+                    <div className="flex items-center space-x-3.5 min-w-0 flex-1">
+                      <span className="text-xs font-mono font-bold text-zinc-500 w-6 text-center">
+                        {idx + 1}
+                      </span>
+                      <img src={track.cover} alt="" className="w-12 h-12 rounded-xl object-cover flex-shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-xs font-bold text-white group-hover:text-[#1DB954] transition-colors truncate">
+                          {track.title}
+                        </h4>
+                        <p className="text-[11px] text-zinc-400 truncate mt-0.5">{track.artist}</p>
+                        {track.album && <p className="text-[10px] text-zinc-500 truncate">{track.album}</p>}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => {
+                          onRemoveFromQueue?.(idx);
+                          onPlayTrack(track);
+                        }}
+                        className="px-3 py-1.5 rounded-full bg-[#1DB954]/20 hover:bg-[#1DB954] text-[#1DB954] hover:text-black transition-colors text-xs font-bold flex items-center space-x-1 cursor-pointer"
+                        title="Play Now"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                        <span className="hidden sm:inline">Play Now</span>
+                      </button>
+
+                      {onRemoveFromQueue && (
+                        <button
+                          onClick={() => onRemoveFromQueue(idx)}
+                          className="p-2 text-zinc-500 hover:text-rose-400 transition-colors cursor-pointer"
+                          title="Remove from queue"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

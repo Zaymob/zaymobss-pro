@@ -24,7 +24,9 @@ import { HaloView } from './components/HaloView';
 import { PipVideoOverlay } from './components/PipVideoOverlay';
 
 import { motion, AnimatePresence } from 'motion/react';
-import { ShieldAlert } from 'lucide-react';
+import { ShieldAlert, Feather, FileText, Skull } from 'lucide-react';
+import { DeathNoteModal, BanAppealItem } from './components/DeathNoteModal';
+import { BanAppealModal } from './components/BanAppealModal';
 
 export const isAuthorizedAdminUsername = (username?: string): boolean => {
   if (!username) return false;
@@ -171,8 +173,38 @@ export default function App() {
 
   // Modals state
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState<boolean>(false);
+  const [isDeathNoteOpen, setIsDeathNoteOpen] = useState<boolean>(false);
+  const [isBanAppealOpen, setIsBanAppealOpen] = useState<boolean>(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState<boolean>(false);
+
+  // Admin / Death Note / Appeals state
+  const [bannedUsersList, setBannedUsersList] = useState<string[]>([]);
+  const [timedOutUsersList, setTimedOutUsersList] = useState<Array<{ name: string; until: string }>>([]);
+  const [appealsList, setAppealsList] = useState<BanAppealItem[]>([]);
+
+  const fetchAdminStatusData = async () => {
+    try {
+      const res = await fetch('/api/admin/status');
+      const data = await res.json();
+      if (data.bannedUsers) setBannedUsersList(data.bannedUsers);
+      if (data.timeouts) {
+        const list = Object.entries(data.timeouts).map(([name, expiry]: [string, any]) => {
+          const remainingMs = Math.max(0, expiry - Date.now());
+          const mins = Math.ceil(remainingMs / 60000);
+          return { name, until: `${mins}m remaining` };
+        });
+        setTimedOutUsersList(list);
+      }
+      if (data.appeals) setAppealsList(data.appeals);
+    } catch (e) {}
+  };
+
+  useEffect(() => {
+    fetchAdminStatusData();
+    const interval = setInterval(fetchAdminStatusData, 4000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Auto-launch Onboarding Guided Tour & Profile Setup for first-time users after boot screen
   useEffect(() => {
@@ -772,19 +804,64 @@ export default function App() {
         onClose={() => setIsAdminPanelOpen(false)}
         isAdmin={isAdmin}
         onRevokeAdmin={handleRevokeAdmin}
+        onOpenDeathNote={() => setIsDeathNoteOpen(true)}
       />
 
-      {/* Floating Admin Overlay Quick Launcher (Visible everywhere when Admin is unlocked) */}
-      {isAdmin && !isAdminPanelOpen && (
-        <button
-          onClick={() => setIsAdminPanelOpen(true)}
-          className="fixed top-4 right-4 z-40 px-3.5 py-2 rounded-2xl bg-amber-500/90 hover:bg-amber-400 text-black font-black text-xs shadow-[0_0_20px_rgba(245,158,11,0.5)] border border-amber-300 backdrop-blur-xl flex items-center space-x-2 transition-all hover:scale-105 active:scale-95 cursor-pointer"
-          title="Open Floating Admin Overlay"
-        >
-          <ShieldAlert className="w-4 h-4 text-black animate-pulse" />
-          <span>Admin Overlay</span>
-        </button>
+      {/* Standalone Death Note Notebook Overlay (Minimizable, Draggable & Resizable) */}
+      <DeathNoteModal
+        isOpen={isDeathNoteOpen}
+        onClose={() => setIsDeathNoteOpen(false)}
+        currentUser={userProfile.username || 'yuno'}
+        bannedUsers={bannedUsersList}
+        timedOutUsers={timedOutUsersList}
+        appeals={appealsList}
+        onRefreshData={fetchAdminStatusData}
+      />
+
+      {/* Ban & Timeout Appeal Petition Modal */}
+      <BanAppealModal
+        isOpen={isBanAppealOpen}
+        onClose={() => setIsBanAppealOpen(false)}
+        defaultUsername={userProfile.username}
+        onSubmitted={fetchAdminStatusData}
+      />
+
+      {/* Floating Admin & Death Note Quick Launchers */}
+      {isAdmin && (
+        <div className="fixed top-4 right-4 z-40 flex items-center space-x-2">
+          {!isDeathNoteOpen && (
+            <button
+              onClick={() => setIsDeathNoteOpen(true)}
+              className="px-3.5 py-2 rounded-2xl bg-stone-950/90 hover:bg-stone-900 text-stone-100 font-serif font-black text-xs shadow-[0_0_20px_rgba(0,0,0,0.8)] border-2 border-stone-700 backdrop-blur-xl flex items-center space-x-2 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+              title="Open Standalone Death Note Notebook"
+            >
+              <Feather className="w-4 h-4 text-red-400 animate-pulse" />
+              <span>Death Note</span>
+            </button>
+          )}
+
+          {!isAdminPanelOpen && (
+            <button
+              onClick={() => setIsAdminPanelOpen(true)}
+              className="px-3.5 py-2 rounded-2xl bg-amber-500/90 hover:bg-amber-400 text-black font-black text-xs shadow-[0_0_20px_rgba(245,158,11,0.5)] border border-amber-300 backdrop-blur-xl flex items-center space-x-2 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+              title="Open Floating Admin Overlay"
+            >
+              <ShieldAlert className="w-4 h-4 text-black animate-pulse" />
+              <span>Admin Overlay</span>
+            </button>
+          )}
+        </div>
       )}
+
+      {/* Appeal Button for All Users */}
+      <button
+        onClick={() => setIsBanAppealOpen(true)}
+        className="fixed bottom-20 right-5 z-30 px-3 py-1.5 rounded-xl bg-zinc-900/90 hover:bg-amber-950 text-amber-300 font-mono text-[11px] font-bold border border-amber-500/40 shadow-lg backdrop-blur-md flex items-center space-x-1.5 transition-all hover:scale-105 cursor-pointer"
+        title="Submit Ban / Timeout Appeal Petition"
+      >
+        <FileText className="w-3.5 h-3.5 text-amber-400" />
+        <span>Appeal Ban</span>
+      </button>
 
       {/* Profile Edit Modal */}
       <ProfileModal

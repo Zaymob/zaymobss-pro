@@ -35,6 +35,8 @@ import {
   Minimize2,
   Maximize2,
   GripHorizontal,
+  Feather,
+  Skull,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { motion, AnimatePresence } from 'motion/react';
@@ -44,6 +46,7 @@ interface AdminPanelModalProps {
   onClose: () => void;
   isAdmin: boolean;
   onRevokeAdmin?: () => void;
+  onOpenDeathNote?: () => void;
 }
 
 interface ServerTelemetry {
@@ -483,6 +486,18 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
             </div>
 
             <div className="flex items-center space-x-1.5">
+              {onOpenDeathNote && (
+                <button
+                  type="button"
+                  onClick={onOpenDeathNote}
+                  className="px-3 py-1.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-stone-200 border border-stone-700 font-serif text-xs font-bold transition-all shadow flex items-center space-x-1.5"
+                  title="Open Standalone Death Note Notebook"
+                >
+                  <Feather className="w-3.5 h-3.5 text-red-400" />
+                  <span className="hidden sm:inline">Death Note</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => setIsMinimized(true)}

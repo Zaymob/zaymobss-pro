@@ -116,6 +116,26 @@ const userProfiles: Record<string, UserProfile> = {
 const claimedAdminUsers = new Map<string, string>(); // username (normalized) -> clientKey
 const bannedUsers = new Set<string>();
 const userTimeouts = new Map<string, number>(); // username -> expiry timestamp
+
+interface BanAppeal {
+  id: string;
+  username: string;
+  reason: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  timestamp: string;
+  type: 'BAN' | 'TIMEOUT';
+}
+
+const banAppeals: BanAppeal[] = [
+  {
+    id: 'appeal-demo-1',
+    username: 'Vortex_99',
+    reason: 'I promise not to spam vibecoded slop in global chat anymore. Please grant me a second chance!',
+    status: 'PENDING',
+    timestamp: new Date(Date.now() - 3600000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    type: 'BAN'
+  }
+];
 // Global System Announcements & Partners State
 interface ServerAnnouncement {
   id: string;
@@ -1120,7 +1140,84 @@ app.get("/api/admin/status", (req, res) => {
     trollEffects: activeTrollsList,
     profanityConfig: profanityFilterConfig,
     chatResetScheduledAt,
+    appeals: banAppeals,
   });
+});
+
+app.get("/api/appeals/list", (req, res) => {
+  res.json({ success: true, appeals: banAppeals });
+});
+
+app.post("/api/appeals/submit", (req, res) => {
+  const { username, reason } = req.body;
+  if (!username || !reason) {
+    return res.status(400).json({ error: "Username and reason for appeal are required." });
+  }
+
+  const cleanUser = username.trim();
+  const isBanned = bannedUsers.has(cleanUser);
+  const isTimedOut = userTimeouts.has(cleanUser) && (userTimeouts.get(cleanUser)! > Date.now());
+
+  const newAppeal: BanAppeal = {
+    id: `appeal-${Date.now()}`,
+    username: cleanUser,
+    reason: reason.trim(),
+    status: 'PENDING',
+    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    type: isBanned ? 'BAN' : isTimedOut ? 'TIMEOUT' : 'BAN'
+  };
+
+  // Remove any previous pending appeal for this user to avoid duplicates
+  const existingIdx = banAppeals.findIndex(a => a.username.toLowerCase() === cleanUser.toLowerCase() && a.status === 'PENDING');
+  if (existingIdx !== -1) {
+    banAppeals.splice(existingIdx, 1);
+  }
+
+  banAppeals.unshift(newAppeal);
+  savePersistedData();
+
+  res.json({
+    success: true,
+    message: `Your appeal has been inscribed into the Death Note appeal record for Admin review.`,
+    appeal: newAppeal
+  });
+});
+
+app.post("/api/appeals/respond", (req, res) => {
+  const { requester, appealId, decision } = req.body;
+  const reqNorm = (requester || "").trim().toLowerCase();
+  const isReqAdmin = reqNorm === "yuno" || reqNorm === "yuno dev isa" || reqNorm === "isaman" || reqNorm.startsWith("yuno") || reqNorm.startsWith("isaman");
+  
+  if (!isReqAdmin) {
+    return res.status(403).json({ error: "Unauthorized. Only admins can resolve appeals." });
+  }
+
+  const appeal = banAppeals.find(a => a.id === appealId);
+  if (!appeal) {
+    return res.status(404).json({ error: "Appeal record not found." });
+  }
+
+  if (decision === 'approve') {
+    appeal.status = 'APPROVED';
+    bannedUsers.delete(appeal.username);
+    userTimeouts.delete(appeal.username);
+    savePersistedData();
+    return res.json({
+      success: true,
+      message: `Appeal APPROVED! ${appeal.username}'s name has been erased from the Death Note. Access restored.`,
+      appeal
+    });
+  } else if (decision === 'reject') {
+    appeal.status = 'REJECTED';
+    savePersistedData();
+    return res.json({
+      success: true,
+      message: `Appeal REJECTED. ${appeal.username} remains bound by the Death Note.`,
+      appeal
+    });
+  } else {
+    return res.status(400).json({ error: "Invalid decision. Must be 'approve' or 'reject'." });
+  }
 });
 
 app.get("/api/admin/chat-reset-status", (req, res) => {

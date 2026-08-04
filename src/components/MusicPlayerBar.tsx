@@ -14,6 +14,7 @@ import {
   Minimize2,
   Sparkles,
   Music,
+  GripHorizontal,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -290,6 +291,8 @@ export const MusicPlayerBar: React.FC<MusicPlayerBarProps> = ({
 
       {/* FLOATING COMPACT MUSIC PLAYER OVERLAY */}
       <motion.div
+        drag
+        dragMomentum={false}
         initial={{ opacity: 0, y: 30, scale: 0.95 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 30, scale: 0.95 }}
@@ -300,10 +303,11 @@ export const MusicPlayerBar: React.FC<MusicPlayerBarProps> = ({
         }`}
       >
         <div className="bg-zinc-950/95 backdrop-blur-2xl border border-cyan-500/40 rounded-3xl p-3.5 shadow-[0_0_40px_rgba(6,182,212,0.25)] flex flex-col text-white space-y-2.5">
-          {/* Top Info & Controls Bar */}
+          {/* Top Drag Handle & Info Bar */}
           <div className="flex items-center justify-between">
             {/* Song Cover & Details */}
-            <div className="flex items-center space-x-2.5 min-w-0 flex-1">
+            <div className="flex items-center space-x-2 min-w-0 flex-1 cursor-grab active:cursor-grabbing select-none">
+              <GripHorizontal className="w-4 h-4 text-zinc-600 flex-shrink-0" title="Drag overlay" />
               <div
                 onClick={() => setShowLyricsModal(true)}
                 className="relative w-9 h-9 rounded-xl overflow-hidden bg-zinc-900 flex-shrink-0 border border-zinc-700/80 cursor-pointer group"

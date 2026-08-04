@@ -37,28 +37,71 @@ interface ParsedLrcLine {
 
 function parseLrcLyrics(lrc: string): ParsedLrcLine[] {
   if (!lrc) return [];
-  const lines = lrc.split('\n');
-  const result: ParsedLrcLine[] = [];
-  const regex = /\[(\d+):(\d+(?:\.\d+)?)\](.*)/;
 
-  for (const line of lines) {
-    const match = line.match(regex);
-    if (match) {
+  // Normalize all newline variations and escaped '\n' sequences
+  const normalized = lrc
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n');
+
+  const lines = normalized.split('\n');
+  const result: ParsedLrcLine[] = [];
+
+  for (let rawLine of lines) {
+    let line = rawLine.trim();
+    if (!line) continue;
+
+    // Skip metadata headers like [ti:...], [ar:...], [al:...]
+    if (/^\[(ti|ar|al|by|offset|length|re|ve):/i.test(line)) continue;
+
+    // Extract all timestamp tags
+    const timestampRegex = /\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]/g;
+    const timestamps: number[] = [];
+    let match: RegExpExecArray | null;
+
+    while ((match = timestampRegex.exec(line)) !== null) {
       const min = parseInt(match[1], 10);
-      const sec = parseFloat(match[2]);
-      const time = min * 60 + sec;
-      const text = match[3].trim();
-      if (text) {
-        result.push({ time, text });
+      const sec = parseInt(match[2], 10);
+      const msStr = match[3] || '0';
+      const fraction = parseFloat(`0.${msStr}`);
+      timestamps.push(min * 60 + sec + fraction);
+    }
+
+    // Remove timestamp tags to get clean text
+    let cleanText = line.replace(/\[\d{1,2}:\d{2}(?:\.\d{1,3})?\]/g, '').trim();
+    cleanText = cleanText.replace(/\\n/g, ' ').replace(/\\/g, '').trim();
+
+    if (!cleanText) continue;
+
+    if (timestamps.length > 0) {
+      for (const time of timestamps) {
+        result.push({ time, text: cleanText });
       }
     } else {
-      const clean = line.trim();
-      if (clean && !clean.startsWith('[')) {
-        result.push({ time: -1, text: clean });
-      }
+      result.push({ time: -1, text: cleanText });
     }
   }
-  return result.sort((a, b) => (a.time >= 0 && b.time >= 0 ? a.time - b.time : 0));
+
+  // Sort by time
+  result.sort((a, b) => {
+    if (a.time >= 0 && b.time >= 0) return a.time - b.time;
+    if (a.time >= 0) return -1;
+    if (b.time >= 0) return 1;
+    return 0;
+  });
+
+  // Deduplicate exact duplicate time & text
+  const deduplicated: ParsedLrcLine[] = [];
+  for (const item of result) {
+    const last = deduplicated[deduplicated.length - 1];
+    if (last && Math.abs(last.time - item.time) < 0.05 && last.text === item.text) {
+      continue;
+    }
+    deduplicated.push(item);
+  }
+
+  return deduplicated;
 }
 
 export const MusicPlayerBar: React.FC<MusicPlayerBarProps> = ({

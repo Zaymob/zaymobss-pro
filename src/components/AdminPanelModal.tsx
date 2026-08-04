@@ -77,6 +77,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   onClose,
   isAdmin,
   onRevokeAdmin,
+  onOpenDeathNote,
 }) => {
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<

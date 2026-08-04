@@ -471,6 +471,12 @@ app.get("/api/music/lyrics", async (req, res) => {
       return `[${mStr}:${sStr}]`;
     };
 
+    // Helper to clean and format lyrics string
+    const sanitizeLyrics = (text: string) => {
+      if (!text) return "";
+      return text.replace(/\\n/g, "\n").replace(/\\r/g, "").replace(/\r\n/g, "\n");
+    };
+
     // 1. Primary Provider: Lyrica API (test-0k.onrender.com)
     if (title) {
       try {
@@ -487,14 +493,15 @@ app.get("/api/music/lyrics", async (req, res) => {
                 .map((item: any) => `${formatMsToLrcTag(item.start_time || 0)} ${item.text || ""}`)
                 .join("\n");
               if (lrcText.length > 20) {
-                return res.json({ lyrics: lrcText, synced: true });
+                return res.json({ lyrics: sanitizeLyrics(lrcText), synced: true });
               }
             }
 
             // Check if lyrics field already has LRC formatted timestamps
             if (typeof songData.lyrics === "string" && songData.lyrics.length > 20) {
-              const hasTimestamps = /\[\d{2}:\d{2}/.test(songData.lyrics);
-              return res.json({ lyrics: songData.lyrics, synced: hasTimestamps });
+              const sanitized = sanitizeLyrics(songData.lyrics);
+              const hasTimestamps = /\[\d{2}:\d{2}/.test(sanitized);
+              return res.json({ lyrics: sanitized, synced: hasTimestamps });
             }
           }
         }
@@ -511,7 +518,8 @@ app.get("/api/music/lyrics", async (req, res) => {
         if (lyricRes.ok) {
           const rawText = await lyricRes.text();
           if (rawText && rawText.length > 20 && !rawText.includes("404")) {
-            const lines = rawText.split("\n");
+            const normalizedText = sanitizeLyrics(rawText);
+            const lines = normalizedText.split("\n");
             const cleanedLines = lines.filter((line) => {
               if (line.startsWith("[ti:") || line.startsWith("[ar:") || line.startsWith("[al:")) return false;
               if (hasChineseCharacters(line)) {
@@ -525,7 +533,7 @@ app.get("/api/music/lyrics", async (req, res) => {
 
             const processedLyrics = cleanedLines.join("\n").trim();
             if (processedLyrics.length > 20) {
-              return res.json({ lyrics: processedLyrics, synced: true });
+              return res.json({ lyrics: sanitizeLyrics(processedLyrics), synced: true });
             }
           }
         }
@@ -542,10 +550,10 @@ app.get("/api/music/lyrics", async (req, res) => {
         if (lrcRes.ok) {
           const lrcData: any = await lrcRes.json();
           if (lrcData.syncedLyrics) {
-            return res.json({ lyrics: lrcData.syncedLyrics, synced: true });
+            return res.json({ lyrics: sanitizeLyrics(lrcData.syncedLyrics), synced: true });
           }
           if (lrcData.plainLyrics) {
-            return res.json({ lyrics: lrcData.plainLyrics, synced: false });
+            return res.json({ lyrics: sanitizeLyrics(lrcData.plainLyrics), synced: false });
           }
         }
       } catch (e) {}
@@ -559,10 +567,10 @@ app.get("/api/music/lyrics", async (req, res) => {
           if (Array.isArray(searchData) && searchData.length > 0) {
             const bestMatch = searchData.find((item: any) => item.syncedLyrics || item.plainLyrics) || searchData[0];
             if (bestMatch.syncedLyrics) {
-              return res.json({ lyrics: bestMatch.syncedLyrics, synced: true });
+              return res.json({ lyrics: sanitizeLyrics(bestMatch.syncedLyrics), synced: true });
             }
             if (bestMatch.plainLyrics) {
-              return res.json({ lyrics: bestMatch.plainLyrics, synced: false });
+              return res.json({ lyrics: sanitizeLyrics(bestMatch.plainLyrics), synced: false });
             }
           }
         }

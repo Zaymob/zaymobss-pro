@@ -45,28 +45,71 @@ interface ParsedLrcLine {
 
 function parseLrcLyrics(lrc: string): ParsedLrcLine[] {
   if (!lrc) return [];
-  const lines = lrc.split('\n');
-  const result: ParsedLrcLine[] = [];
-  const regex = /\[(\d+):(\d+(?:\.\d+)?)\](.*)/;
 
-  for (const line of lines) {
-    const match = line.match(regex);
-    if (match) {
+  // Normalize newline variations and escaped '\n' sequences
+  const normalized = lrc
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n');
+
+  const lines = normalized.split('\n');
+  const result: ParsedLrcLine[] = [];
+
+  for (let rawLine of lines) {
+    let line = rawLine.trim();
+    if (!line) continue;
+
+    // Skip metadata headers
+    if (/^\[(ti|ar|al|by|offset|length|re|ve):/i.test(line)) continue;
+
+    // Extract all timestamp tags
+    const timestampRegex = /\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]/g;
+    const timestamps: number[] = [];
+    let match: RegExpExecArray | null;
+
+    while ((match = timestampRegex.exec(line)) !== null) {
       const min = parseInt(match[1], 10);
-      const sec = parseFloat(match[2]);
-      const time = min * 60 + sec;
-      const text = match[3].trim();
-      if (text) {
-        result.push({ time, text });
+      const sec = parseInt(match[2], 10);
+      const msStr = match[3] || '0';
+      const fraction = parseFloat(`0.${msStr}`);
+      timestamps.push(min * 60 + sec + fraction);
+    }
+
+    // Remove timestamp tags to get clean text
+    let cleanText = line.replace(/\[\d{1,2}:\d{2}(?:\.\d{1,3})?\]/g, '').trim();
+    cleanText = cleanText.replace(/\\n/g, ' ').replace(/\\/g, '').trim();
+
+    if (!cleanText) continue;
+
+    if (timestamps.length > 0) {
+      for (const time of timestamps) {
+        result.push({ time, text: cleanText });
       }
     } else {
-      const clean = line.trim();
-      if (clean && !clean.startsWith('[')) {
-        result.push({ time: -1, text: clean });
-      }
+      result.push({ time: -1, text: cleanText });
     }
   }
-  return result.sort((a, b) => (a.time >= 0 && b.time >= 0 ? a.time - b.time : 0));
+
+  // Sort by time
+  result.sort((a, b) => {
+    if (a.time >= 0 && b.time >= 0) return a.time - b.time;
+    if (a.time >= 0) return -1;
+    if (b.time >= 0) return 1;
+    return 0;
+  });
+
+  // Deduplicate exact duplicate time & text
+  const deduplicated: ParsedLrcLine[] = [];
+  for (const item of result) {
+    const last = deduplicated[deduplicated.length - 1];
+    if (last && Math.abs(last.time - item.time) < 0.05 && last.text === item.text) {
+      continue;
+    }
+    deduplicated.push(item);
+  }
+
+  return deduplicated;
 }
 
 export const MusicView: React.FC<MusicViewProps> = ({
@@ -399,158 +442,251 @@ export const MusicView: React.FC<MusicViewProps> = ({
         </div>
       </div>
 
-      {/* TAB 1: HOME PAGE */}
+      {/* TAB 1: SPOTIFY STYLE HOME PAGE */}
       {activeTab === 'home' && (
         <div className="space-y-8">
-          {/* IF BLANK / NO LISTENED SONGS YET */}
-          {recentlyPlayed.length === 0 ? (
-            <div className="p-8 sm:p-12 rounded-3xl bg-[#181818] border border-zinc-800 text-center space-y-6 shadow-2xl relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-80 h-80 bg-[#1DB954]/10 rounded-full blur-3xl pointer-events-none" />
-              <div className="w-20 h-20 rounded-full bg-[#1DB954]/10 border border-[#1DB954]/30 text-[#1DB954] flex items-center justify-center mx-auto shadow-xl shadow-[#1DB954]/10">
-                <Music className="w-10 h-10" />
+          {/* SPOTIFY FILTER PILLS & TIME-BASED GREETING */}
+          <div className="space-y-4">
+            <div className="flex items-center space-x-2">
+              <button className="px-4 py-1.5 rounded-full bg-white text-black font-bold text-xs shadow-md cursor-pointer">
+                All
+              </button>
+              <button
+                onClick={() => handleMetingSearch('Hip Hop R&B Hits')}
+                className="px-4 py-1.5 rounded-full bg-[#282828] hover:bg-[#333333] text-white font-semibold text-xs cursor-pointer transition-colors"
+              >
+                Music
+              </button>
+              <button
+                onClick={() => handleMetingSearch('Podcast Commentary')}
+                className="px-4 py-1.5 rounded-full bg-[#282828] hover:bg-[#333333] text-white font-semibold text-xs cursor-pointer transition-colors"
+              >
+                Podcasts
+              </button>
+            </div>
+
+            {/* Time-Based Greeting */}
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                {(() => {
+                  const hour = new Date().getHours();
+                  if (hour < 12) return 'Good morning';
+                  if (hour < 18) return 'Good afternoon';
+                  return 'Good evening';
+                })()}
+              </h2>
+            </div>
+
+            {/* SPOTIFY QUICK-ACCESS 6-GRID */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {/* Tile 1: Liked Songs */}
+              <div
+                onClick={() => setActiveTab('liked')}
+                className="group flex items-center bg-[#282828]/80 hover:bg-[#383838] rounded-md overflow-hidden transition-all duration-200 cursor-pointer shadow-md hover:shadow-xl relative pr-4"
+              >
+                <div className="w-16 h-16 bg-gradient-to-br from-indigo-700 via-purple-700 to-pink-500 flex items-center justify-center flex-shrink-0 shadow-md">
+                  <Heart className="w-7 h-7 text-white fill-current" />
+                </div>
+                <span className="ml-4 font-bold text-sm text-white truncate flex-1">Liked Songs</span>
+                <span className="text-xs text-zinc-400 font-mono mr-2">{likedSongs.length} tracks</span>
+                <div className="w-10 h-10 rounded-full bg-[#1DB954] text-black shadow-xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all transform scale-90 group-hover:scale-100 flex-shrink-0">
+                  <Play className="w-5 h-5 fill-current ml-0.5" />
+                </div>
               </div>
-              <div className="space-y-2 max-w-md mx-auto relative z-10">
-                <h2 className="text-2xl font-bold text-white tracking-tight">Your Music Feed is Blank</h2>
-                <p className="text-sm text-zinc-400 leading-relaxed">
-                  Start listening to any song from the search bar or collections below. Once you play a track, it will automatically save and populate your personalized home feed!
-                </p>
+
+              {/* Tile 2: Recently Played */}
+              {recentlyPlayed.length > 0 ? (
+                <div
+                  onClick={() => onPlayTrack(recentlyPlayed[0], { type: 'general' })}
+                  className="group flex items-center bg-[#282828]/80 hover:bg-[#383838] rounded-md overflow-hidden transition-all duration-200 cursor-pointer shadow-md hover:shadow-xl relative pr-4"
+                >
+                  <img src={recentlyPlayed[0].cover} alt="" className="w-16 h-16 object-cover flex-shrink-0" />
+                  <div className="ml-4 min-w-0 flex-1">
+                    <p className="font-bold text-sm text-white truncate">{recentlyPlayed[0].title}</p>
+                    <p className="text-xs text-zinc-400 truncate">{recentlyPlayed[0].artist}</p>
+                  </div>
+                  <div className="w-10 h-10 rounded-full bg-[#1DB954] text-black shadow-xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all transform scale-90 group-hover:scale-100 flex-shrink-0">
+                    <Play className="w-5 h-5 fill-current ml-0.5" />
+                  </div>
+                </div>
+              ) : (
+                <div
+                  onClick={() => handleMetingSearch('Tyler The Creator')}
+                  className="group flex items-center bg-[#282828]/80 hover:bg-[#383838] rounded-md overflow-hidden transition-all duration-200 cursor-pointer shadow-md hover:shadow-xl relative pr-4"
+                >
+                  <img src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&auto=format&fit=crop&q=80" alt="" className="w-16 h-16 object-cover flex-shrink-0" />
+                  <span className="ml-4 font-bold text-sm text-white truncate flex-1">Tyler, The Creator Radio</span>
+                  <div className="w-10 h-10 rounded-full bg-[#1DB954] text-black shadow-xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all transform scale-90 group-hover:scale-100 flex-shrink-0">
+                    <Play className="w-5 h-5 fill-current ml-0.5" />
+                  </div>
+                </div>
+              )}
+
+              {/* Tile 3: Kanye West */}
+              <div
+                onClick={() => handleMetingSearch('Kanye West')}
+                className="group flex items-center bg-[#282828]/80 hover:bg-[#383838] rounded-md overflow-hidden transition-all duration-200 cursor-pointer shadow-md hover:shadow-xl relative pr-4"
+              >
+                <img src="https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300&auto=format&fit=crop&q=80" alt="" className="w-16 h-16 object-cover flex-shrink-0" />
+                <span className="ml-4 font-bold text-sm text-white truncate flex-1">Kanye West Essentials</span>
+                <div className="w-10 h-10 rounded-full bg-[#1DB954] text-black shadow-xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all transform scale-90 group-hover:scale-100 flex-shrink-0">
+                  <Play className="w-5 h-5 fill-current ml-0.5" />
+                </div>
+              </div>
+
+              {/* Tile 4: Malcolm Todd */}
+              <div
+                onClick={() => handleMetingSearch('Malcolm Todd')}
+                className="group flex items-center bg-[#282828]/80 hover:bg-[#383838] rounded-md overflow-hidden transition-all duration-200 cursor-pointer shadow-md hover:shadow-xl relative pr-4"
+              >
+                <img src="https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300&auto=format&fit=crop&q=80" alt="" className="w-16 h-16 object-cover flex-shrink-0" />
+                <span className="ml-4 font-bold text-sm text-white truncate flex-1">Malcolm Todd Vault</span>
+                <div className="w-10 h-10 rounded-full bg-[#1DB954] text-black shadow-xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all transform scale-90 group-hover:scale-100 flex-shrink-0">
+                  <Play className="w-5 h-5 fill-current ml-0.5" />
+                </div>
+              </div>
+
+              {/* Tile 5: Don Toliver */}
+              <div
+                onClick={() => handleMetingSearch('Don Toliver')}
+                className="group flex items-center bg-[#282828]/80 hover:bg-[#383838] rounded-md overflow-hidden transition-all duration-200 cursor-pointer shadow-md hover:shadow-xl relative pr-4"
+              >
+                <img src="https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300&auto=format&fit=crop&q=80" alt="" className="w-16 h-16 object-cover flex-shrink-0" />
+                <span className="ml-4 font-bold text-sm text-white truncate flex-1">Don Toliver Radio</span>
+                <div className="w-10 h-10 rounded-full bg-[#1DB954] text-black shadow-xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all transform scale-90 group-hover:scale-100 flex-shrink-0">
+                  <Play className="w-5 h-5 fill-current ml-0.5" />
+                </div>
+              </div>
+
+              {/* Tile 6: Frank Ocean & SZA */}
+              <div
+                onClick={() => handleMetingSearch('Frank Ocean SZA')}
+                className="group flex items-center bg-[#282828]/80 hover:bg-[#383838] rounded-md overflow-hidden transition-all duration-200 cursor-pointer shadow-md hover:shadow-xl relative pr-4"
+              >
+                <img src="https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=300&auto=format&fit=crop&q=80" alt="" className="w-16 h-16 object-cover flex-shrink-0" />
+                <span className="ml-4 font-bold text-sm text-white truncate flex-1">Frank Ocean & SZA Mix</span>
+                <div className="w-10 h-10 rounded-full bg-[#1DB954] text-black shadow-xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all transform scale-90 group-hover:scale-100 flex-shrink-0">
+                  <Play className="w-5 h-5 fill-current ml-0.5" />
+                </div>
               </div>
             </div>
-          ) : (
-            /* IF USER HAS LISTENED TO SONGS - SHOW SAVED HISTORY & RECOMMENDATIONS */
-            <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-[#1DB954]/20 via-[#181818] to-zinc-950 border border-[#1DB954]/30 shadow-2xl relative overflow-hidden space-y-6">
-              <div className="absolute top-0 right-0 w-80 h-80 bg-[#1DB954]/10 rounded-full blur-3xl pointer-events-none" />
+          </div>
 
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
-                <div className="space-y-1">
-                  <div className="flex items-center space-x-2 text-xs font-bold text-[#1DB954]">
-                    <Disc3 className="w-4 h-4 animate-spin" />
-                    <span>Personalized Sound Engine</span>
-                  </div>
-                  <h2 className="text-2xl font-black text-white tracking-tight">
-                    Saved Music History
-                  </h2>
-                  <p className="text-xs text-zinc-300">
-                    Inspired by your affinity for <span className="text-[#1DB954] font-bold">{topListenedArtist}</span>.
-                  </p>
-                </div>
-
-                <button
-                  onClick={() => handleMetingSearch(topListenedArtist)}
-                  className="px-5 py-2.5 rounded-full bg-[#1DB954] hover:bg-[#1ed760] text-black font-extrabold text-xs shadow-lg shadow-[#1DB954]/20 transition-all flex items-center space-x-2 self-start sm:self-auto cursor-pointer"
-                >
-                  <Radio className="w-4 h-4" />
-                  <span>Launch {topListenedArtist.split(' ')[0]} Radio</span>
-                </button>
+          {/* SPOTIFY SECTION 1: RECENTLY PLAYED */}
+          {recentlyPlayed.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold text-white hover:underline cursor-pointer">
+                  Recently played
+                </h3>
+                <span className="text-xs text-zinc-400 font-bold hover:underline cursor-pointer">Show all</span>
               </div>
 
-              {/* SAVED LISTENED TRACKS GRID */}
-              <div className="space-y-3 relative z-10 pt-2 border-t border-zinc-800">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-zinc-400 block">
-                    Recently Played Tracks ({recentlyPlayed.length})
-                  </span>
-                  <span className="text-[11px] text-[#1DB954] font-mono">Auto-Saved</span>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5">
-                  {recentlyPlayed.map((track, i) => {
-                    const isCurrentlyPlaying = currentTrack?.id === track.id && isPlaying;
-                    return (
-                      <div
-                        key={`saved-${track.id}-${i}`}
-                        onClick={() => onPlayTrack(track, { type: 'general' })}
-                        className="group/saved p-3 rounded-2xl bg-[#181818] hover:bg-[#282828] border border-zinc-800 hover:border-[#1DB954]/50 cursor-pointer transition-all duration-300 flex flex-col justify-between space-y-2 shadow-lg"
-                      >
-                        <div className="relative aspect-square w-full rounded-xl overflow-hidden bg-zinc-900">
-                          <img
-                            src={track.cover}
-                            alt={track.title}
-                            className="w-full h-full object-cover group-hover/saved:scale-105 transition-transform duration-300"
-                          />
-                          <div className={`absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity ${isCurrentlyPlaying ? 'opacity-100' : 'opacity-0 group-hover/saved:opacity-100'}`}>
-                            <div className="w-10 h-10 rounded-full bg-[#1DB954] text-black flex items-center justify-center shadow-lg transform group-hover/saved:scale-110 transition-transform">
-                              {isCurrentlyPlaying ? (
-                                <Pause className="w-5 h-5 fill-current" />
-                              ) : (
-                                <Play className="w-5 h-5 fill-current ml-0.5" />
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="min-w-0">
-                          <p className="text-xs font-bold text-white group-hover/saved:text-[#1DB954] transition-colors truncate">
-                            {track.title}
-                          </p>
-                          <p className="text-[11px] text-zinc-400 truncate mt-0.5">{track.artist}</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                {recentlyPlayed.slice(0, 5).map((track, i) => {
+                  const isCurrentlyPlaying = currentTrack?.id === track.id && isPlaying;
+                  return (
+                    <div
+                      key={`rec-${track.id}-${i}`}
+                      onClick={() => onPlayTrack(track, { type: 'general' })}
+                      className="group bg-[#181818] hover:bg-[#282828] p-3.5 rounded-xl transition-all duration-300 cursor-pointer relative border border-transparent hover:border-zinc-800 flex flex-col justify-between shadow-lg"
+                    >
+                      <div className="relative aspect-square w-full rounded-md overflow-hidden bg-zinc-900 shadow-md">
+                        <img
+                          src={track.cover}
+                          alt={track.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                        <div
+                          className={`absolute bottom-2 right-2 w-11 h-11 rounded-full bg-[#1DB954] text-black shadow-xl shadow-black/60 flex items-center justify-center transition-all duration-200 transform ${
+                            isCurrentlyPlaying
+                              ? 'opacity-100 translate-y-0 scale-100'
+                              : 'opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 hover:scale-105'
+                          }`}
+                        >
+                          {isCurrentlyPlaying ? (
+                            <Pause className="w-5 h-5 fill-current" />
+                          ) : (
+                            <Play className="w-5 h-5 fill-current ml-0.5" />
+                          )}
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
+
+                      <div className="mt-3">
+                        <p className="font-bold text-sm text-white group-hover:text-[#1DB954] transition-colors truncate">
+                          {track.title}
+                        </p>
+                        <p className="text-xs text-zinc-400 truncate mt-1">{track.artist}</p>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
 
-          {/* Essential Featured Artist Vaults */}
+          {/* SPOTIFY SECTION 2: MADE FOR YOU & VAULTS */}
           {EDITORS_PICKS_ALBUMS.length > 0 && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="flex items-center space-x-2 text-xs font-bold text-[#1DB954]">
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>Curated Vaults</span>
-                  </div>
-                  <h2 className="text-xl font-bold text-white">Essential Artist Collections</h2>
+                  <h3 className="text-xl font-bold text-white hover:underline cursor-pointer">
+                    Made For You
+                  </h3>
+                  <p className="text-xs text-zinc-400 mt-0.5">Custom vaults curated from Tyler, Kanye, Malcolm Todd & Don Toliver</p>
                 </div>
-                <span className="text-xs text-zinc-400 hidden sm:inline">Kanye • Malcolm Todd • Tyler • Don Toliver</span>
+                <span className="text-xs text-zinc-400 font-bold hover:underline cursor-pointer">Show all</span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-4">
                 {EDITORS_PICKS_ALBUMS.map((album) => (
                   <div
                     key={album.id}
-                    className="group relative rounded-2xl p-4 bg-[#181818] border border-zinc-800 hover:border-[#1DB954]/50 transition-all hover:bg-[#282828] flex flex-col justify-between space-y-3 shadow-xl"
+                    className="group bg-[#181818] hover:bg-[#282828] p-4 rounded-xl transition-all duration-300 cursor-pointer relative border border-transparent hover:border-zinc-800 flex flex-col justify-between shadow-lg"
                   >
                     <div className="space-y-3">
-                      <div className="aspect-square w-full rounded-xl overflow-hidden bg-zinc-900 relative">
+                      <div className="relative aspect-square w-full rounded-md overflow-hidden bg-zinc-900 shadow-md">
                         <img
                           src={album.cover}
                           alt={album.title}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                         />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-                        <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
-                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-black bg-[#1DB954] px-2 py-0.5 rounded-full">
-                            {album.artist}
-                          </span>
-                          <span className="text-[10px] text-zinc-300 font-mono">{album.year}</span>
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (album.tracks.length > 0) {
+                              handlePlayAlbumTrack(album, album.tracks[0].title);
+                            }
+                          }}
+                          className="absolute bottom-2 right-2 w-11 h-11 rounded-full bg-[#1DB954] text-black shadow-xl shadow-black/60 flex items-center justify-center opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 hover:scale-105"
+                          title="Play Album"
+                        >
+                          <Play className="w-5 h-5 fill-current ml-0.5" />
                         </div>
                       </div>
 
                       <div>
-                        <h3 className="text-sm font-bold text-white group-hover:text-[#1DB954] transition-colors truncate">
+                        <h4 className="font-bold text-sm text-white group-hover:text-[#1DB954] transition-colors truncate">
                           {album.title}
-                        </h3>
-                        <p className="text-[11px] text-zinc-400 line-clamp-2 mt-0.5">{album.description}</p>
+                        </h4>
+                        <p className="text-xs text-zinc-400 line-clamp-2 mt-1 leading-snug">
+                          {album.description}
+                        </p>
                       </div>
                     </div>
 
-                    {/* Album Tracks Quick Launcher */}
-                    <div className="pt-2 border-t border-zinc-800 space-y-1">
-                      <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-1">Featured Tracks</span>
-                      {album.tracks.slice(0, 3).map((track, tIdx) => (
+                    {/* Album Track List Quick Preview */}
+                    <div className="mt-3 pt-2 border-t border-zinc-800/80 space-y-1">
+                      {album.tracks.slice(0, 2).map((track, tIdx) => (
                         <button
                           key={tIdx}
                           onClick={() => handlePlayAlbumTrack(album, track.title)}
-                          className="w-full flex items-center justify-between p-1.5 rounded-lg hover:bg-zinc-800 text-left transition-colors text-[11px] group/trk"
+                          className="w-full flex items-center justify-between p-1 rounded hover:bg-zinc-800/80 text-left transition-colors text-[11px] group/trk"
                         >
-                          <div className="flex items-center space-x-2 truncate">
-                            <Play className="w-3 h-3 text-[#1DB954] fill-current flex-shrink-0 group-hover/trk:scale-110 transition-transform" />
-                            <span className="text-zinc-300 group-hover/trk:text-white font-medium truncate">{track.title}</span>
+                          <div className="flex items-center space-x-1.5 truncate">
+                            <Play className="w-2.5 h-2.5 text-[#1DB954] fill-current flex-shrink-0" />
+                            <span className="text-zinc-300 group-hover/trk:text-white truncate">{track.title}</span>
                           </div>
-                          <span className="text-[9px] font-mono text-zinc-500">{track.duration}</span>
                         </button>
                       ))}
                     </div>
@@ -560,14 +696,17 @@ export const MusicView: React.FC<MusicViewProps> = ({
             </div>
           )}
 
-          {/* Searchable Songs Engine */}
-          <div className="space-y-4">
+          {/* SPOTIFY TRACK DISCOVERY & TABLE VIEW */}
+          <div className="space-y-4 pt-2">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <h2 className="text-lg font-bold text-white flex items-center space-x-2">
-                <Search className="w-4 h-4 text-[#1DB954]" />
-                <span>Search & Discover Tracks</span>
-              </h2>
+              <div>
+                <h3 className="text-xl font-bold text-white flex items-center space-x-2">
+                  <span>Popular Tracks & Stream Search</span>
+                </h3>
+                <p className="text-xs text-zinc-400">Search any track or artist on Spotify catalog</p>
+              </div>
 
+              {/* Spotify Search Input */}
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -580,22 +719,22 @@ export const MusicView: React.FC<MusicViewProps> = ({
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Artist or song name..."
-                    className="w-full px-3 py-2 pl-8 bg-[#181818] border border-zinc-800 rounded-full text-xs text-white focus:outline-none focus:border-[#1DB954]"
+                    placeholder="What do you want to play?"
+                    className="w-full px-4 py-2 pl-9 bg-[#242424] hover:bg-[#2a2a2a] border border-transparent focus:border-[#1DB954] rounded-full text-xs text-white placeholder-zinc-400 focus:outline-none transition-colors"
                   />
-                  <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-3" />
+                  <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-2.5" />
                 </div>
                 <button
                   type="submit"
                   disabled={isSearching}
-                  className="px-4 py-2 bg-[#1DB954] text-black font-extrabold text-xs rounded-full hover:bg-[#1ed760] disabled:opacity-50 transition-all cursor-pointer"
+                  className="px-4 py-2 bg-[#1DB954] hover:bg-[#1ed760] text-black font-bold text-xs rounded-full disabled:opacity-50 transition-all cursor-pointer"
                 >
                   {isSearching ? 'Searching...' : 'Search'}
                 </button>
               </form>
             </div>
 
-            {/* Quick Artist Tags */}
+            {/* Spotify Artist Filter Chips */}
             <div className="flex items-center space-x-2 overflow-x-auto pb-1 scrollbar-none">
               {['Tyler The Creator', 'Malcolm Todd', 'Kanye West', 'Don Toliver', 'Frank Ocean', 'Kendrick Lamar', 'SZA', 'Travis Scott'].map((artist) => (
                 <button
@@ -604,78 +743,93 @@ export const MusicView: React.FC<MusicViewProps> = ({
                     setSearchQuery(artist);
                     handleMetingSearch(artist);
                   }}
-                  className="px-3.5 py-1.5 rounded-full bg-[#181818] border border-zinc-800 text-[11px] text-zinc-300 hover:text-white hover:border-[#1DB954] transition-colors whitespace-nowrap cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-full bg-[#2a2a2a] hover:bg-[#383838] text-[11px] font-semibold text-zinc-300 hover:text-white transition-colors whitespace-nowrap cursor-pointer"
                 >
                   {artist}
                 </button>
               ))}
             </div>
 
-            {/* Track Results List */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {(metingTracks.length > 0 ? metingTracks : MUSIC_TRACKS).map((track) => {
-                const isCurrentlyPlaying = currentTrack?.id === track.id && isPlaying;
-                const liked = isLiked(track);
+            {/* Spotify Style Song Table List */}
+            <div className="bg-[#181818] rounded-xl p-4 border border-zinc-800/80 shadow-xl overflow-x-auto">
+              {/* Table Header */}
+              <div className="grid grid-cols-12 text-[11px] font-bold text-zinc-400 uppercase tracking-wider pb-3 border-b border-zinc-800 px-3">
+                <span className="col-span-1">#</span>
+                <span className="col-span-6 sm:col-span-5">Title</span>
+                <span className="col-span-3 sm:col-span-4 hidden sm:block">Album</span>
+                <span className="col-span-5 sm:col-span-2 text-right">Actions</span>
+              </div>
 
-                return (
-                  <div
-                    key={track.id}
-                    className={`group p-3 rounded-2xl bg-[#181818] border transition-all flex items-center justify-between space-x-3 shadow-md ${
-                      isCurrentlyPlaying
-                        ? 'border-[#1DB954] bg-[#181818]'
-                        : 'border-zinc-800 hover:border-zinc-700 hover:bg-[#282828]'
-                    }`}
-                  >
+              {/* Table Rows */}
+              <div className="divide-y divide-zinc-800/40">
+                {(metingTracks.length > 0 ? metingTracks : MUSIC_TRACKS).map((track, index) => {
+                  const isCurrentlyPlaying = currentTrack?.id === track.id && isPlaying;
+                  const liked = isLiked(track);
+
+                  return (
                     <div
+                      key={track.id}
                       onClick={() => onPlayTrack(track, { type: 'general' })}
-                      className="flex items-center space-x-3 min-w-0 flex-1 cursor-pointer"
+                      className={`grid grid-cols-12 items-center py-2.5 px-3 rounded-md hover:bg-[#2a2a2a] group transition-colors cursor-pointer ${
+                        isCurrentlyPlaying ? 'bg-[#2a2a2a]' : ''
+                      }`}
                     >
-                      <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-zinc-900 flex-shrink-0">
-                        <img src={track.cover} alt={track.title} className="w-full h-full object-cover" />
-                        <div className={`absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity ${isCurrentlyPlaying ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                          {isCurrentlyPlaying ? (
-                            <Pause className="w-5 h-5 text-[#1DB954] fill-current" />
-                          ) : (
-                            <Play className="w-5 h-5 text-white fill-current ml-0.5" />
-                          )}
+                      {/* # or Play button */}
+                      <div className="col-span-1 text-xs font-mono text-zinc-400 flex items-center">
+                        {isCurrentlyPlaying ? (
+                          <div className="flex items-end space-x-0.5 h-3">
+                            <span className="w-0.5 h-3 bg-[#1DB954] animate-bounce" />
+                            <span className="w-0.5 h-2 bg-[#1DB954] animate-bounce delay-100" />
+                            <span className="w-0.5 h-3.5 bg-[#1DB954] animate-bounce delay-200" />
+                          </div>
+                        ) : (
+                          <>
+                            <span className="group-hover:hidden">{index + 1}</span>
+                            <Play className="w-4 h-4 text-white fill-current hidden group-hover:block" />
+                          </>
+                        )}
+                      </div>
+
+                      {/* Track Thumbnail & Title */}
+                      <div className="col-span-6 sm:col-span-5 flex items-center space-x-3 min-w-0 pr-2">
+                        <img src={track.cover} alt="" className="w-10 h-10 rounded object-cover flex-shrink-0 shadow" />
+                        <div className="min-w-0">
+                          <p className={`text-xs font-bold truncate ${isCurrentlyPlaying ? 'text-[#1DB954]' : 'text-white group-hover:text-white'}`}>
+                            {track.title}
+                          </p>
+                          <p className="text-[11px] text-zinc-400 truncate">{track.artist}</p>
                         </div>
                       </div>
 
-                      <div className="truncate">
-                        <h4 className="text-xs font-bold text-white group-hover:text-[#1DB954] transition-colors truncate">
-                          {track.title}
-                        </h4>
-                        <p className="text-[10px] text-zinc-400 truncate mt-0.5">{track.artist}</p>
-                        <span className="text-[9px] font-mono text-zinc-500 block truncate">{track.album}</span>
+                      {/* Album Name */}
+                      <div className="col-span-3 sm:col-span-4 hidden sm:block truncate text-xs text-zinc-400 pr-2">
+                        {track.album}
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="col-span-5 sm:col-span-2 flex items-center justify-end space-x-2" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => toggleLikeSong(track)}
+                          className={`p-1.5 transition-colors cursor-pointer ${
+                            liked ? 'text-[#1DB954]' : 'text-zinc-500 hover:text-white'
+                          }`}
+                          title={liked ? 'Unlike' : 'Like'}
+                        >
+                          <Heart className={`w-4 h-4 ${liked ? 'fill-current' : ''}`} />
+                        </button>
+
+                        <button
+                          onClick={() => setTrackForPlaylist(track)}
+                          className="p-1.5 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                          title="Add to Playlist"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
-
-                    <div className="flex items-center space-x-1.5">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setTrackForPlaylist(track);
-                        }}
-                        className="px-2.5 py-1.5 rounded-full bg-[#1DB954]/10 hover:bg-[#1DB954]/20 text-[#1DB954] border border-[#1DB954]/30 text-xs font-bold transition-all flex items-center space-x-1 cursor-pointer"
-                        title="Add to Playlist"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Add</span>
-                      </button>
-
-                      <button
-                        onClick={() => toggleLikeSong(track)}
-                        className={`p-1.5 rounded-full transition-colors cursor-pointer ${
-                          liked ? 'text-[#1DB954] bg-[#1DB954]/10' : 'text-zinc-500 hover:text-white'
-                        }`}
-                        title={liked ? 'Unlike' : 'Like'}
-                      >
-                        <Heart className={`w-4 h-4 ${liked ? 'fill-current' : ''}`} />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>

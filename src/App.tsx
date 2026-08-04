@@ -206,6 +206,15 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
+  const normalizedCurrentUsername = (userProfile.username || '').trim().toLowerCase();
+  const isCurrentUserBanned = Boolean(
+    normalizedCurrentUsername &&
+    (
+      bannedUsersList.some(u => u.trim().toLowerCase() === normalizedCurrentUsername) ||
+      timedOutUsersList.some(t => t.name.trim().toLowerCase() === normalizedCurrentUsername)
+    )
+  );
+
   // Auto-launch Onboarding Guided Tour & Profile Setup for first-time users after boot screen
   useEffect(() => {
     if (!showBootScreen) {
@@ -853,15 +862,17 @@ export default function App() {
         </div>
       )}
 
-      {/* Appeal Button for All Users */}
-      <button
-        onClick={() => setIsBanAppealOpen(true)}
-        className="fixed bottom-20 right-5 z-30 px-3 py-1.5 rounded-xl bg-zinc-900/90 hover:bg-amber-950 text-amber-300 font-mono text-[11px] font-bold border border-amber-500/40 shadow-lg backdrop-blur-md flex items-center space-x-1.5 transition-all hover:scale-105 cursor-pointer"
-        title="Submit Ban / Timeout Appeal Petition"
-      >
-        <FileText className="w-3.5 h-3.5 text-amber-400" />
-        <span>Appeal Ban</span>
-      </button>
+      {/* Appeal Button for Banned or Timed Out Users Only */}
+      {isCurrentUserBanned && (
+        <button
+          onClick={() => setIsBanAppealOpen(true)}
+          className="fixed bottom-20 right-5 z-30 px-3.5 py-2 rounded-2xl bg-amber-500 hover:bg-amber-400 text-black font-mono text-xs font-extrabold border-2 border-amber-300 shadow-[0_0_25px_rgba(245,158,11,0.6)] backdrop-blur-md flex items-center space-x-2 transition-all hover:scale-105 active:scale-95 cursor-pointer animate-bounce"
+          title="Submit Ban / Timeout Appeal Petition"
+        >
+          <FileText className="w-4 h-4 text-black" />
+          <span>Appeal Ban</span>
+        </button>
+      )}
 
       {/* Profile Edit Modal */}
       <ProfileModal

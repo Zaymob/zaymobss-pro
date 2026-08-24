@@ -20,11 +20,19 @@ import {
   Bookmark,
   Layers,
   Zap,
+  Cpu,
+  Shield,
+  Radio,
+  Check,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ProxyBrowserTab } from '../types';
 import { formatProxyDestination, getDisplayDomain } from '../proxy/url-utils';
 import { getProxiedUrl, registerScramjetWorker } from '../proxy/scramjet';
+import { getUltravioletProxiedUrl, registerUltravioletWorker } from '../proxy/ultraviolet';
+import { getFlipgridProxiedUrl } from '../proxy/flipgrid';
+
+export type ProxyEngine = 'ultraviolet' | 'scramjet' | 'flipgrid';
 
 interface ProxyTabProps {
   initialUrl?: string;
@@ -37,84 +45,72 @@ const DEFAULT_BOOKMARKS = [
     url: 'https://www.youtube.com',
     iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/0/09/YouTube_full-color_icon_%282017%29.svg',
     category: 'Media',
-    color: 'from-red-600 to-red-800',
   },
   {
     name: 'TikTok',
     url: 'https://www.tiktok.com',
     iconUrl: 'https://www.google.com/s2/favicons?domain=tiktok.com&sz=128',
     category: 'Social',
-    color: 'from-cyan-600 to-pink-600',
   },
   {
     name: 'Bloxd.io',
     url: 'https://bloxd.io',
     iconUrl: 'https://www.google.com/s2/favicons?domain=bloxd.io&sz=128',
     category: 'Voxel Game',
-    color: 'from-emerald-600 to-teal-800',
   },
   {
     name: 'Discord',
     url: 'https://discord.com',
     iconUrl: 'https://www.google.com/s2/favicons?domain=discord.com&sz=128',
     category: 'Social',
-    color: 'from-indigo-600 to-blue-700',
   },
   {
     name: 'Reddit',
     url: 'https://www.reddit.com',
     iconUrl: 'https://upload.wikimedia.org/wikipedia/en/b/bd/Reddit_Logo_Icon.svg',
     category: 'Community',
-    color: 'from-orange-600 to-red-600',
   },
   {
     name: 'GitHub',
     url: 'https://github.com',
     iconUrl: 'https://www.google.com/s2/favicons?domain=github.com&sz=128',
     category: 'Code',
-    color: 'from-zinc-700 to-zinc-900',
   },
   {
     name: 'Twitch',
     url: 'https://www.twitch.tv',
     iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/d/d3/Twitch_Glitch_Logo_Purple.svg',
     category: 'Streaming',
-    color: 'from-purple-600 to-indigo-700',
   },
   {
     name: 'Spotify',
     url: 'https://open.spotify.com',
     iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/1/19/Spotify_logo_without_text.svg',
     category: 'Music',
-    color: 'from-emerald-500 to-green-700',
   },
   {
     name: 'ChatGPT',
     url: 'https://chatgpt.com',
     iconUrl: 'https://www.google.com/s2/favicons?domain=openai.com&sz=128',
     category: 'AI',
-    color: 'from-teal-600 to-emerald-800',
   },
   {
     name: 'DuckDuckGo',
     url: 'https://duckduckgo.com',
     iconUrl: 'https://www.google.com/s2/favicons?domain=duckduckgo.com&sz=128',
     category: 'Search',
-    color: 'from-orange-500 to-amber-700',
   },
   {
     name: 'Wikipedia',
     url: 'https://www.wikipedia.org',
     iconUrl: 'https://www.google.com/s2/favicons?domain=wikipedia.org&sz=128',
     category: 'Wiki',
-    color: 'from-zinc-600 to-zinc-800',
   },
   {
     name: 'Minecraft Classic',
     url: 'https://classic.minecraft.net',
     iconUrl: 'https://www.google.com/s2/favicons?domain=minecraft.net&sz=128',
     category: 'Game',
-    color: 'from-green-600 to-lime-800',
   },
 ];
 
@@ -136,13 +132,14 @@ export const ProxyTab: React.FC<ProxyTabProps> = ({ initialUrl = '', onNavigateH
   });
 
   const [activeTabId, setActiveTabId] = useState<string>('tab-1');
+  const [proxyEngine, setProxyEngine] = useState<ProxyEngine>('ultraviolet');
   const [proxyMode, setProxyMode] = useState<'server' | 'direct'>('server');
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  // Initialize and clear any stale workers on mount
+  // Initialize Ultraviolet worker on mount
   useEffect(() => {
-    registerScramjetWorker().catch(() => {});
+    registerUltravioletWorker().catch(() => {});
   }, []);
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
@@ -164,13 +161,11 @@ export const ProxyTab: React.FC<ProxyTabProps> = ({ initialUrl = '', onNavigateH
 
     let targetUrl = rawTarget.trim();
 
-    // Check if user input is a search query or URL
     if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
       if (targetUrl.includes('.') && !targetUrl.includes(' ')) {
         targetUrl = 'https://' + targetUrl;
       } else {
-        // Search query -> DuckDuckGo
-        targetUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(targetUrl)}`;
+        targetUrl = `https://www.bing.com/search?q=${encodeURIComponent(targetUrl)}`;
       }
     }
 
@@ -207,7 +202,6 @@ export const ProxyTab: React.FC<ProxyTabProps> = ({ initialUrl = '', onNavigateH
   const handleCloseTab = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (tabs.length === 1) {
-      // Reset the single tab to home
       setTabs([
         {
           id: 'tab-1',
@@ -281,13 +275,25 @@ export const ProxyTab: React.FC<ProxyTabProps> = ({ initialUrl = '', onNavigateH
     });
   };
 
-  // Determine iframe source URL based on proxy mode
+  // Determine iframe source URL based on selected proxy engine
   const getIframeSrc = () => {
+    if (proxyEngine === 'flipgrid') {
+      if (!activeTab.url || activeTab.url === 'https://flipgrid.gq') {
+        return 'https://flipgrid.gq';
+      }
+      return getFlipgridProxiedUrl(activeTab.url);
+    }
+
     if (!activeTab.url) return 'about:blank';
-    if (proxyMode === 'server') {
+    if (proxyMode === 'direct') {
+      return activeTab.url;
+    }
+
+    if (proxyEngine === 'ultraviolet') {
+      return getUltravioletProxiedUrl(activeTab.url);
+    } else {
       return getProxiedUrl(activeTab.url);
     }
-    return activeTab.url;
   };
 
   return (
@@ -296,24 +302,35 @@ export const ProxyTab: React.FC<ProxyTabProps> = ({ initialUrl = '', onNavigateH
         isExpanded ? 'fixed inset-4 z-50 rounded-2xl' : 'w-full h-[calc(100vh-140px)] min-h-[600px]'
       }`}
     >
-      {/* Top Browser Chrome Bar */}
-      <div className="bg-zinc-900 border-b border-zinc-800/80 px-4 py-2.5 flex flex-col space-y-2 select-none">
-        {/* Tabs Bar */}
-        <div className="flex items-center space-x-2 overflow-x-auto no-scrollbar">
+      {/* Top Chrome Header Bar */}
+      <div className="bg-[#202124] border-b border-zinc-800 px-3 py-2 flex flex-col space-y-2 select-none">
+        {/* Window Dots & Tab Controls Bar */}
+        <div className="flex items-center space-x-3 overflow-x-auto no-scrollbar">
+          {/* macOS / Chrome Window Control Dots */}
+          <div className="flex items-center space-x-1.5 pl-1 pr-2 flex-shrink-0">
+            <span className="w-3 h-3 rounded-full bg-[#ff5f56] inline-block border border-black/20" />
+            <span className="w-3 h-3 rounded-full bg-[#ffbd2e] inline-block border border-black/20" />
+            <span className="w-3 h-3 rounded-full bg-[#27c93f] inline-block border border-black/20" />
+          </div>
+
           {tabs.map((tab) => {
             const isActive = tab.id === activeTabId;
             return (
               <div
                 key={tab.id}
                 onClick={() => setActiveTabId(tab.id)}
-                className={`group relative flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all max-w-[200px] min-w-[120px] ${
+                className={`group relative flex items-center space-x-2 px-3.5 py-1.5 rounded-t-xl text-xs font-medium cursor-pointer transition-all max-w-[220px] min-w-[130px] ${
                   isActive
-                    ? 'bg-zinc-800 text-cyan-400 border border-zinc-700/80 shadow-md'
-                    : 'bg-zinc-950/60 text-zinc-400 hover:bg-zinc-850 hover:text-zinc-200 border border-transparent'
+                    ? 'bg-[#323639] text-white border-t border-x border-zinc-700/80 shadow-md'
+                    : 'bg-[#18191c]/70 text-zinc-400 hover:bg-[#282a2d] hover:text-zinc-200'
                 }`}
               >
-                <Globe className={`w-3.5 h-3.5 flex-shrink-0 ${isActive ? 'text-cyan-400' : 'text-zinc-500'}`} />
-                <span className="truncate flex-1">{tab.title || 'New Tab'}</span>
+                <img
+                  src="https://www.google.com/favicon.ico"
+                  alt="Google"
+                  className="w-3.5 h-3.5 flex-shrink-0"
+                />
+                <span className="truncate flex-1">{tab.title || 'Google Search'}</span>
                 <button
                   onClick={(e) => handleCloseTab(tab.id, e)}
                   className="opacity-60 hover:opacity-100 p-0.5 rounded-md hover:bg-zinc-700 text-zinc-400 hover:text-white transition-opacity"
@@ -326,16 +343,16 @@ export const ProxyTab: React.FC<ProxyTabProps> = ({ initialUrl = '', onNavigateH
 
           <button
             onClick={() => handleCreateNewTab('')}
-            className="p-1.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors border border-zinc-700/50"
+            className="p-1.5 rounded-lg bg-[#282a2d] hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors"
             title="New Tab"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5" />
           </button>
         </div>
 
-        {/* Address Bar Controls */}
-        <div className="flex items-center space-x-2">
-          {/* Navigation Controls */}
+        {/* Address Bar & Navigation Controls */}
+        <div className="flex items-center space-x-2 flex-wrap gap-y-2">
+          {/* Back, Forward, Reload, Home Controls */}
           <div className="flex items-center space-x-1">
             <button
               onClick={handleGoBack}
@@ -356,64 +373,109 @@ export const ProxyTab: React.FC<ProxyTabProps> = ({ initialUrl = '', onNavigateH
             <button
               onClick={handleReload}
               className={`p-2 rounded-xl bg-zinc-800/60 hover:bg-zinc-700 text-zinc-300 transition-all ${
-                activeTab.loading ? 'animate-spin text-cyan-400' : ''
+                activeTab.loading ? 'animate-spin text-zinc-100' : ''
               }`}
               title="Reload"
             >
               <RotateCw className="w-4 h-4" />
             </button>
-            {onNavigateHome && (
-              <button
-                onClick={() => {
-                  updateActiveTab({ url: '', inputUrl: '', title: 'New Tab' });
-                }}
-                className="p-2 rounded-xl bg-zinc-800/60 hover:bg-zinc-700 text-zinc-300 transition-all"
-                title="Proxy Home"
-              >
-                <Home className="w-4 h-4" />
-              </button>
-            )}
+            <button
+              onClick={() => {
+                updateActiveTab({ url: '', inputUrl: '', title: 'New Tab' });
+              }}
+              className="p-2 rounded-xl bg-zinc-800/60 hover:bg-zinc-700 text-zinc-300 transition-all"
+              title="Proxy Home"
+            >
+              <Home className="w-4 h-4" />
+            </button>
           </div>
 
-          {/* URL Input Bar */}
+          {/* URL / Search Bar */}
           <form
             onSubmit={(e) => {
               e.preventDefault();
               navigateActiveTab(activeTab.inputUrl);
             }}
-            className="flex-1 flex items-center space-x-2 bg-zinc-950 px-3 py-1.5 rounded-2xl border border-zinc-800 focus-within:border-cyan-500/60 transition-all shadow-inner"
+            className="flex-1 min-w-[240px] flex items-center space-x-2 bg-zinc-950 px-3 py-1.5 rounded-2xl border border-zinc-800 focus-within:border-zinc-600 transition-all"
           >
-            <Lock className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
+            <Lock className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />
             <input
               type="text"
               value={activeTab.inputUrl}
               onChange={(e) => updateActiveTab({ inputUrl: e.target.value })}
-              placeholder="Search web or enter URL (e.g. youtube.com, wikipedia.org)..."
+              placeholder="Search web or enter address (e.g. youtube.com, wikipedia.org)..."
               className="flex-1 bg-transparent text-xs text-white placeholder-zinc-500 focus:outline-none"
             />
             <button
               type="submit"
-              className="px-3 py-1 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black text-xs font-bold transition-all shadow-md shadow-cyan-500/20"
+              className="px-3 py-1 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 text-xs font-bold transition-all"
             >
               Launch
             </button>
           </form>
 
-          {/* Engine Selector & Expand */}
-          <div className="flex items-center space-x-1.5">
+            <div className="flex items-center space-x-1.5 bg-zinc-900 p-1 rounded-xl border border-zinc-800">
             <button
-              onClick={() => setProxyMode(proxyMode === 'server' ? 'direct' : 'server')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all border flex items-center space-x-1.5 ${
-                proxyMode === 'server'
-                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-sm'
-                  : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+              onClick={() => {
+                setProxyEngine('ultraviolet');
+                if (activeTab.url) handleReload();
+              }}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                proxyEngine === 'ultraviolet'
+                  ? 'bg-zinc-800 text-white border border-zinc-700'
+                  : 'text-zinc-400 hover:text-white'
               }`}
-              title="Toggle Proxy Transport Mode"
+              title="Ultraviolet Proxy Engine"
             >
-              <Zap className="w-3.5 h-3.5 text-cyan-400" />
-              <span>{proxyMode === 'server' ? 'Server Proxy' : 'Direct Embed'}</span>
+              <Shield className="w-3.5 h-3.5" />
+              <span>Ultraviolet</span>
             </button>
 
+            <button
+              onClick={() => {
+                setProxyEngine('scramjet');
+                if (activeTab.url) handleReload();
+              }}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                proxyEngine === 'scramjet'
+                  ? 'bg-zinc-800 text-white border border-zinc-700'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+              title="Scramjet Proxy Engine"
+            >
+              <Zap className="w-3.5 h-3.5" />
+              <span>Scramjet</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setProxyEngine('flipgrid');
+                if (!activeTab.url || activeTab.url === 'about:blank') {
+                  updateActiveTab({
+                    url: 'https://flipgrid.gq',
+                    inputUrl: 'https://flipgrid.gq',
+                    title: 'flipgrid',
+                    loading: true,
+                    error: null,
+                  });
+                } else {
+                  handleReload();
+                }
+              }}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                proxyEngine === 'flipgrid'
+                  ? 'bg-zinc-800 text-white border border-zinc-700'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+              title="Flipgrid Proxy Engine"
+            >
+              <Radio className="w-3.5 h-3.5" />
+              <span>Flipgrid</span>
+            </button>
+          </div>
+
+          {/* External & Expand */}
+          <div className="flex items-center space-x-1.5">
             {activeTab.url && (
               <a
                 href={activeTab.url}
@@ -437,86 +499,91 @@ export const ProxyTab: React.FC<ProxyTabProps> = ({ initialUrl = '', onNavigateH
         </div>
       </div>
 
-      {/* Main Content Area */}
+      {/* Main Content Viewport */}
       <div className="flex-1 relative bg-zinc-950 overflow-hidden flex flex-col">
         {activeTab.loading && (
           <div className="absolute top-0 left-0 right-0 h-1 bg-zinc-800 z-30 overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-cyan-500 via-blue-500 to-cyan-400 animate-pulse w-full" />
+            <div className="h-full bg-amber-500 animate-pulse w-full" />
           </div>
         )}
 
         {!activeTab.url ? (
-          /* New Tab Home Screen */
-          <div className="flex-1 overflow-y-auto p-6 sm:p-10 space-y-8 max-w-5xl mx-auto w-full flex flex-col justify-center">
-            {/* Header Banner */}
-            <div className="text-center space-y-3">
-              <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-cyan-500/10 text-cyan-400 text-xs font-mono border border-cyan-500/20">
-                <Sparkles className="w-4 h-4" />
-                <span>Yunø High-Speed Scramjet Proxy Engine</span>
+          /* Google Search Homepage */
+          <div className="flex-1 overflow-y-auto p-6 sm:p-10 space-y-8 max-w-4xl mx-auto w-full flex flex-col items-center justify-center text-center select-none">
+            {/* Top Right Apps Indicator */}
+            <div className="w-full flex items-center justify-between text-xs text-zinc-400 font-sans px-2">
+              <span className="text-[11px] font-mono text-zinc-500">
+                Google Engine: <span className="text-amber-400 font-bold uppercase">{proxyEngine}</span>
+              </span>
+              <div className="flex items-center space-x-4">
+                <span className="hover:underline cursor-pointer">Gmail</span>
+                <span className="hover:underline cursor-pointer">Images</span>
+                <div className="w-8 h-8 rounded-full bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center text-zinc-200 cursor-pointer">
+                  <Layers className="w-4 h-4" />
+                </div>
               </div>
-              <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-                Yuno Web
-              </h1>
-              <p className="text-sm text-zinc-400 max-w-xl mx-auto">
-                Search the web or launch popular sites directly with zero tracking or restrictions.
-              </p>
             </div>
 
-            {/* Quick Launch Search Input */}
+            {/* Colorful Google Logo */}
+            <div className="pt-6 pb-2">
+              <h1 className="text-6xl sm:text-7xl font-bold tracking-tight font-sans">
+                <span className="text-[#4285F4]">G</span>
+                <span className="text-[#EA4335]">o</span>
+                <span className="text-[#FBBC05]">o</span>
+                <span className="text-[#4285F4]">g</span>
+                <span className="text-[#34A853]">l</span>
+                <span className="text-[#EA4335]">e</span>
+              </h1>
+            </div>
+
+            {/* Google Search Bar */}
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 navigateActiveTab(activeTab.inputUrl);
               }}
-              className="max-w-2xl mx-auto w-full flex items-center space-x-2 bg-zinc-900/90 p-2 rounded-2xl border border-zinc-800 shadow-2xl focus-within:border-cyan-500"
+              className="w-full max-w-2xl bg-[#202124] hover:bg-[#303134] focus-within:bg-[#303134] border border-zinc-700 focus-within:border-amber-500/60 rounded-full px-5 py-3 flex items-center space-x-3 shadow-xl transition-all"
             >
-              <Search className="w-5 h-5 text-cyan-400 ml-3 flex-shrink-0" />
+              <Search className="w-5 h-5 text-zinc-400 flex-shrink-0" />
               <input
                 type="text"
                 value={activeTab.inputUrl}
                 onChange={(e) => updateActiveTab({ inputUrl: e.target.value })}
-                placeholder="Enter web address or search terms..."
-                className="flex-1 bg-transparent px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none"
+                placeholder="Search Google or type a URL..."
+                className="flex-1 bg-transparent text-sm text-white placeholder-zinc-400 focus:outline-none"
               />
               <button
                 type="submit"
-                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-extrabold text-xs shadow-lg shadow-cyan-500/20 transition-all"
+                className="px-5 py-2 rounded-full bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs shadow-md transition-all flex-shrink-0"
               >
-                Search & Launch
+                Search
               </button>
             </form>
 
-            {/* Bookmarks Grid */}
-            <div className="space-y-4 pt-4">
-              <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
-                <div className="flex items-center space-x-2 text-xs font-mono font-bold text-zinc-400 uppercase tracking-wider">
-                  <Bookmark className="w-4 h-4 text-cyan-400" />
-                  <span>Popular Links</span>
-                </div>
-                <span className="text-[11px] font-mono text-zinc-500">Click to launch unblocked</span>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5">
-                {DEFAULT_BOOKMARKS.map((bookmark) => (
+            {/* Search Shortcuts Grid */}
+            <div className="w-full pt-6 space-y-4">
+              <div className="text-xs text-zinc-500 font-mono">Top Shortcuts</div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-2xl mx-auto">
+                {DEFAULT_BOOKMARKS.slice(0, 8).map((bm) => (
                   <button
-                    key={bookmark.name}
-                    onClick={() => navigateActiveTab(bookmark.url)}
-                    className="p-4 rounded-2xl bg-zinc-900/80 hover:bg-zinc-850 border border-zinc-800/80 hover:border-cyan-500/40 transition-all flex items-center space-x-3.5 group text-left shadow-lg hover:scale-[1.02]"
+                    key={bm.name}
+                    onClick={() => navigateActiveTab(bm.url)}
+                    className="p-3.5 rounded-2xl bg-[#202124] hover:bg-[#303134] border border-zinc-800 hover:border-amber-500/30 transition-all flex items-center space-x-3 text-left group cursor-pointer"
                   >
                     <img
-                      src={bookmark.iconUrl}
-                      alt={bookmark.name}
-                      className="w-8 h-8 rounded-xl object-contain bg-zinc-950 p-1 border border-zinc-800 flex-shrink-0 group-hover:scale-110 transition-transform"
+                      src={bm.iconUrl}
+                      alt={bm.name}
+                      className="w-6 h-6 rounded-lg object-contain bg-black/40 p-0.5 flex-shrink-0"
                       onError={(e) => {
                         (e.target as HTMLElement).style.display = 'none';
                       }}
                     />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-xs font-bold text-white group-hover:text-cyan-300 truncate">
-                        {bookmark.name}
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-zinc-200 group-hover:text-amber-400 truncate">
+                        {bm.name}
                       </div>
-                      <div className="text-[10px] font-mono text-zinc-500 truncate mt-0.5">
-                        {getDisplayDomain(bookmark.url)}
+                      <div className="text-[10px] text-zinc-500 truncate">
+                        {getDisplayDomain(bm.url)}
                       </div>
                     </div>
                   </button>
@@ -525,14 +592,14 @@ export const ProxyTab: React.FC<ProxyTabProps> = ({ initialUrl = '', onNavigateH
             </div>
           </div>
         ) : (
-          /* Active Proxied Web Frame */
+          /* Active Proxied Frame Viewport */
           <div className="relative flex-1 w-full h-full">
-            {activeTab.error ? (
+            {activeTab.error && (
               <div className="absolute inset-0 bg-zinc-950 flex flex-col items-center justify-center p-6 text-center z-20 space-y-4">
                 <div className="p-4 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">
                   <AlertTriangle className="w-8 h-8" />
                 </div>
-                <h3 className="text-xl font-extrabold text-white">Proxy Request Blocked or Refused</h3>
+                <h3 className="text-xl font-extrabold text-white">Proxy Request Blocked</h3>
                 <p className="text-xs text-zinc-400 max-w-md">{activeTab.error}</p>
                 <div className="flex items-center space-x-3 pt-2">
                   <button
@@ -541,17 +608,28 @@ export const ProxyTab: React.FC<ProxyTabProps> = ({ initialUrl = '', onNavigateH
                   >
                     Retry Loading
                   </button>
+                  <button
+                    onClick={() => {
+                      // Switch to another engine and retry
+                      const nextEngine = proxyEngine === 'ultraviolet' ? 'scramjet' : proxyEngine === 'scramjet' ? 'flipgrid' : 'ultraviolet';
+                      setProxyEngine(nextEngine);
+                      handleReload();
+                    }}
+                    className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold transition-all border border-zinc-700"
+                  >
+                    Try Alternative Engine
+                  </button>
                   <a
                     href={activeTab.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="px-5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black text-xs font-extrabold transition-all shadow-md"
+                    className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 text-xs font-extrabold transition-all"
                   >
-                    Open in New Tab
+                    Open Directly
                   </a>
                 </div>
               </div>
-            ) : null}
+            )}
 
             <iframe
               ref={iframeRef}
@@ -560,7 +638,9 @@ export const ProxyTab: React.FC<ProxyTabProps> = ({ initialUrl = '', onNavigateH
               onError={handleIframeError}
               className="w-full h-full border-none bg-white"
               title={activeTab.title}
-              sandbox="allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts allow-downloads"
+              allowFullScreen
+              allow="accelerometer; autoplay; camera; clipboard-read; clipboard-write; encrypted-media; fullscreen; geolocation; gyroscope; microphone; midi; payment; picture-in-picture; screen-wake-lock; speaker-selection; web-share; xr-spatial-tracking"
+              referrerPolicy="no-referrer"
             />
           </div>
         )}

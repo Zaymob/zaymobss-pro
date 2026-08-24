@@ -1,484 +1,229 @@
-import React, { useState, useEffect } from 'react';
-import { NavTab, MusicTrack } from '../types';
-import { WeatherWidget } from './WeatherWidget';
-import { BrandIcon } from './BrandIcon';
+import React, { useState } from 'react';
+import { NavTab } from '../types';
 import {
-  Image,
-  Sparkles,
-  Gamepad2,
-  Bot,
-  Tv,
-  Film,
-  Music,
-  MessageSquare,
-  Compass,
-  Check,
-  ChevronDown,
-  Star,
-  Flame,
-  Radio,
-  Sliders,
-  Sun,
-  Moon,
-  Search,
+  MagnifyingGlass as Search,
+  GameController as Gamepad2,
+  FilmStrip as Film,
+  Television as Tv,
+  ChatCircleText as MessageSquare,
   Globe,
-  ArrowRight,
-  Play,
-  Pause,
-  Headphones,
-} from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
-import autumnBg from '../assets/images/autumn_landscape_1785047200293.jpg';
-
-const CrossIcon = ({ className = "w-3.5 h-3.5" }: { className?: string }) => (
-  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
-    <path d="M10.5 2h3v6.5h6v3h-6V22h-3V11.5h-6v-3h6V2z" />
-  </svg>
-);
+  BookOpen,
+  ArrowClockwise as RotateCw,
+  LinkSimple as Link2,
+  MusicNotes as Music,
+  SlidersHorizontal as Sliders,
+  ArrowSquareOut as ExternalLink,
+} from '@phosphor-icons/react';
+import { BibleVerse, getRandomBibleVerse } from '../data/bibleVerses';
 
 interface HomeViewProps {
+  currentWallpaper?: string;
   onNavigate: (tab: NavTab) => void;
   onLaunchProxy?: (urlOrQuery: string) => void;
   onSelectMovie?: (id: string) => void;
   onSelectGame?: (id: string) => void;
-  onPlayTrack?: (track: MusicTrack) => void;
-  currentTrack?: MusicTrack | null;
+  onPlayTrack?: (track: any) => void;
+  currentTrack?: any;
   isPlaying?: boolean;
-  currentWallpaper?: string;
 }
-
-interface WallpaperOption {
-  id: string;
-  name: string;
-  url: string;
-  gradient?: string;
-}
-
-const BIBLE_VERSES = [
-  { text: "For I know the plans I have for you, declares the Lord, plans to prosper you and not to harm you, plans to give you hope and a future.", reference: "Jeremiah 29:11" },
-  { text: "I can do all things through Christ who strengthens me.", reference: "Philippians 4:13" },
-  { text: "The Lord is my shepherd; I shall not want.", reference: "Psalm 23:1" },
-  { text: "Trust in the Lord with all your heart and lean not on your own understanding; in all your ways submit to him, and he will make your paths straight.", reference: "Proverbs 3:5-6" },
-  { text: "Be strong and courageous. Do not be afraid; do not be discouraged, for the Lord your God will be with you wherever you go.", reference: "Joshua 1:9" },
-  { text: "The Lord is my light and my salvation—whom shall I fear? The Lord is the stronghold of my life—of whom shall I be afraid?", reference: "Psalm 27:1" },
-  { text: "For God so loved the world that he gave his one and only Son, that whoever believes in him shall not perish but have eternal life.", reference: "John 3:16" },
-  { text: "And we know that in all things God works for the good of those who love him, who have been called according to his purpose.", reference: "Romans 8:28" },
-  { text: "But those who hope in the Lord will renew their strength. They will soar on wings like eagles; they will run and not grow weary, they will walk and not be faint.", reference: "Isaiah 40:31" },
-  { text: "Be still, and know that I am God.", reference: "Psalm 46:10" },
-  { text: "This is the day that the Lord has made; let us rejoice and be glad in it.", reference: "Psalm 118:24" },
-  { text: "Your word is a lamp for my feet, a light on my path.", reference: "Psalm 119:105" },
-  { text: "Come to me, all you who are weary and burdened, and I will give you rest.", reference: "Matthew 11:28" },
-  { text: "You are the light of the world. A town built on a hill cannot be hidden.", reference: "Matthew 5:14" },
-  { text: "And now these three remain: faith, hope and love. But the greatest of these is love.", reference: "1 Corinthians 13:13" },
-  { text: "Peace I leave with you; my peace I give you. I do not give to you as the world gives. Do not let your hearts be troubled and do not be afraid.", reference: "John 14:27" },
-  { text: "Give thanks to the Lord, for he is good; his love endures forever.", reference: "Psalm 107:1" },
-  { text: "The name of the Lord is a fortified tower; the righteous run to it and are safe.", reference: "Proverbs 18:10" },
-  { text: "Cast all your anxiety on him because he cares for you.", reference: "1 Peter 5:7" },
-  { text: "Create in me a pure heart, O God, and renew a steadfast spirit within me.", reference: "Psalm 51:10" },
-  { text: "So do not fear, for I am with you; do not be dismayed, for I am your God. I will strengthen you and help you; I will uphold you with my righteous right hand.", reference: "Isaiah 41:10" },
-  { text: "Do not conform to the pattern of this world, but be transformed by the renewing of your mind.", reference: "Romans 12:2" },
-  { text: "Therefore, if anyone is in Christ, the new creation has come: The old has gone, the new is here!", reference: "2 Corinthians 5:17" },
-  { text: "I have hidden your word in my heart that I might not sin against you.", reference: "Psalm 119:11" },
-  { text: "But the fruit of the Spirit is love, joy, peace, forbearance, kindness, goodness, faithfulness, gentleness and self-control.", reference: "Galatians 5:22-23" },
-  { text: "For it is by grace you have been saved, through faith—and this is not from yourselves, it is the gift of God.", reference: "Ephesians 2:8-9" },
-  { text: "May the God of hope fill you with all joy and peace as you trust in him, so that you may overflow with hope by the power of the Holy Spirit.", reference: "Romans 15:13" },
-  { text: "For God has not given us a spirit of fear, but of power and of love and of a sound mind.", reference: "2 Timothy 1:7" },
-  { text: "Taste and see that the Lord is good; blessed is the one who takes refuge in him.", reference: "Psalm 34:8" },
-  { text: "I lift up my eyes to the mountains—where does my help come from? My help comes from the Lord, the Maker of heaven and earth.", reference: "Psalm 121:1-2" },
-  { text: "Whatever you do, work at it with all your heart, as working for the Lord, not for human masters.", reference: "Colossians 3:23" },
-  { text: "Commit to the Lord whatever you do, and he will establish your plans.", reference: "Proverbs 16:3" },
-  { text: "Take delight in the Lord, and he will give you the desires of your heart.", reference: "Psalm 37:4" },
-  { text: "Whoever dwells in the shelter of the Most High will rest in the shadow of the Almighty. I will say of the Lord, 'He is my refuge and my fortress, my God, in whom I trust.'", reference: "Psalm 91:1-2" },
-  { text: "But seek first his kingdom and his righteousness, and all these things will be given to you as well.", reference: "Matthew 6:33" },
-  { text: "Rejoice always, pray continually, give thanks in all circumstances; for this is God’s will for you in Christ Jesus.", reference: "1 Thessalonians 5:16-18" },
-  { text: "Now faith is confidence in what we hope for and assurance about what we do not see.", reference: "Hebrews 11:1" },
-  { text: "Consider it pure joy, my brothers and sisters, whenever you face trials of many kinds, because you know that the testing of your faith produces perseverance.", reference: "James 1:2-3" },
-  { text: "What, then, shall we say in response to these things? If God is for us, who can be against us?", reference: "Romans 8:31" },
-  { text: "I praise you because I am fearfully and wonderfully made; your works are wonderful, I know that full well.", reference: "Psalm 139:14" },
-  { text: "When Jesus spoke again to the people, he said, 'I am the light of the world. Whoever follows me will never walk in darkness, but will have the light of life.'", reference: "John 8:12" },
-  { text: "Praise the Lord, my soul, and forget not all his benefits—who forgives all your sins and heals all your diseases.", reference: "Psalm 103:2-3" },
-  { text: "You will keep in perfect peace those whose minds are steadfast, because they trust in you.", reference: "Isaiah 26:3" },
-  { text: "He has shown you, O mortal, what is good. And what does the Lord require of you? To act justly and to love mercy and to walk humbly with your God.", reference: "Micah 6:8" },
-  { text: "You make known to me the path of life; you will fill me with joy in your presence, with eternal pleasures at your right hand.", reference: "Psalm 16:11" },
-  { text: "I am the vine; you are the branches. If you remain in me and I in you, you will bear much fruit; apart from me you can do nothing.", reference: "John 15:5" },
-  { text: "May these words of my mouth and this meditation of my heart be pleasing in your sight, Lord, my Rock and my Redeemer.", reference: "Psalm 19:14" },
-  { text: "Above all else, guard your heart, for everything you do flows from it.", reference: "Proverbs 4:23" },
-  { text: "We love because he first loved us.", reference: "1 John 4:19" },
-  { text: "Because of the Lord’s great love we are not consumed, for his compassions never fail. They are new every morning; great is your faithfulness.", reference: "Lamentations 3:22-23" },
-  { text: "For the Lord is good and his love endures forever; his faithfulness continues through all generations.", reference: "Psalm 100:5" },
-  { text: "Ask and it will be given to you; seek and you will find; knock and the door will be opened to you.", reference: "Matthew 7:7" },
-  { text: "Do not be anxious about anything, but in every situation, by prayer and petition, with thanksgiving, present your requests to God. And the peace of God, which transcends all understanding, will guard your hearts and your minds in Christ Jesus.", reference: "Philippians 4:6-7" },
-];
-
-const WALLPAPERS: WallpaperOption[] = [
-  {
-    id: 'autumn',
-    name: 'Warm Autumn Canopy',
-    url: autumnBg,
-  },
-  {
-    id: 'cyberpunk',
-    name: 'Cyber Neon City',
-    url: 'https://images.unsplash.com/photo-1519501025264-65ba15a82390?q=80&w=2000&auto=format&fit=crop',
-  },
-  {
-    id: 'cosmos',
-    name: 'Midnight Stars',
-    url: 'https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?q=80&w=2000&auto=format&fit=crop',
-  },
-  {
-    id: 'sunset',
-    name: 'Golden Sunset Horizon',
-    url: 'https://images.unsplash.com/photo-1472214103451-9374bd1c798e?q=80&w=2000&auto=format&fit=crop',
-  },
-];
 
 export const HomeView: React.FC<HomeViewProps> = ({
   onNavigate,
   onLaunchProxy,
-  onPlayTrack,
-  currentTrack,
-  isPlaying,
-  currentWallpaper,
 }) => {
-  const [dayStr, setDayStr] = useState<string>('Thursday');
-  const [timeStr, setTimeStr] = useState<string>('');
-  const [activeCategory, setActiveCategory] = useState<string>('Popular');
-  const [homeProxyInput, setHomeProxyInput] = useState<string>('');
-  
-  // Calculate daily verse based on day of year so it stays consistent for the day without re-rolling
-  const bibleVerse = React.useMemo(() => {
-    const now = new Date();
-    const start = new Date(now.getFullYear(), 0, 0);
-    const diff = now.getTime() - start.getTime();
-    const oneDay = 1000 * 60 * 60 * 24;
-    const dayOfYear = Math.floor(diff / oneDay);
-    return BIBLE_VERSES[dayOfYear % BIBLE_VERSES.length] || BIBLE_VERSES[0];
-  }, []);
+  const [proxyInput, setProxyInput] = useState('');
+  const [bibleVerse, setBibleVerse] = useState<BibleVerse>(() => getRandomBibleVerse());
 
-  // Listening History Recommendations
-  const [listenedTracks, setListenedTracks] = useState<MusicTrack[]>([]);
+  const handleNextVerse = () => {
+    setBibleVerse(getRandomBibleVerse());
+  };
 
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('yuno_recently_played');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setListenedTracks(parsed);
-          return;
-        }
-      }
-    } catch (e) {}
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!proxyInput.trim()) return;
+    if (onLaunchProxy) {
+      onLaunchProxy(proxyInput.trim());
+    } else {
+      onNavigate('proxy');
+    }
+  };
 
-    // Fallback default popular recommendations
-    setListenedTracks([
-      {
-        id: 'rec-1',
-        songId: '289904577',
-        title: 'FE!N',
-        artist: 'Travis Scott ft. Playboi Carti',
-        album: 'UTOPIA',
-        duration: 191,
-        cover: 'https://img4.kuwo.cn/star/albumcover/600/s4s47/88/3517788953.jpg',
-        audioUrl: 'https://kw-api.cenguigui.cn?id=289904577&type=song&level=exhigh&format=mp3',
-        lrcUrl: 'https://kw-api.cenguigui.cn?id=289904577&type=lyr&format=all',
-      },
-      {
-        id: 'rec-2',
-        songId: '69401359',
-        title: 'EARFQUAKE',
-        artist: 'Tyler, The Creator',
-        album: 'IGOR',
-        duration: 190,
-        cover: 'https://img4.kuwo.cn/star/albumcover/600/51/9/1525237681.jpg',
-        audioUrl: 'https://kw-api.cenguigui.cn?id=69401359&type=song&level=exhigh&format=mp3',
-        lrcUrl: 'https://kw-api.cenguigui.cn?id=69401359&type=lyr&format=all',
-      },
-      {
-        id: 'rec-3',
-        songId: '360089861',
-        title: 'Roommates',
-        artist: 'Malcolm Todd',
-        album: 'Sweet Boy',
-        duration: 180,
-        cover: 'https://img4.kuwo.cn/star/albumcover/600/s3s3/1/296666671.jpg',
-        audioUrl: 'https://kw-api.cenguigui.cn?id=360089861&type=song&level=exhigh&format=mp3',
-        lrcUrl: 'https://kw-api.cenguigui.cn?id=360089861&type=lyr&format=all',
-      },
-      {
-        id: 'rec-4',
-        songId: '6140099',
-        title: 'No Role Modelz',
-        artist: 'J. Cole',
-        album: '2014 Forest Hills Drive',
-        duration: 293,
-        cover: 'https://img4.kuwo.cn/star/albumcover/600/s4s80/29/494680643.jpg',
-        audioUrl: 'https://kw-api.cenguigui.cn?id=6140099&type=song&level=exhigh&format=mp3',
-        lrcUrl: 'https://kw-api.cenguigui.cn?id=6140099&type=lyr&format=all',
-      },
-    ]);
-  }, []);
-
-  useEffect(() => {
-    const updateDateTime = () => {
-      const now = new Date();
-      setDayStr(now.toLocaleDateString([], { weekday: 'long' }));
-      setTimeStr(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-    };
-    updateDateTime();
-    const timer = setInterval(updateDateTime, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const activeWallpaperUrl = currentWallpaper || autumnBg;
-  const isVideoWallpaper = activeWallpaperUrl.match(/\.(mp4|mov|webm)(\?.*)?$/i) || activeWallpaperUrl.startsWith('data:video/');
-
-  const categoryPills = [
-    { id: 'Popular', label: 'Popular', action: () => setActiveCategory('Popular') },
-    { id: 'Games', label: 'Games', action: () => onNavigate('games') },
-    { id: 'AI Tools', label: 'AI Tools', action: () => onNavigate('ai') },
-    { id: 'Websites', label: 'Websites', action: () => onNavigate('proxy') },
-    { id: 'Media', label: 'Media', action: () => onNavigate('movies') },
-    { id: 'Apps', label: 'Apps', action: () => onNavigate('youtube') },
+  const quickNav = [
+    { id: 'proxy' as NavTab, label: 'Proxy Browser', icon: Globe, desc: 'Web navigation' },
+    { id: 'games' as NavTab, label: 'Game Library', icon: Gamepad2, desc: 'Playable web titles' },
+    { id: 'movies' as NavTab, label: 'Media Stream', icon: Film, desc: 'Shows and movies' },
+    { id: 'youtube' as NavTab, label: 'Video Player', icon: Tv, desc: 'Video search & stream' },
+    { id: 'community' as NavTab, label: 'Community Chat', icon: MessageSquare, desc: 'Direct rooms & calls' },
+    { id: 'music' as NavTab, label: 'Music Library', icon: Music, desc: 'Tracks & lyrics' },
+    { id: 'links' as NavTab, label: 'Link Generator', icon: Link2, desc: 'Active mirror links' },
+    { id: 'settings' as NavTab, label: 'Settings', icon: Sliders, desc: 'Preferences & profile' },
   ];
 
-  const appShortcutCards = [
-    { id: 'youtube', name: 'YouTube', brand: 'youtube', bg: 'bg-[#FF0000]', color: 'text-white', action: () => onNavigate('youtube') },
-    { id: 'reddit', name: 'Reddit', brand: 'reddit', bg: 'bg-[#FF4500]', color: 'text-white', action: () => onLaunchProxy ? onLaunchProxy('https://reddit.com') : onNavigate('proxy') },
-    { id: 'google', name: 'Google', brand: 'google', bg: 'bg-white shadow-md', color: '', action: () => onLaunchProxy ? onLaunchProxy('https://google.com') : onNavigate('proxy') },
-    { id: 'tiktok', name: 'TikTok', brand: 'tiktok', bg: 'bg-zinc-950 border border-zinc-800', color: '', action: () => onLaunchProxy ? onLaunchProxy('https://tiktok.com') : onNavigate('proxy') },
-    { id: 'instagram', name: 'Instagram', brand: 'instagram', bg: 'bg-gradient-to-tr from-[#f09433] via-[#e6683c] to-[#bc1888]', color: 'text-white', action: () => onLaunchProxy ? onLaunchProxy('https://instagram.com') : onNavigate('proxy') },
-    { id: 'spotify', name: 'Spotify', brand: 'spotify', bg: 'bg-[#1DB954]', color: 'text-black', action: () => onNavigate('music') },
-    { id: 'discord', name: 'Discord', brand: 'discord', bg: 'bg-[#5865F2]', color: 'text-white', action: () => onNavigate('community') },
+  const searchPresets = [
+    { label: 'Google', query: 'https://google.com' },
+    { label: 'YouTube', query: 'https://youtube.com' },
+    { label: 'Discord', query: 'https://discord.com' },
+    { label: 'Wikipedia', query: 'https://wikipedia.org' },
   ];
 
   return (
-    <div className="relative w-full min-h-[88vh] rounded-3xl overflow-hidden shadow-2xl border border-white/10 flex flex-col justify-between p-6 md:p-10 text-white select-none transition-all font-sans">
+    <div className="w-full max-w-5xl mx-auto space-y-6 pt-2 pb-12 text-zinc-100">
       
-      {/* BACKGROUND WALLPAPER WITH RICH AUTUMN LANDSCAPE & ATMOSPHERIC GLOW */}
-      <div className="absolute inset-0 z-0 overflow-hidden">
-        {isVideoWallpaper ? (
-          <video
-            src={activeWallpaperUrl}
-            autoPlay
-            loop
-            muted
-            playsInline
-            className="w-full h-full object-cover object-center scale-105 transition-all duration-700 brightness-[0.95] contrast-[1.05]"
-          />
-        ) : (
-          <img
-            src={activeWallpaperUrl}
-            alt="Wallpaper"
-            className="w-full h-full object-cover object-center scale-105 transition-all duration-700 brightness-[0.95] contrast-[1.05]"
-          />
-        )}
-        {/* Soft Dark Vignette and Golden Cinematic Radial Overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/40 backdrop-blur-[0.5px]" />
-        <div className="absolute inset-0 bg-amber-950/15 mix-blend-color-burn" />
-      </div>
-
-      {/* TOP BAR: CLOCK STATUS & WEATHER WIDGET */}
-      <div className="relative z-20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-center space-x-2.5 bg-black/60 backdrop-blur-xl px-4 py-2 rounded-xl border border-white/10 text-xs text-zinc-300 shadow-lg">
-          <span className="font-semibold text-amber-300">{timeStr || '11:47 PM'}</span>
-          <span className="text-zinc-600">•</span>
-          <span className="text-zinc-400 font-medium">{dayStr}</span>
-        </div>
-
-        {/* Weather Widget */}
-        <div className="w-full sm:w-auto sm:max-w-sm">
-          <WeatherWidget />
-        </div>
-      </div>
-
-      {/* CENTER HERO DISPLAY: DAY OF WEEK, SEARCH BAR, CATEGORIES & APPS */}
-      <div className="relative z-20 flex flex-col items-center justify-center text-center my-auto py-6 space-y-6 max-w-4xl mx-auto w-full">
-        
-        {/* Centered Day Name Display & Bible Verse directly underneath */}
-        <div className="space-y-3 flex flex-col items-center">
-          <motion.h1
-            initial={{ opacity: 0, y: -15 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-6xl sm:text-7xl md:text-8xl font-light text-white tracking-tight drop-shadow-md font-sans"
-          >
-            {dayStr}
-          </motion.h1>
-
-          {/* BIBLE VERSE DISPLAY DIRECTLY UNDER THE DAY */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="relative max-w-xl mx-auto px-5 py-3 bg-black/45 border border-amber-500/30 backdrop-blur-xl rounded-2xl shadow-xl text-center select-none"
-          >
-            <div className="flex items-center justify-center space-x-1.5 text-amber-300 mb-1">
-              <CrossIcon className="w-3.5 h-3.5 text-amber-400" />
-              <span className="text-[10px] font-mono tracking-widest uppercase font-bold text-amber-300">
-                Verse of the Day
+      {/* Top Brand & Omnibar Search Hero */}
+      <div className="p-6 sm:p-8 rounded-2xl bg-[#111115] border border-zinc-800 space-y-5">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-zinc-800 pb-5">
+          <div className="space-y-0.5">
+            <div className="flex items-center space-x-2">
+              <span className="text-xl font-bold text-white tracking-tight">Yuno Workspace</span>
+              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-zinc-900 text-zinc-400 border border-zinc-800">
+                ACTIVE
               </span>
             </div>
-            <p className="text-xs sm:text-sm italic text-amber-100/95 font-serif leading-relaxed px-2">
-              &quot;{bibleVerse.text}&quot;
-            </p>
-            <p className="text-[11px] font-mono tracking-wider text-amber-300/90 uppercase font-semibold mt-1">
-              — {bibleVerse.reference}
-            </p>
-          </motion.div>
-        </div>
-
-        {/* SLEEK FROSTED GLASS SEARCH BAR */}
-        <motion.form
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (homeProxyInput.trim()) {
-              if (onLaunchProxy) {
-                onLaunchProxy(homeProxyInput.trim());
-              } else {
-                onNavigate('proxy');
-              }
-            }
-          }}
-          className="w-full max-w-2xl mx-auto my-1 flex items-center bg-black/60 hover:bg-black/75 backdrop-blur-2xl border border-white/15 hover:border-amber-400/50 rounded-2xl p-2 sm:p-2.5 shadow-xl transition-all group"
-        >
-          <div className="pl-3 pr-2 text-zinc-400 flex items-center justify-center">
-            <Search className="w-4 h-4 sm:w-5 sm:h-5 text-zinc-400 group-hover:text-amber-300 transition-colors flex-shrink-0" />
+            <p className="text-xs text-zinc-400">Web applications, tools, and media platform</p>
           </div>
-          <input
-            type="text"
-            value={homeProxyInput}
-            onChange={(e) => setHomeProxyInput(e.target.value)}
-            placeholder="Search the web or enter a URL..."
-            className="w-full py-1.5 bg-transparent text-sm sm:text-base text-white placeholder-zinc-400 focus:outline-none font-sans"
-          />
-          <button
-            type="submit"
-            className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs shadow-md transition-all flex items-center space-x-1.5 flex-shrink-0 cursor-pointer active:scale-95"
-          >
-            <span>Search</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
-        </motion.form>
+          <div className="flex items-center space-x-2 text-xs font-mono text-zinc-400">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span>Connected</span>
+          </div>
+        </div>
 
-        {/* CATEGORY PILLS BAR */}
-        <motion.div
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.22 }}
-          className="flex flex-wrap items-center justify-center gap-2 max-w-2xl"
-        >
-          {categoryPills.map((pill) => {
-            const isActive = activeCategory === pill.id;
-            return (
-              <button
-                key={pill.id}
-                onClick={pill.action}
-                className={`px-4 py-1.5 rounded-full text-xs font-semibold tracking-wide transition-all duration-300 backdrop-blur-md shadow-lg ${
-                  isActive
-                    ? 'bg-amber-400 text-zinc-950 font-bold shadow-amber-500/30 scale-105'
-                    : 'bg-black/40 text-zinc-300 hover:bg-black/60 hover:text-white border border-white/10 hover:border-amber-400/40 hover:scale-105'
-                }`}
-              >
-                {pill.label}
-              </button>
-            );
-          })}
-        </motion.div>
-
-        {/* APP SHORTCUT CARDS GRID */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.28 }}
-          className="pt-4 flex flex-wrap items-center justify-center gap-3.5 max-w-3xl"
-        >
-          {appShortcutCards.map((app) => (
+        {/* Omnibar Search Form */}
+        <form onSubmit={handleSearch} className="space-y-2.5">
+          <div className="flex items-center bg-zinc-950 border border-zinc-800 focus-within:border-zinc-600 rounded-xl px-3.5 py-2 transition-colors">
+            <Search className="w-4 h-4 text-zinc-400 mr-2.5 flex-shrink-0" />
+            <input
+              type="text"
+              value={proxyInput}
+              onChange={(e) => setProxyInput(e.target.value)}
+              placeholder="Enter a web URL (e.g. google.com) or search term..."
+              className="w-full bg-transparent text-xs sm:text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none"
+            />
             <button
-              key={app.id}
-              onClick={app.action}
-              className="group flex flex-col items-center p-3 rounded-2xl bg-black/40 hover:bg-black/65 border border-white/10 hover:border-amber-400/50 backdrop-blur-xl transition-all duration-300 hover:scale-105 w-20 sm:w-22 shadow-lg"
+              type="submit"
+              className="px-4 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-semibold border border-zinc-700 transition-colors cursor-pointer flex-shrink-0"
             >
-              <div className={`w-12 h-12 rounded-[18px] ${app.bg} flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform mb-2 p-2.5 overflow-hidden`}>
-                <BrandIcon name={app.brand} className={`w-full h-full ${app.color}`} />
-              </div>
-              <span className="text-[11px] font-semibold text-zinc-200 group-hover:text-white transition-colors truncate w-full text-center">
-                {app.name}
-              </span>
+              Open URL
             </button>
-          ))}
-        </motion.div>
+          </div>
 
-        {/* BASED OFF WHAT YOU LISTENED TO MUSIC RECOMMENDATIONS SECTION */}
-        {listenedTracks.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-            className="w-full max-w-4xl mx-auto mt-6 pt-5 border-t border-white/10"
-          >
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center space-x-2">
-                <Headphones className="w-4 h-4 text-amber-400 animate-pulse" />
-                <h3 className="text-sm font-bold text-white tracking-wide">
-                  Based on what you listened to
-                </h3>
-              </div>
+          {/* Quick Preset Queries */}
+          <div className="flex items-center flex-wrap gap-1.5 pt-0.5">
+            <span className="text-[11px] text-zinc-500 mr-1 font-mono">Quick launch:</span>
+            {searchPresets.map((preset) => (
               <button
-                onClick={() => onNavigate('music')}
-                className="text-xs font-semibold text-amber-300 hover:text-amber-200 transition-colors flex items-center space-x-1"
+                key={preset.label}
+                type="button"
+                onClick={() => {
+                  setProxyInput(preset.query);
+                  if (onLaunchProxy) {
+                    onLaunchProxy(preset.query);
+                  } else {
+                    onNavigate('proxy');
+                  }
+                }}
+                className="px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[11px] text-zinc-300 hover:text-white transition-colors cursor-pointer"
               >
-                <span>Open Music Vault</span>
-                <ArrowRight className="w-3.5 h-3.5" />
+                {preset.label}
               </button>
+            ))}
+          </div>
+        </form>
+      </div>
+
+      {/* Quick Services Navigation Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {quickNav.map((item) => {
+          const Icon = item.icon;
+          return (
+            <button
+              key={item.id}
+              onClick={() => onNavigate(item.id)}
+              className="p-4 rounded-xl bg-[#111115] hover:bg-[#18181f] border border-zinc-800 hover:border-zinc-700 text-left transition-all group flex flex-col justify-between h-28 cursor-pointer"
+            >
+              <div className="flex items-center justify-between w-full">
+                <div className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 group-hover:text-white transition-colors">
+                  <Icon className="w-4 h-4" />
+                </div>
+                <ExternalLink className="w-3.5 h-3.5 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-zinc-200 group-hover:text-white block">
+                  {item.label}
+                </span>
+                <span className="text-[11px] text-zinc-500 block truncate">
+                  {item.desc}
+                </span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Main Content Layout: Scripture & Mirror Finder */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Daily Scripture Card */}
+        <div className="p-5 rounded-2xl bg-[#111115] border border-zinc-800 flex flex-col justify-between space-y-4">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <BookOpen className="w-4 h-4 text-zinc-400" />
+                <span className="text-xs font-bold text-zinc-200">Daily Scripture</span>
+              </div>
+              <div className="flex items-center space-x-1.5">
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-zinc-900 border border-zinc-800 text-zinc-400">
+                  {bibleVerse.translation || 'NIV'}
+                </span>
+                {bibleVerse.theme && (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-800 text-zinc-300">
+                    {bibleVerse.theme}
+                  </span>
+                )}
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {listenedTracks.slice(0, 4).map((track) => {
-                const isThisPlaying = isPlaying && currentTrack?.id === track.id;
-                return (
-                  <div
-                    key={track.id}
-                    onClick={() => onPlayTrack && onPlayTrack(track)}
-                    className="group relative bg-black/50 hover:bg-black/75 backdrop-blur-xl border border-white/10 hover:border-amber-400/40 rounded-2xl p-3 transition-all duration-300 hover:scale-[1.02] cursor-pointer flex flex-col justify-between shadow-xl"
-                  >
-                    <div className="relative w-full aspect-square rounded-xl overflow-hidden bg-zinc-900 mb-2.5">
-                      <img
-                        src={track.cover}
-                        alt={track.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      />
-                      <div className={`absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity ${isThisPlaying ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                        <div className="w-10 h-10 rounded-full bg-amber-400 text-black flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform">
-                          {isThisPlaying ? (
-                            <Pause className="w-5 h-5 fill-current" />
-                          ) : (
-                            <Play className="w-5 h-5 fill-current ml-0.5" />
-                          )}
-                        </div>
-                      </div>
-                    </div>
+            <p className="text-xs sm:text-sm text-zinc-300 italic leading-relaxed">
+              "{bibleVerse.text}"
+            </p>
+          </div>
 
-                    <div className="space-y-0.5">
-                      <p className="text-xs font-bold text-white truncate group-hover:text-amber-300 transition-colors">
-                        {track.title}
-                      </p>
-                      <p className="text-[11px] text-zinc-400 truncate">
-                        {track.artist}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
+          <div className="flex items-center justify-between pt-2 border-t border-zinc-800">
+            <span className="text-xs font-semibold text-zinc-400 font-mono">
+              {bibleVerse.reference}
+            </span>
+            <button
+              onClick={handleNextVerse}
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 text-xs font-medium transition-colors cursor-pointer"
+            >
+              <RotateCw className="w-3.5 h-3.5 text-zinc-400" />
+              <span>Next Verse</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Link Finder Fast Access Card */}
+        <div className="p-5 rounded-2xl bg-[#111115] border border-zinc-800 flex flex-col justify-between space-y-4">
+          <div className="space-y-2">
+            <div className="flex items-center space-x-2">
+              <Link2 className="w-4 h-4 text-zinc-400" />
+              <span className="text-xs font-bold text-zinc-200">Mirror Link Generator</span>
             </div>
-          </motion.div>
-        )}
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              Generate direct web mirrors and proxy endpoints with authenticated tokens.
+            </p>
+          </div>
+
+          <div className="pt-2 border-t border-zinc-800 flex items-center justify-between">
+            <span className="text-[11px] font-mono text-zinc-500">Configured</span>
+            <button
+              onClick={() => onNavigate('links')}
+              className="px-3.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white text-xs font-semibold border border-zinc-700 transition-colors cursor-pointer"
+            >
+              Open Links
+            </button>
+          </div>
+        </div>
       </div>
 
     </div>
   );
 };
-

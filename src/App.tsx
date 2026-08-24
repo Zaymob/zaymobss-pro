@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { NavTab, MusicTrack, CallState, CallParticipant, PlaybackContext, UserProfile, YouTubeVideo } from './types';
+import { NavTab, MusicTrack, CallState, CallParticipant, PlaybackContext, UserProfile, YouTubeVideo, BanAppealItem } from './types';
 import { WALLPAPERS, MUSIC_TRACKS } from './data/portalData';
 import { audioEngine } from './utils/audioSynth';
 
 import { BootScreen } from './components/BootScreen';
-import { Sidebar } from './components/Sidebar';
 import { HomeView } from './components/HomeView';
 import { MoviesView } from './components/MoviesView';
 import { GamesView } from './components/GamesView';
@@ -15,46 +14,27 @@ import { MusicView } from './components/MusicView';
 import { SettingsView } from './components/SettingsView';
 import { MusicPlayerBar } from './components/MusicPlayerBar';
 import { CallOverlay } from './components/CallOverlay';
-import { AdminPanelModal } from './components/AdminPanelModal';
 import { ProfileModal } from './components/ProfileModal';
-import { OnboardingModal } from './components/OnboardingModal';
 import { ProxyTab } from './components/ProxyTab';
+import { LinkFinderView } from './components/LinkFinderView';
 import { PrivateChatView } from './components/PrivateChatView';
-import { HaloView } from './components/HaloView';
 import { PipVideoOverlay } from './components/PipVideoOverlay';
+import { FloatingNavbar } from './components/FloatingNavbar';
 
 import { motion, AnimatePresence } from 'motion/react';
-import { ShieldAlert, Feather, FileText, Skull } from 'lucide-react';
-import { DeathNoteModal, BanAppealItem } from './components/DeathNoteModal';
 import { BanAppealModal } from './components/BanAppealModal';
-
-export const isAuthorizedAdminUsername = (username?: string): boolean => {
-  if (!username) return false;
-  const norm = username.trim().toLowerCase();
-  return norm === 'yuno' || norm === 'yuno dev isa' || norm === 'isaman' || norm.startsWith('yuno') || norm.startsWith('isaman');
-};
+import { TabMaskModal } from './components/TabMaskModal';
+import { getSavedCloakSettings, saveCloakSettings } from './utils/tabCloak';
+import {
+  WallpaperCanvasEffects,
+  WallpaperEffectSettings,
+  getSavedEffectSettings,
+  saveEffectSettings,
+} from './components/WallpaperCanvasEffects';
 
 export default function App() {
   const [showBootScreen, setShowBootScreen] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<NavTab>('home');
-  const [collapsedSidebar, setCollapsedSidebar] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      return window.innerWidth < 1280;
-    }
-    return false;
-  });
-  const [closedSidebar, setClosedSidebar] = useState<boolean>(false);
-
-  // Auto-collapse sidebar on smaller laptop viewports (< 1280px) to prevent layout crowding
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth < 1280) {
-        setCollapsedSidebar(true);
-      }
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
   const [currentWallpaper, setCurrentWallpaper] = useState<string>(() => {
     try {
       const saved = localStorage.getItem('yuno_current_wallpaper');
@@ -63,11 +43,18 @@ export default function App() {
     return WALLPAPERS[0].url;
   });
 
+  const [effectSettings, setEffectSettings] = useState<WallpaperEffectSettings>(getSavedEffectSettings);
+
   const handleSelectWallpaper = (url: string) => {
     setCurrentWallpaper(url);
     try {
       localStorage.setItem('yuno_current_wallpaper', url);
     } catch (e) {}
+  };
+
+  const handleChangeEffectSettings = (settings: WallpaperEffectSettings) => {
+    setEffectSettings(settings);
+    saveEffectSettings(settings);
   };
 
   // Profile State
@@ -91,75 +78,35 @@ export default function App() {
     };
   });
 
-  // Private Chatroom & Watch Party Unlock State (/e douche command) - Session only
-  const [isPrivateChatUnlocked, setIsPrivateChatUnlocked] = useState<boolean>(false);
-
-  const handleUnlockPrivateChat = () => {
-    setIsPrivateChatUnlocked(true);
-    setActiveTab('private_chat');
-  };
-
-  // Halo Christian AI Companion Unlock State (/e jesus command)
-  const [isHaloUnlocked, setIsHaloUnlocked] = useState<boolean>(() => {
+  // Yunø Lite Mode (Minimalist Performance Engine: takes away icons, bg pictures, bg fx, game titles/desc)
+  const [isYunoLiteActive, setIsYunoLiteActive] = useState<boolean>(() => {
     try {
-      return localStorage.getItem('yuno_halo_unlocked') === 'true';
-    } catch (e) {
+      return localStorage.getItem('yuno_lite_mode') === 'true';
+    } catch {
       return false;
     }
   });
 
-  const handleUnlockHalo = () => {
-    setIsHaloUnlocked(true);
+  const handleToggleYunoLite = (enabled: boolean) => {
+    setIsYunoLiteActive(enabled);
     try {
-      localStorage.setItem('yuno_halo_unlocked', 'true');
-    } catch (e) {}
-    setActiveTab('halo');
-  };
-
-  // Admin Privilege State (Only unlocked for yuno or isaman)
-  const [isAdmin, setIsAdmin] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem('yuno_user_profile');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return isAuthorizedAdminUsername(parsed.username) || isAuthorizedAdminUsername(parsed.displayName);
+      if (enabled) {
+        localStorage.setItem('yuno_lite_mode', 'true');
+        document.documentElement.classList.add('yuno-lite-active');
+      } else {
+        localStorage.removeItem('yuno_lite_mode');
+        document.documentElement.classList.remove('yuno-lite-active');
       }
     } catch (e) {}
-    return false;
-  });
+  };
 
   useEffect(() => {
-    const isAuth = isAuthorizedAdminUsername(userProfile.username) || isAuthorizedAdminUsername(userProfile.displayName);
-    if (isAuth) {
-      setIsAdmin(true);
-      try {
-        localStorage.setItem('yuno_is_admin', 'true');
-      } catch (e) {}
+    if (isYunoLiteActive) {
+      document.documentElement.classList.add('yuno-lite-active');
     } else {
-      setIsAdmin(false);
-      setIsAdminPanelOpen(false);
-      try {
-        localStorage.removeItem('yuno_is_admin');
-      } catch (e) {}
+      document.documentElement.classList.remove('yuno-lite-active');
     }
-  }, [userProfile.username, userProfile.displayName]);
-
-  const handleGrantAdmin = () => {
-    if (isAuthorizedAdminUsername(userProfile.username) || isAuthorizedAdminUsername(userProfile.displayName)) {
-      setIsAdmin(true);
-      try {
-        localStorage.setItem('yuno_is_admin', 'true');
-      } catch (e) {}
-      setIsAdminPanelOpen(true);
-    }
-  };
-
-  const handleRevokeAdmin = () => {
-    setIsAdmin(false);
-    try {
-      localStorage.removeItem('yuno_is_admin');
-    } catch (e) {}
-  };
+  }, [isYunoLiteActive]);
 
   // Selected item deep links
   const [selectedMovieId, setSelectedMovieId] = useState<string | undefined>(undefined);
@@ -172,11 +119,53 @@ export default function App() {
   };
 
   // Modals state
-  const [isAdminPanelOpen, setIsAdminPanelOpen] = useState<boolean>(false);
-  const [isDeathNoteOpen, setIsDeathNoteOpen] = useState<boolean>(false);
   const [isBanAppealOpen, setIsBanAppealOpen] = useState<boolean>(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
-  const [isOnboardingOpen, setIsOnboardingOpen] = useState<boolean>(false);
+  const [isTabMaskModalOpen, setIsTabMaskModalOpen] = useState<boolean>(false);
+
+  // Tab Cloaking Startup Application & Global Panic Hotkey Listener
+  useEffect(() => {
+    try {
+      const savedCloak = getSavedCloakSettings();
+      saveCloakSettings(savedCloak);
+    } catch (e) {}
+
+    const handleGlobalPanicKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInput =
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable;
+
+      // Keyboard Shortcut: Alt + C to toggle Tab Masking & Cloaker Modal
+      if (e.altKey && (e.key === 'c' || e.key === 'C')) {
+        e.preventDefault();
+        setIsTabMaskModalOpen((prev) => !prev);
+        return;
+      }
+
+      // Panic Key Trigger (Emergency Decoy Redirection)
+      try {
+        const cloak = getSavedCloakSettings();
+        if (cloak.panicKey && e.key === cloak.panicKey) {
+          // If the key is a special character (like `]` or `Escape`) or user is not in an active input field, trigger panic redirect
+          if (
+            !isInput ||
+            cloak.panicKey === ']' ||
+            cloak.panicKey === 'Escape' ||
+            cloak.panicKey.startsWith('F')
+          ) {
+            e.preventDefault();
+            const destination = cloak.panicUrl || 'https://classroom.google.com';
+            window.location.replace(destination);
+          }
+        }
+      } catch (e) {}
+    };
+
+    window.addEventListener('keydown', handleGlobalPanicKey);
+    return () => window.removeEventListener('keydown', handleGlobalPanicKey);
+  }, []);
 
   // Admin / Death Note / Appeals state
   const [bannedUsersList, setBannedUsersList] = useState<string[]>([]);
@@ -215,23 +204,11 @@ export default function App() {
     )
   );
 
-  // Auto-launch Onboarding Guided Tour & Profile Setup for first-time users after boot screen
-  useEffect(() => {
-    if (!showBootScreen) {
-      try {
-        const completed = localStorage.getItem('yuno_onboarding_completed');
-        if (!completed) {
-          setIsOnboardingOpen(true);
-        }
-      } catch (e) {}
-    }
-  }, [showBootScreen]);
-
   // PiP YouTube Video State
   const [pipVideo, setPipVideo] = useState<YouTubeVideo | null>(null);
   const [pipInitialVideo, setPipInitialVideo] = useState<YouTubeVideo | null>(null);
 
-  // WebRTC Call State
+  // WebRTC Call State & Live Media Streams
   const [callState, setCallState] = useState<CallState>({
     isActive: false,
     channelId: 'global-voice',
@@ -246,6 +223,11 @@ export default function App() {
 
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
+  const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
+
+  const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
+  const lastSignalTimeRef = useRef<number>(0);
 
   // Get current username from local profile
   const getCurrentUsername = () => {
@@ -267,10 +249,210 @@ export default function App() {
         if (parsed.avatar) return parsed.avatar;
       }
     } catch (e) {}
-    return 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80';
+    return '';
   };
 
-  // Start Call Handler
+  // Helper to create & configure RTCPeerConnection for a remote participant
+  const getOrCreatePeerConnection = (remoteUser: string, channelId: string) => {
+    if (peerConnectionsRef.current.has(remoteUser)) {
+      return peerConnectionsRef.current.get(remoteUser)!;
+    }
+
+    const pc = new RTCPeerConnection({
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+      ],
+    });
+
+    // Add local tracks (microphone & camera)
+    if (localStream) {
+      localStream.getTracks().forEach((track) => {
+        pc.addTrack(track, localStream);
+      });
+    }
+
+    // Add screen tracks
+    if (screenStream) {
+      screenStream.getTracks().forEach((track) => {
+        pc.addTrack(track, screenStream);
+      });
+    }
+
+    // Handle remote media tracks
+    pc.ontrack = (event) => {
+      const stream = event.streams[0] || new MediaStream([event.track]);
+      remoteStreamsRef.current.set(remoteUser, stream);
+      setRemoteStreams({ ...Object.fromEntries(remoteStreamsRef.current) });
+    };
+
+    // Send ICE candidates to remote peer via backend signaling
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        fetch('/api/webrtc/signal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            channelId,
+            username: getCurrentUsername(),
+            signal: {
+              type: 'candidate',
+              to: remoteUser,
+              data: event.candidate,
+            },
+          }),
+        }).catch(() => {});
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+        remoteStreamsRef.current.delete(remoteUser);
+        setRemoteStreams({ ...Object.fromEntries(remoteStreamsRef.current) });
+      }
+    };
+
+    peerConnectionsRef.current.set(remoteUser, pc);
+    return pc;
+  };
+
+  // Synchronize real call participants and WebRTC peer connections while call is active
+  useEffect(() => {
+    if (!callState.isActive || !callState.channelId) return;
+
+    const uname = getCurrentUsername();
+    const avatar = getCurrentAvatar();
+
+    const syncRoom = async () => {
+      try {
+        const res = await fetch('/api/webrtc/signal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            channelId: callState.channelId,
+            username: uname,
+            avatar,
+            action: 'update',
+            isMuted: callState.isMuted,
+            isCameraOn: callState.isCameraOn,
+            isScreenSharing: callState.isScreenSharing,
+            since: lastSignalTimeRef.current,
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.timestamp) {
+            lastSignalTimeRef.current = data.timestamp;
+          }
+
+          if (Array.isArray(data.participants)) {
+            const remoteParticipants: CallParticipant[] = data.participants
+              .filter((p: any) => p.username !== uname)
+              .map((p: any) => ({
+                id: p.id || `peer-${p.username.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+                username: p.username,
+                avatar: p.avatar || '',
+                isMuted: !!p.isMuted,
+                isCameraOn: !!p.isCameraOn,
+                isScreenSharing: !!p.isScreenSharing,
+              }));
+
+            const localP: CallParticipant = {
+              id: 'local-user',
+              username: uname,
+              avatar,
+              isMuted: callState.isMuted,
+              isCameraOn: callState.isCameraOn,
+              isScreenSharing: callState.isScreenSharing,
+            };
+
+            setCallState((prev) => ({
+              ...prev,
+              participants: [localP, ...remoteParticipants],
+            }));
+
+            // Initiate WebRTC peer connection with each remote participant
+            for (const rUser of remoteParticipants) {
+              const pc = getOrCreatePeerConnection(rUser.username, callState.channelId);
+              // Deterministic initiator (e.g. if our username comes first alphabetically)
+              if (uname < rUser.username && pc.signalingState === 'stable' && !pc.currentRemoteDescription) {
+                try {
+                  const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
+                  await pc.setLocalDescription(offer);
+                  fetch('/api/webrtc/signal', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      channelId: callState.channelId,
+                      username: uname,
+                      signal: {
+                        type: 'offer',
+                        to: rUser.username,
+                        data: offer,
+                      },
+                    }),
+                  }).catch(() => {});
+                } catch (err) {}
+              }
+            }
+          }
+
+          // Handle incoming WebRTC signals
+          if (Array.isArray(data.recentSignals)) {
+            for (const sig of data.recentSignals) {
+              if (sig.from === uname) continue;
+              const sender = sig.from;
+              const pc = getOrCreatePeerConnection(sender, callState.channelId);
+
+              if (sig.type === 'offer' && sig.data) {
+                try {
+                  await pc.setRemoteDescription(new RTCSessionDescription(sig.data));
+                  const answer = await pc.createAnswer();
+                  await pc.setLocalDescription(answer);
+                  fetch('/api/webrtc/signal', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      channelId: callState.channelId,
+                      username: uname,
+                      signal: {
+                        type: 'answer',
+                        to: sender,
+                        data: answer,
+                      },
+                    }),
+                  }).catch(() => {});
+                } catch (e) {}
+              } else if (sig.type === 'answer' && sig.data) {
+                try {
+                  if (pc.signalingState === 'have-local-offer') {
+                    await pc.setRemoteDescription(new RTCSessionDescription(sig.data));
+                  }
+                } catch (e) {}
+              } else if (sig.type === 'candidate' && sig.data) {
+                try {
+                  await pc.addIceCandidate(new RTCIceCandidate(sig.data));
+                } catch (e) {}
+              } else if (sig.type === 'leave') {
+                pc.close();
+                peerConnectionsRef.current.delete(sender);
+                remoteStreamsRef.current.delete(sender);
+                setRemoteStreams({ ...Object.fromEntries(remoteStreamsRef.current) });
+              }
+            }
+          }
+        }
+      } catch (e) {}
+    };
+
+    syncRoom();
+    const interval = setInterval(syncRoom, 1500);
+    return () => clearInterval(interval);
+  }, [callState.isActive, callState.channelId, callState.isMuted, callState.isCameraOn, callState.isScreenSharing, localStream, screenStream]);
+
+  // Start Real Call Handler (Public, Groups, Private Rooms)
   const handleStartCall = async (channelId: string, channelName: string, callType: 'voice' | 'video' | 'screen') => {
     const uname = getCurrentUsername();
     const avatar = getCurrentAvatar();
@@ -282,7 +464,7 @@ export default function App() {
       if (callType === 'video' || callType === 'voice') {
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
           audioVideoStream = await navigator.mediaDevices.getUserMedia({
-            audio: true,
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
             video: callType === 'video',
           }).catch((err) => {
             console.warn('Microphone/Camera access notice:', err);
@@ -317,14 +499,6 @@ export default function App() {
         isMuted: false,
         isCameraOn: callType === 'video',
         isScreenSharing: callType === 'screen',
-      },
-      {
-        id: 'peer-kairo',
-        username: 'Kairo_Dev',
-        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=80',
-        isMuted: false,
-        isCameraOn: false,
-        isScreenSharing: false,
       }
     ];
 
@@ -366,6 +540,12 @@ export default function App() {
       setScreenStream(null);
     }
 
+    // Close all WebRTC peer connections
+    peerConnectionsRef.current.forEach((pc) => pc.close());
+    peerConnectionsRef.current.clear();
+    remoteStreamsRef.current.clear();
+    setRemoteStreams({});
+
     const uname = getCurrentUsername();
     fetch('/api/webrtc/signal', {
       method: 'POST',
@@ -394,14 +574,37 @@ export default function App() {
         p.id === 'local-user' ? { ...p, isMuted: newMuted } : p
       ),
     }));
+
+    // Broadcast state update immediately
+    fetch('/api/webrtc/signal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        channelId: callState.channelId,
+        username: getCurrentUsername(),
+        avatar: getCurrentAvatar(),
+        action: 'update',
+        isMuted: newMuted,
+        isCameraOn: callState.isCameraOn,
+        isScreenSharing: callState.isScreenSharing,
+      }),
+    }).catch(() => {});
   };
 
   const handleToggleCamera = async () => {
     const newCameraOn = !callState.isCameraOn;
     if (newCameraOn && !localStream) {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: { echoCancellation: true, noiseSuppression: true },
+        });
         setLocalStream(stream);
+
+        // Add tracks to existing peer connections
+        peerConnectionsRef.current.forEach((pc) => {
+          stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+        });
       } catch (e) {
         console.warn('Could not enable camera stream');
       }
@@ -418,6 +621,21 @@ export default function App() {
         p.id === 'local-user' ? { ...p, isCameraOn: newCameraOn } : p
       ),
     }));
+
+    // Broadcast state update immediately
+    fetch('/api/webrtc/signal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        channelId: callState.channelId,
+        username: getCurrentUsername(),
+        avatar: getCurrentAvatar(),
+        action: 'update',
+        isMuted: callState.isMuted,
+        isCameraOn: newCameraOn,
+        isScreenSharing: callState.isScreenSharing,
+      }),
+    }).catch(() => {});
   };
 
   const handleToggleScreenShare = async () => {
@@ -426,6 +644,16 @@ export default function App() {
       try {
         const sc = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
         setScreenStream(sc);
+
+        // Add screen tracks to peer connections
+        peerConnectionsRef.current.forEach((pc) => {
+          sc.getTracks().forEach((track) => pc.addTrack(track, sc));
+        });
+
+        sc.getVideoTracks()[0].onended = () => {
+          setScreenStream(null);
+          setCallState((prev) => ({ ...prev, isScreenSharing: false }));
+        };
       } catch (e) {
         console.warn('Screen share cancelled');
         return;
@@ -442,6 +670,21 @@ export default function App() {
         p.id === 'local-user' ? { ...p, isScreenSharing: newScreenSharing } : p
       ),
     }));
+
+    // Broadcast state update immediately
+    fetch('/api/webrtc/signal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        channelId: callState.channelId,
+        username: getCurrentUsername(),
+        avatar: getCurrentAvatar(),
+        action: 'update',
+        isMuted: callState.isMuted,
+        isCameraOn: callState.isCameraOn,
+        isScreenSharing: newScreenSharing,
+      }),
+    }).catch(() => {});
   };
 
   // Music state & HTML5 Audio element
@@ -499,18 +742,18 @@ export default function App() {
       setIsPlayingMusic(false);
     } else {
       setCurrentTrack(track);
-      setIsPlayingMusic(true);
+      audioEngine.stop();
 
       if (track.audioUrl && audioRef.current) {
-        audioEngine.stop();
+        setIsPlayingMusic(true);
         audioRef.current.src = track.audioUrl;
         audioRef.current.play().catch((err) => {
-          console.warn('Live audio stream failed, falling back to synth:', err);
-          audioEngine.start(track.synthType || 'lofi');
+          console.warn('Live audio stream failed:', err);
+          setIsPlayingMusic(false);
         });
       } else {
         if (audioRef.current) audioRef.current.pause();
-        audioEngine.start(track.synthType || 'lofi');
+        setIsPlayingMusic(false);
       }
     }
   };
@@ -627,11 +870,13 @@ export default function App() {
       audioEngine.stop();
       setIsPlayingMusic(false);
     } else {
-      setIsPlayingMusic(true);
+      audioEngine.stop();
       if (currentTrack.audioUrl && audioRef.current) {
-        audioRef.current.play().catch(() => audioEngine.start(currentTrack.synthType || 'lofi'));
-      } else {
-        audioEngine.start(currentTrack.synthType || 'lofi');
+        setIsPlayingMusic(true);
+        audioRef.current.play().catch((err) => {
+          console.warn('Play failed:', err);
+          setIsPlayingMusic(false);
+        });
       }
     }
   };
@@ -650,167 +895,175 @@ export default function App() {
         <BootScreen onComplete={() => setShowBootScreen(false)} />
       )}
 
-      {/* Dynamic Background Wallpaper & Handcrafted Paper Texture Overlay */}
-      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
-        {currentWallpaper.startsWith('data:video') || currentWallpaper.includes('.mp4') || currentWallpaper.includes('.mov') ? (
-          <video
-            src={currentWallpaper}
-            autoPlay
-            loop
-            muted
-            playsInline
-            className="w-full h-full object-cover opacity-25 filter blur-[1px] transition-all duration-700 scale-105"
-          />
-        ) : (
-          <img
-            src={currentWallpaper}
-            alt="Workspace Wallpaper"
-            className="w-full h-full object-cover opacity-20 filter blur-[2px] transition-all duration-700 scale-105"
-          />
-        )}
-        {/* Handcrafted Notebook Grid Texture */}
-        <div className="absolute inset-0 notebook-paper-texture notebook-grid-pattern opacity-90" />
-        <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/70 via-zinc-950/85 to-zinc-950" />
-      </div>
+      {/* Dynamic Background Wallpaper & Screen Effects across EVERY Tab (Disabled in Yunø Lite Mode) */}
+      {!isYunoLiteActive ? (
+        <>
+          <div
+            className="fixed inset-0 pointer-events-none z-0 overflow-hidden"
+            style={{
+              filter: `blur(${effectSettings.blur}px) brightness(${effectSettings.brightness}%)`,
+              transform: effectSettings.blur > 0 ? 'scale(1.08)' : 'scale(1.02)',
+              transition: 'filter 0.3s ease, transform 0.3s ease',
+            }}
+          >
+            {currentWallpaper.startsWith('data:video') || currentWallpaper.includes('.mp4') || currentWallpaper.includes('.mov') ? (
+              <video
+                src={currentWallpaper}
+                autoPlay
+                loop
+                muted
+                playsInline
+                className="w-full h-full object-cover opacity-85"
+              />
+            ) : (
+              <img
+                src={currentWallpaper}
+                alt="Workspace Wallpaper"
+                className="w-full h-full object-cover opacity-80"
+              />
+            )}
+            {/* Subtle Dark Backdrop Tint for Readability */}
+            <div className="absolute inset-0 bg-black/40" />
+          </div>
 
-      {/* Main Workspace Layout with Left Sidebar */}
-      <div className="relative z-10 flex min-h-screen">
-        <Sidebar
+          {/* Screen Effects Layer (Rain, Snow, Stars, Fireflies, Fog, Vignette) */}
+          <WallpaperCanvasEffects settings={effectSettings} />
+        </>
+      ) : (
+        <div className="fixed inset-0 pointer-events-none z-0 bg-[#09090b]" />
+      )}
+
+      {/* Main Workspace Layout */}
+      <div className="relative z-10 flex flex-col min-h-screen">
+        {/* Navigation Bar */}
+        <FloatingNavbar
           activeTab={activeTab}
-          setActiveTab={(tab) => {
-            setActiveTab(tab);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }}
-          collapsed={collapsedSidebar}
-          setCollapsed={setCollapsedSidebar}
-          closed={closedSidebar}
-          setClosed={setClosedSidebar}
-          onReplayBoot={() => setShowBootScreen(true)}
-          onOpenProfileModal={() => setIsProfileModalOpen(true)}
-          currentUser={userProfile.username}
-          currentAvatar={userProfile.avatar}
-          isPrivateChatUnlocked={isPrivateChatUnlocked}
-          isHaloUnlocked={isHaloUnlocked}
+          onNavigate={(tab) => setActiveTab(tab)}
         />
 
-        {/* Content Area offset by Sidebar width */}
-        <main
-          className={`flex-1 min-w-0 transition-all duration-300 p-3 sm:p-5 lg:p-6 xl:p-8 ${
-            closedSidebar ? 'ml-0' : collapsedSidebar ? 'ml-20' : 'ml-64'
-          } ${currentTrack ? 'pb-24' : 'pb-12'}`}
-        >
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.3, ease: 'easeOut' }}
+        {/* Content Area */}
+        {(() => {
+          const isFullBleedTab = activeTab === 'community' || activeTab === 'private_chat' || activeTab === 'proxy';
+          return (
+            <main
+              className={`flex-1 w-full transition-all duration-300 ${
+                isFullBleedTab
+                  ? `p-0 m-0 max-w-none ${currentTrack ? 'pb-24' : 'pb-6'}`
+                  : `max-w-7xl mx-auto p-3 sm:p-5 lg:p-6 ${currentTrack ? 'pb-24' : 'pb-12'}`
+              }`}
             >
-              {activeTab === 'home' && (
-                <HomeView
-                  currentWallpaper={currentWallpaper}
-                  onNavigate={setActiveTab}
-                  onLaunchProxy={handleLaunchProxy}
-                  onSelectMovie={(id) => {
-                    setSelectedMovieId(id);
-                    setActiveTab('movies');
-                  }}
-                  onSelectGame={(id) => {
-                    setSelectedGameId(id);
-                    setActiveTab('games');
-                  }}
-                  onPlayTrack={handlePlayTrack}
-                  currentTrack={currentTrack}
-                  isPlaying={isPlayingMusic}
-                />
-              )}
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={activeTab}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.2, ease: 'easeOut' }}
+                  className={isFullBleedTab ? 'w-full h-full' : ''}
+                >
+                  {activeTab === 'home' && (
+                    <HomeView
+                      currentWallpaper={currentWallpaper}
+                      onNavigate={setActiveTab}
+                      onLaunchProxy={handleLaunchProxy}
+                      onSelectMovie={(id) => {
+                        setSelectedMovieId(id);
+                        setActiveTab('movies');
+                      }}
+                      onSelectGame={(id) => {
+                        setSelectedGameId(id);
+                        setActiveTab('games');
+                      }}
+                      onPlayTrack={handlePlayTrack}
+                      currentTrack={currentTrack}
+                      isPlaying={isPlayingMusic}
+                    />
+                  )}
 
-              {activeTab === 'proxy' && (
-                <ProxyTab
-                  initialUrl={proxyTargetUrl}
-                  onNavigateHome={() => setActiveTab('home')}
-                />
-              )}
+                  {activeTab === 'proxy' && (
+                    <ProxyTab
+                      initialUrl={proxyTargetUrl}
+                      onNavigateHome={() => setActiveTab('home')}
+                    />
+                  )}
 
-              {activeTab === 'movies' && (
-                <MoviesView selectedMovieId={selectedMovieId} />
-              )}
+                  {activeTab === 'links' && (
+                    <LinkFinderView
+                      onLaunchProxy={(url) => handleLaunchProxy(url)}
+                    />
+                  )}
 
-              {activeTab === 'games' && (
-                <GamesView selectedGameId={selectedGameId} />
-              )}
+                  {activeTab === 'movies' && (
+                    <MoviesView selectedMovieId={selectedMovieId} />
+                  )}
 
-              {activeTab === 'youtube' && (
-                <YoutubeView
-                  onSetPipVideo={(video) => setPipVideo(video)}
-                  activePipVideoId={pipVideo?.videoId}
-                  initialSelectedVideo={pipInitialVideo}
-                />
-              )}
+                  {activeTab === 'games' && (
+                    <GamesView selectedGameId={selectedGameId} />
+                  )}
 
-              {activeTab === 'ai' && (
-                <AiView
-                  onGrantAdmin={handleGrantAdmin}
-                  onUnlockPrivateChat={handleUnlockPrivateChat}
-                  onUnlockHalo={handleUnlockHalo}
-                />
-              )}
+                  {activeTab === 'youtube' && (
+                    <YoutubeView
+                      onSetPipVideo={(video) => setPipVideo(video)}
+                      activePipVideoId={pipVideo?.videoId}
+                      initialSelectedVideo={pipInitialVideo}
+                    />
+                  )}
 
-              {activeTab === 'halo' && (
-                <HaloView
-                  userDisplayName={userProfile.displayName || userProfile.username}
-                  onNavigateHome={() => setActiveTab('home')}
-                />
-              )}
+                  {activeTab === 'ai' && (
+                    <AiView />
+                  )}
 
-              {activeTab === 'private_chat' && (
-                <PrivateChatView
-                  userProfile={userProfile}
-                  onStartCall={handleStartCall}
-                  callState={callState}
-                  screenStream={screenStream}
-                  onToggleScreenShare={handleToggleScreenShare}
-                />
-              )}
+                  {activeTab === 'private_chat' && (
+                    <PrivateChatView
+                      userProfile={userProfile}
+                      onStartCall={handleStartCall}
+                      callState={callState}
+                      screenStream={screenStream}
+                      onToggleScreenShare={handleToggleScreenShare}
+                    />
+                  )}
 
-              {activeTab === 'community' && (
-                <CommunityView
-                  callState={callState}
-                  onStartCall={handleStartCall}
-                  onOpenAdminPanel={() => setIsAdminPanelOpen(true)}
-                  onUnlockHalo={handleUnlockHalo}
-                />
-              )}
+                  {activeTab === 'community' && (
+                    <CommunityView
+                      callState={callState}
+                      onStartCall={handleStartCall}
+                    />
+                  )}
 
-              {activeTab === 'music' && (
-                <MusicView
-                  currentTrack={currentTrack}
-                  isPlaying={isPlayingMusic}
-                  onPlayTrack={handlePlayTrack}
-                  onTogglePlay={handleTogglePlay}
-                  currentTime={audioCurrentTime}
-                  playQueue={playQueue}
-                  onAddToQueue={handleAddToQueue}
-                  onRemoveFromQueue={handleRemoveFromQueue}
-                  onClearQueue={handleClearQueue}
-                />
-              )}
+                  {activeTab === 'music' && (
+                    <MusicView
+                      currentTrack={currentTrack}
+                      isPlaying={isPlayingMusic}
+                      onPlayTrack={handlePlayTrack}
+                      onTogglePlay={handleTogglePlay}
+                      currentTime={audioCurrentTime}
+                      playQueue={playQueue}
+                      onAddToQueue={handleAddToQueue}
+                      onRemoveFromQueue={handleRemoveFromQueue}
+                      onClearQueue={handleClearQueue}
+                      onNavigateHome={() => setActiveTab('home')}
+                    />
+                  )}
 
-              {activeTab === 'settings' && (
-                <SettingsView
-                  currentWallpaper={currentWallpaper}
-                  onSelectWallpaper={handleSelectWallpaper}
-                  onReplayBoot={() => setShowBootScreen(true)}
-                  onReplayTour={() => setIsOnboardingOpen(true)}
-                  onOpenAdminPanel={() => setIsAdminPanelOpen(true)}
-                  isAdmin={isAdmin}
-                  onRevokeAdmin={handleRevokeAdmin}
-                />
-              )}
-            </motion.div>
-          </AnimatePresence>
-        </main>
+                  {activeTab === 'settings' && (
+                    <SettingsView
+                      currentWallpaper={currentWallpaper}
+                      onSelectWallpaper={handleSelectWallpaper}
+                      effectSettings={effectSettings}
+                      onChangeEffectSettings={handleChangeEffectSettings}
+                      onReplayBoot={() => setShowBootScreen(true)}
+                      userProfile={userProfile}
+                      onSaveProfile={(updated) => setUserProfile(updated)}
+                      onOpenAppealModal={() => setIsBanAppealOpen(true)}
+                      isYunoLiteEnabled={isYunoLiteActive}
+                      onToggleYunoLite={handleToggleYunoLite}
+                    />
+                  )}
+                </motion.div>
+              </AnimatePresence>
+            </main>
+          );
+        })()}
       </div>
 
       {/* Persistent Bottom Music Player */}
@@ -840,26 +1093,7 @@ export default function App() {
         onToggleScreenShare={handleToggleScreenShare}
         localStream={localStream}
         screenStream={screenStream}
-      />
-
-      {/* Developer Admin Panel Overlay */}
-      <AdminPanelModal
-        isOpen={isAdminPanelOpen}
-        onClose={() => setIsAdminPanelOpen(false)}
-        isAdmin={isAdmin}
-        onRevokeAdmin={handleRevokeAdmin}
-        onOpenDeathNote={() => setIsDeathNoteOpen(true)}
-      />
-
-      {/* Standalone Death Note Notebook Overlay (Minimizable, Draggable & Resizable) */}
-      <DeathNoteModal
-        isOpen={isDeathNoteOpen}
-        onClose={() => setIsDeathNoteOpen(false)}
-        currentUser={userProfile.username || 'yuno'}
-        bannedUsers={bannedUsersList}
-        timedOutUsers={timedOutUsersList}
-        appeals={appealsList}
-        onRefreshData={fetchAdminStatusData}
+        remoteStreams={remoteStreams}
       />
 
       {/* Ban & Timeout Appeal Petition Modal */}
@@ -869,45 +1103,6 @@ export default function App() {
         defaultUsername={userProfile.username}
         onSubmitted={fetchAdminStatusData}
       />
-
-      {/* Floating Admin & Death Note Quick Launchers */}
-      {isAdmin && (
-        <div className="fixed top-4 right-4 z-40 flex items-center space-x-2">
-          {!isDeathNoteOpen && (
-            <button
-              onClick={() => setIsDeathNoteOpen(true)}
-              className="px-3.5 py-2 rounded-2xl bg-stone-950/90 hover:bg-stone-900 text-stone-100 font-serif font-black text-xs shadow-[0_0_20px_rgba(0,0,0,0.8)] border-2 border-stone-700 backdrop-blur-xl flex items-center space-x-2 transition-all hover:scale-105 active:scale-95 cursor-pointer"
-              title="Open Standalone Death Note Notebook"
-            >
-              <Feather className="w-4 h-4 text-red-400 animate-pulse" />
-              <span>Death Note</span>
-            </button>
-          )}
-
-          {!isAdminPanelOpen && (
-            <button
-              onClick={() => setIsAdminPanelOpen(true)}
-              className="px-3.5 py-2 rounded-2xl bg-amber-500/90 hover:bg-amber-400 text-black font-black text-xs shadow-[0_0_20px_rgba(245,158,11,0.5)] border border-amber-300 backdrop-blur-xl flex items-center space-x-2 transition-all hover:scale-105 active:scale-95 cursor-pointer"
-              title="Open Floating Admin Overlay"
-            >
-              <ShieldAlert className="w-4 h-4 text-black animate-pulse" />
-              <span>Admin Overlay</span>
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Appeal Button for Banned or Timed Out Users Only */}
-      {isCurrentUserBanned && (
-        <button
-          onClick={() => setIsBanAppealOpen(true)}
-          className="fixed bottom-20 right-5 z-30 px-3.5 py-2 rounded-2xl bg-amber-500 hover:bg-amber-400 text-black font-mono text-xs font-extrabold border-2 border-amber-300 shadow-[0_0_25px_rgba(245,158,11,0.6)] backdrop-blur-md flex items-center space-x-2 transition-all hover:scale-105 active:scale-95 cursor-pointer animate-bounce"
-          title="Submit Ban / Timeout Appeal Petition"
-        >
-          <FileText className="w-4 h-4 text-black" />
-          <span>Appeal Ban</span>
-        </button>
-      )}
 
       {/* Profile Edit Modal */}
       <ProfileModal
@@ -920,15 +1115,10 @@ export default function App() {
         }}
       />
 
-      {/* First-Time User Onboarding Guided Tour & Profile Setup Modal */}
-      <OnboardingModal
-        isOpen={isOnboardingOpen}
-        onClose={() => setIsOnboardingOpen(false)}
-        currentProfile={userProfile}
-        onSaveProfile={(updated) => {
-          setUserProfile(updated);
-          localStorage.setItem('yuno_user_profile', JSON.stringify(updated));
-        }}
+      {/* Tab Masking & Cloaker Modal */}
+      <TabMaskModal
+        isOpen={isTabMaskModalOpen}
+        onClose={() => setIsTabMaskModalOpen(false)}
       />
 
       {/* Global Picture-in-Picture (PiP) Floating Video Player Overlay */}

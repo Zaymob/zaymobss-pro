@@ -343,19 +343,19 @@ export const GarticPhone: React.FC<GarticPhoneProps> = ({
   const isGarticVoiceActive = callState?.isActive && callState.channelId === `gartic-voice-${roomCode}`;
 
   return (
-    <div className="p-5 rounded-3xl bg-zinc-950 border border-amber-500/30 shadow-2xl space-y-5">
+    <div className="p-5 rounded-2xl bg-zinc-950 border border-zinc-800 shadow-lg space-y-5">
       {/* Voice Chat Banner Bar */}
-      <div className="p-3 bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 border border-amber-500/30 rounded-2xl flex flex-wrap items-center justify-between gap-3">
+      <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-xl flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center space-x-2.5">
-          <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center">
-            <Volume2 className="w-4 h-4 animate-pulse" />
+          <div className="w-8 h-8 rounded-lg bg-zinc-800 text-amber-400 border border-zinc-700 flex items-center justify-center">
+            <Volume2 className="w-4 h-4" />
           </div>
           <div>
             <span className="text-xs font-bold text-white block">
-              Gartic Party Voice Chat <span className="font-mono text-amber-400">(#gartic-voice-{roomCode})</span>
+              Gartic Party Voice Chat <span className="font-mono text-zinc-400">(#gartic-voice-{roomCode})</span>
             </span>
             <span className="text-[10px] text-zinc-400">
-              {isGarticVoiceActive ? '🟢 Live Voice Call Connected' : 'Talk with players live while drawing & guessing!'}
+              {isGarticVoiceActive ? '🟢 Live Voice Call Connected' : 'Talk with players live while drawing & guessing'}
             </span>
           </div>
         </div>
@@ -366,7 +366,7 @@ export const GarticPhone: React.FC<GarticPhoneProps> = ({
               <button
                 type="button"
                 onClick={() => onStartCall(`gartic-voice-${roomCode}`, `🎨 Gartic Voice Room #${roomCode}`, 'voice')}
-                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-black font-black text-xs hover:brightness-110 shadow-lg transition-all flex items-center space-x-1.5"
+                className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs transition-colors flex items-center space-x-1.5"
               >
                 <Phone className="w-3.5 h-3.5" />
                 <span>Join Voice Chat</span>
@@ -566,7 +566,7 @@ export const GarticPhone: React.FC<GarticPhoneProps> = ({
 
             <button
               type="submit"
-              className="w-full py-3 bg-gradient-to-r from-amber-500 via-amber-600 to-orange-600 hover:brightness-110 text-black font-extrabold text-xs rounded-2xl shadow-lg transition-all flex items-center justify-center space-x-2"
+              className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs rounded-xl transition-colors flex items-center justify-center space-x-2"
             >
               <Send className="w-4 h-4" />
               <span>Submit Guess & Generate Presentation</span>
@@ -579,42 +579,42 @@ export const GarticPhone: React.FC<GarticPhoneProps> = ({
       {phase === 'REVEAL' && (
         <div className="space-y-5 py-2 max-w-2xl mx-auto">
           <div className="text-center space-y-1">
-            <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-amber-500/20 text-amber-400 text-xs font-mono font-bold border border-amber-500/30">
+            <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-zinc-900 text-amber-400 text-xs font-mono font-bold border border-zinc-800">
               <BookOpen className="w-3.5 h-3.5" />
-              <span>GARTIC PHONE REVEAL BOOK</span>
+              <span>GARTIC PHONE REVEAL</span>
             </div>
-            <h4 className="text-lg font-black text-white">The Telephone Story Revealed!</h4>
+            <h4 className="text-lg font-bold text-white">The Telephone Story Revealed</h4>
           </div>
 
-          <div className="p-5 rounded-3xl bg-zinc-900 border border-zinc-800 space-y-4 shadow-2xl">
+          <div className="p-5 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-4 shadow-lg">
             {/* Step 1: Original Prompt */}
-            <div className="p-3.5 rounded-2xl bg-zinc-950 border border-zinc-800 flex items-center justify-between">
+            <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-between">
               <div>
                 <span className="text-[10px] font-mono text-amber-400 uppercase font-bold block">1. ORIGINAL PROMPT</span>
-                <span className="text-sm font-black text-white">"{currentPrompt}"</span>
+                <span className="text-xs font-bold text-white">"{currentPrompt}"</span>
               </div>
-              <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
             </div>
 
             {/* Step 2: Drawing */}
-            <div className="p-3 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-2">
-              <span className="text-[10px] font-mono text-cyan-400 uppercase font-bold block">2. THE DRAWING</span>
-              <img src={drawnImageDataUrl} alt="Final Reveal" className="w-full aspect-[16/9] object-contain bg-[#09090b] rounded-xl border border-zinc-800" />
+            <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2">
+              <span className="text-[10px] font-mono text-zinc-400 uppercase font-bold block">2. THE DRAWING</span>
+              <img src={drawnImageDataUrl} alt="Final Reveal" className="w-full aspect-[16/9] object-contain bg-zinc-950 rounded-lg border border-zinc-800" />
             </div>
 
             {/* Step 3: Final Guess */}
-            <div className="p-3.5 rounded-2xl bg-zinc-950 border border-zinc-800 flex items-center justify-between">
+            <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-between">
               <div>
-                <span className="text-[10px] font-mono text-purple-400 uppercase font-bold block">3. FINAL GUESS</span>
-                <span className="text-sm font-black text-white">"{currentGuess}"</span>
+                <span className="text-[10px] font-mono text-zinc-400 uppercase font-bold block">3. FINAL GUESS</span>
+                <span className="text-xs font-bold text-white">"{currentGuess}"</span>
               </div>
-              <Award className="w-5 h-5 text-amber-400 flex-shrink-0" />
+              <Award className="w-4 h-4 text-amber-400 flex-shrink-0" />
             </div>
           </div>
 
           <button
             onClick={handleResetGame}
-            className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:brightness-110 text-black font-extrabold text-xs rounded-2xl shadow-xl transition-all flex items-center justify-center space-x-2"
+            className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs rounded-xl transition-colors flex items-center justify-center space-x-2"
           >
             <RotateCcw className="w-4 h-4" />
             <span>Play Next Gartic Round</span>

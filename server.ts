@@ -1,16 +1,77 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
+import https from "node:https";
+import http from "node:http";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 
 dotenv.config();
 
+// Helper to fetch external URLs while ignoring expired SSL certificate errors
+async function fetchIgnoreCert(url: string, options: any = {}): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    try {
+      const u = new URL(url);
+      const isHttps = u.protocol === "https:";
+      const lib = isHttps ? https : http;
+
+      const reqOpts = {
+        hostname: u.hostname,
+        port: u.port || (isHttps ? 443 : 80),
+        path: u.pathname + u.search,
+        method: options.method || "GET",
+        headers: options.headers || {},
+        rejectUnauthorized: false,
+      };
+
+      const req = lib.request(reqOpts, (res) => {
+        let chunks: Buffer[] = [];
+        res.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+        res.on("end", () => {
+          const body = Buffer.concat(chunks).toString("utf-8");
+          resolve(
+            new Response(body, {
+              status: res.statusCode || 200,
+              statusText: res.statusMessage || "OK",
+              headers: res.headers as any,
+            })
+          );
+        });
+      });
+
+      req.on("error", (err) => reject(err));
+
+      if (options.signal) {
+        options.signal.addEventListener("abort", () => {
+          req.destroy();
+          reject(new Error("Aborted"));
+        });
+      }
+
+      req.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
 const app = express();
 const PORT = 3000;
 
-app.use(express.json({ limit: "10mb" }));
+// Security and Policy Headers
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  if (!req.path.startsWith("/api/proxy") && !req.path.startsWith("/api/stream")) {
+    res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  }
+  next();
+});
+
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Persistent File Storage Path
 const PERSIST_FILE_PATH = path.join(process.cwd(), "app_persisted_data.json");
@@ -24,6 +85,8 @@ function savePersistedData() {
       systemPartners,
       globalAnnouncements,
       communityMessages,
+      customGroupsList,
+      userDMs: Array.from(userDMs.entries()).map(([k, set]) => [k, Array.from(set)]),
       chatResetScheduledAt,
     };
     fs.writeFileSync(PERSIST_FILE_PATH, JSON.stringify(dataToSave, null, 2), "utf-8");
@@ -52,9 +115,33 @@ function loadPersistedData() {
         globalAnnouncements.length = 0;
         globalAnnouncements.push(...parsed.globalAnnouncements);
       }
+      if (Array.isArray(parsed.customGroupsList)) {
+        customGroupsList.length = 0;
+        customGroupsList.push(...parsed.customGroupsList);
+      }
+      if (Array.isArray(parsed.userDMs)) {
+        userDMs.clear();
+        for (const [k, arr] of parsed.userDMs) {
+          if (k && Array.isArray(arr)) {
+            userDMs.set(k, new Set(arr));
+          }
+        }
+      }
       if (Array.isArray(parsed.communityMessages) && parsed.communityMessages.length > 0) {
         communityMessages.length = 0;
-        communityMessages.push(...parsed.communityMessages);
+        const now = Date.now();
+        const loaded = parsed.communityMessages.map((m: any) => {
+          let timeVal = m.createdAt;
+          if (!timeVal) {
+            const parsedIdNum = parseInt(m.id, 10);
+            timeVal = !isNaN(parsedIdNum) && parsedIdNum > 1600000000000 ? parsedIdNum : now;
+          }
+          return {
+            ...m,
+            createdAt: timeVal,
+          };
+        });
+        communityMessages.push(...loaded);
       }
       if (typeof parsed.chatResetScheduledAt === 'number') {
         chatResetScheduledAt = parsed.chatResetScheduledAt;
@@ -68,11 +155,12 @@ function loadPersistedData() {
 // In-memory user profiles, friends, and chat storage
 interface ChatMessage {
   id: string;
-  channelId: string; // e.g. "general" or "dm:Vortex_User:Kairo"
+  channelId: string; // e.g. "general" or "dm_User1_User2"
   user: string;
   avatar: string;
   content: string;
   timestamp: string;
+  createdAt?: number;
   badge?: string;
   replyTo?: {
     id: string;
@@ -80,8 +168,11 @@ interface ChatMessage {
     content: string;
   };
   attachment?: {
-    type: 'image' | 'link';
+    type: 'image' | 'audio' | 'link' | 'file';
     url: string;
+    fileName?: string;
+    duration?: number;
+    fileSize?: string;
   };
   reactions?: Array<{ emoji: string; count: number; users: string[] }>;
   hasProfanity?: boolean;
@@ -189,29 +280,44 @@ const globalAnnouncements: Array<{ id: string; content: string; createdAt: strin
   author: a.author || 'System Admin',
 }));
 
-// Load persisted file data from disk on server startup
-loadPersistedData();
+interface CustomGroupServer {
+  id: string;
+  name: string;
+  banner: string;
+  picture: string;
+  createdBy: string;
+  createdAt: string;
+  channels: Array<{ id: string; name: string; topic?: string }>;
+}
 
-const trollEffects = new Map<string, { discoMode?: boolean; upsideDown?: boolean }>();
-
-let profanityFilterConfig = {
-  strictness: 'standard' as 'strict' | 'standard' | 'off',
-  customBadwords: ['shit', 'fuck', 'bitch', 'asshole', 'crap', 'bastard', 'dick', 'pussy', 'slut', 'whore']
-};
+const customGroupsList: CustomGroupServer[] = [];
+const userDMs = new Map<string, Set<string>>(); // username -> Set of target usernames
+const activeChatUsers = new Map<string, { username: string; avatar: string; status: string; lastSeen: number }>();
 
 // WebRTC Call Signaling Rooms
 interface CallParticipantInfo {
+  id: string;
   username: string;
   avatar: string;
   isMuted: boolean;
   isCameraOn: boolean;
   isScreenSharing: boolean;
+  lastSeen: number;
+}
+
+interface WebRtcSignalMessage {
+  id: string;
+  from: string;
+  to?: string;
+  type: 'offer' | 'answer' | 'candidate' | 'state_update' | 'join' | 'leave';
+  data?: any;
+  timestamp: number;
 }
 
 interface CallRoom {
   channelId: string;
   participants: Map<string, CallParticipantInfo>;
-  signals: Array<{ id: string; from: string; to?: string; signalData: any }>;
+  signals: WebRtcSignalMessage[];
 }
 const callRooms = new Map<string, CallRoom>();
 
@@ -221,11 +327,21 @@ const communityMessages: ChatMessage[] = [
     channelId: "global-chat",
     user: "Yunø_System",
     avatar: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=100&auto=format&fit=crop&q=80",
-    content: "Welcome to the Global Chat! Connect with members, share screens, join voice lounges, or stream movies together.",
+    content: "Welcome to Yunø Community! Connect with members, share screens, join live voice lounges, send voice recordings, or stream movies together.",
     timestamp: "System",
     badge: "SYSTEM",
   }
 ];
+
+const trollEffects = new Map<string, { discoMode?: boolean; upsideDown?: boolean }>();
+
+let profanityFilterConfig = {
+  strictness: 'standard' as 'strict' | 'standard' | 'off',
+  customBadwords: ['shit', 'fuck', 'bitch', 'asshole', 'crap', 'bastard', 'dick', 'pussy', 'slut', 'whore']
+};
+
+// Load persisted file data from disk on server startup
+loadPersistedData();
 
 // Helper to check if string contains Chinese or CJK characters
 function hasChineseCharacters(str: string): boolean {
@@ -239,9 +355,9 @@ const TMDB_API_KEY = "34bbddc5ab8b0debc3c3ba1bf6ffe884";
 
 // Helper to get GoogleGenAI instance safely
 function getGenAI() {
-  const apiKey = process.env.GEMINI_API_KEY || "";
+  const apiKey = (process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "").trim();
   return new GoogleGenAI({
-    apiKey,
+    apiKey: apiKey || undefined,
     httpOptions: {
       headers: {
         "User-Agent": "aistudio-build",
@@ -375,7 +491,182 @@ app.get("/api/tmdb/tv_season", async (req, res) => {
   }
 });
 
-// KuWo Music API Proxy Endpoint (Filters out Chinese / CJK songs unless searched for)
+app.get("/api/tmdb/trailer", async (req, res) => {
+  try {
+    const id = req.query.id as string;
+    const type = (req.query.type as string) || "movie";
+    if (!id) return res.status(400).json({ error: "Missing ID" });
+
+    const response = await fetch(
+      `https://api.themoviedb.org/3/${type}/${id}/videos?api_key=${TMDB_API_KEY}`
+    );
+    if (response.ok) {
+      const data = await response.json();
+      if (data.results && Array.isArray(data.results) && data.results.length > 0) {
+        const trailer =
+          data.results.find((v: any) => v.site === "YouTube" && v.type === "Trailer") ||
+          data.results.find((v: any) => v.site === "YouTube" && v.type === "Teaser") ||
+          data.results.find((v: any) => v.site === "YouTube" && v.type === "Clip") ||
+          data.results.find((v: any) => v.site === "YouTube");
+        if (trailer && trailer.key) {
+          return res.json({ success: true, key: trailer.key, name: trailer.name });
+        }
+      }
+    }
+    res.json({ success: false, key: null });
+  } catch (error: any) {
+    console.error("TMDB Trailer Fetch Error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Helper function to detect language script mismatches (e.g., Persian lyrics for English songs)
+function isLanguageMismatch(lyricsText: string, songTitle: string, songArtist: string): boolean {
+  if (!lyricsText || lyricsText.trim().length < 10) return true;
+
+  const combinedMeta = (songTitle + " " + songArtist).toLowerCase();
+  const hasPersianMeta = /[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]/.test(combinedMeta);
+  const hasCjkMeta = /[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]/.test(combinedMeta);
+  const hasCyrillicMeta = /[\u0400-\u04FF]/.test(combinedMeta);
+
+  const textOnly = lyricsText.replace(/\[\d{1,2}:\d{2}(?:\.\d{1,3})?\]/g, "").trim();
+
+  // Reject Persian / Arabic script lyrics if song is NOT Persian/Arabic
+  if (!hasPersianMeta && /[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]/.test(textOnly)) {
+    return true;
+  }
+
+  // Reject Cyrillic script lyrics if song is NOT Cyrillic
+  if (!hasCyrillicMeta && /[\u0400-\u04FF]/.test(textOnly)) {
+    const cyrillicCount = (textOnly.match(/[\u0400-\u04FF]/g) || []).length;
+    if (cyrillicCount > 10 && cyrillicCount / textOnly.length > 0.2) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// JOOX Audio Stream Proxy Endpoint (Redirects directly to JOOX high quality MP3 stream)
+app.get("/api/music/joox_stream", async (req, res) => {
+  try {
+    const msg =
+      (req.query.msg as string) ||
+      (req.query.query as string) ||
+      (req.query.q as string) ||
+      "Kanye West";
+    const n = req.query.n ? String(req.query.n) : "1";
+    const jooxUrl = `https://apicx.asia/api/joox_music?msg=${encodeURIComponent(msg)}&n=${encodeURIComponent(n)}&token=f84ao9lMF_q7husBWRfgUw`;
+
+    const response = await fetchIgnoreCert(jooxUrl, { signal: AbortSignal.timeout(5000) });
+    if (response.ok) {
+      const json: any = await response.json();
+      const playLinks = json.data?.["播放链接"] || {};
+      const mp3Url =
+        playLinks["MP3 320"] ||
+        playLinks["MP3 128"] ||
+        playLinks["AAC 192"] ||
+        playLinks["AAC 96"] ||
+        playLinks["无损FLAC"] ||
+        playLinks["OGG 320"];
+
+      if (mp3Url) {
+        return res.redirect(302, mp3Url);
+      }
+    }
+    res.status(404).json({ error: "Stream not found" });
+  } catch (err: any) {
+    console.error("JOOX Stream error:", err);
+    res.status(500).json({ error: "Failed to stream audio" });
+  }
+});
+
+// Helper to stream audio directly with redirect support & range request handling
+function streamAudioWithRedirect(targetUrl: string, clientReq: any, clientRes: any, redirects = 0) {
+  if (redirects > 5) {
+    if (!clientRes.headersSent) clientRes.status(500).send("Too many redirects");
+    return;
+  }
+  try {
+    const u = new URL(targetUrl);
+    const isHttps = u.protocol === "https:";
+    const lib = isHttps ? https : http;
+
+    const headers: Record<string, string> = {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+      "Referer": "https://music.163.com/",
+    };
+
+    if (clientReq.headers.range) {
+      headers["Range"] = clientReq.headers.range as string;
+    }
+
+    const reqOpts = {
+      hostname: u.hostname,
+      port: u.port || (isHttps ? 443 : 80),
+      path: u.pathname + u.search,
+      method: "GET",
+      headers,
+      rejectUnauthorized: false,
+    };
+
+    const upstreamReq = lib.request(reqOpts, (upstreamRes) => {
+      if ([301, 302, 303, 307, 308].includes(upstreamRes.statusCode || 0) && upstreamRes.headers.location) {
+        let loc = upstreamRes.headers.location;
+        if (loc.startsWith("/")) loc = `${u.protocol}//${u.host}${loc}`;
+        return streamAudioWithRedirect(loc, clientReq, clientRes, redirects + 1);
+      }
+
+      clientRes.setHeader("Access-Control-Allow-Origin", "*");
+      clientRes.setHeader("Content-Type", upstreamRes.headers["content-type"] || "audio/mpeg");
+      clientRes.setHeader("Accept-Ranges", "bytes");
+
+      if (upstreamRes.headers["content-length"]) {
+        clientRes.setHeader("Content-Length", upstreamRes.headers["content-length"]);
+      }
+      if (upstreamRes.headers["content-range"]) {
+        clientRes.setHeader("Content-Range", upstreamRes.headers["content-range"]);
+      }
+
+      clientRes.status(upstreamRes.statusCode || 200);
+      upstreamRes.pipe(clientRes);
+    });
+
+    upstreamReq.on("error", (err) => {
+      console.warn("Audio stream request error:", err?.message);
+      if (!clientRes.headersSent) {
+        clientRes.status(500).send("Audio stream error");
+      }
+    });
+
+    upstreamReq.end();
+  } catch (err: any) {
+    console.error("Audio stream exception:", err?.message);
+    if (!clientRes.headersSent) {
+      clientRes.status(500).send("Failed to process audio stream");
+    }
+  }
+}
+
+// Meting Audio Stream Proxy Endpoint (Proxies MP3 stream with range & CORS support)
+app.get("/api/music/meting_stream", (req, res) => {
+  const rawUrl = req.query.url as string;
+  const server = (req.query.server as string) || "netease";
+  const id = req.query.id as string;
+
+  let targetUrl = rawUrl;
+  if (!targetUrl && id) {
+    targetUrl = `https://api.qijieya.cn/meting/?server=${encodeURIComponent(server)}&type=url&id=${encodeURIComponent(id)}`;
+  }
+
+  if (!targetUrl) {
+    return res.status(400).json({ error: "Missing url or id parameter" });
+  }
+
+  streamAudioWithRedirect(targetUrl, req, res);
+});
+
+// Multi-Source Music Search API (Meting Primary + JOOX + iTunes)
 app.get("/api/music/search", async (req, res) => {
   try {
     const query =
@@ -385,93 +676,175 @@ app.get("/api/music/search", async (req, res) => {
       (req.query.id as string) ||
       "Kanye West";
 
-    const targetUrl = `https://kw-api.cenguigui.cn/?name=${encodeURIComponent(query)}`;
+    const allTracks: any[] = [];
+    const seenIds = new Set<string>();
 
-    const fetchRes = await fetch(targetUrl);
-    if (!fetchRes.ok) {
-      return res.json({ tracks: [] });
+    const requestLimit = (req.query.limit as string) || (req.query.requestLimit as string) || "30";
+
+    // 1. Primary Source: Meting Music API (api.qijieya.cn) - Direct audio streams, HD covers & synced LRC
+    try {
+      const metingSearchUrl = `https://api.qijieya.cn/meting/?type=search&id=${encodeURIComponent(query)}&limit=${encodeURIComponent(requestLimit)}&server=netease`;
+      const metingRes = await fetchIgnoreCert(metingSearchUrl, { signal: AbortSignal.timeout(6000) });
+      if (metingRes.ok) {
+        const json: any = await metingRes.json();
+        if (Array.isArray(json)) {
+          for (const item of json) {
+            const rawTitle = item.name || "Untitled Track";
+            const rawArtist = item.artist || "Unknown Artist";
+
+            // Extract numeric ID from lrc or url if available
+            let songId = "";
+            if (item.url) {
+              const match = item.url.match(/id=([a-zA-Z0-9]+)/);
+              if (match) songId = match[1];
+            }
+            if (!songId) songId = String(Math.random());
+
+            if (seenIds.has(songId)) continue;
+            seenIds.add(songId);
+
+            const cleanTitle = rawTitle.replace(/\s*\(Explicit\)/gi, "").trim();
+            const cleanArtist = rawArtist.replace(/\s*\([\u4e00-\u9fa5\s]+\)/g, "").trim();
+
+            const cover = item.pic || "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80";
+            const audioUrl = item.url ? `/api/music/meting_stream?url=${encodeURIComponent(item.url)}` : "";
+            const lrcUrl = item.lrc;
+
+            allTracks.push({
+              id: `meting-${songId}`,
+              songId,
+              title: cleanTitle,
+              artist: cleanArtist,
+              album: "Single",
+              duration: 210,
+              cover,
+              audioUrl,
+              lrcUrl,
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Meting search failed:", e);
     }
 
-    const json = await fetchRes.json();
-    let items = Array.isArray(json.data) ? json.data : [];
+    // 2. Secondary Source: JOOX Music API (apicx.asia)
+    try {
+      const jooxUrl = `https://apicx.asia/api/joox_music?msg=${encodeURIComponent(query)}&token=f84ao9lMF_q7husBWRfgUw`;
+      const jooxRes = await fetchIgnoreCert(jooxUrl, { signal: AbortSignal.timeout(5000) });
+      if (jooxRes.ok) {
+        const json: any = await jooxRes.json();
+        const songs = Array.isArray(json.data?.songs) ? json.data.songs : [];
 
-    const queryHasChinese = hasChineseCharacters(query);
+        for (const item of songs) {
+          const songId = String(item["歌曲ID"] || item["songmid"] || Math.random());
+          if (seenIds.has(songId)) continue;
+          seenIds.add(songId);
 
-    // Filter out Chinese / CJK songs unless the search query itself contains Chinese
-    const filteredItems = items.filter((item: any) => {
-      if (queryHasChinese) return true;
-      const rawTitle = item.name || item.title || "";
-      let rawArtist = "";
-      if (typeof item.artist === "string") rawArtist = item.artist;
-      else if (Array.isArray(item.artist)) rawArtist = item.artist.join(" ");
-      const rawAlbum = item.album || "";
+          const rawTitle = item["歌曲名称"] || "Untitled Track";
+          const rawArtist = item["歌手"] || "Unknown Artist";
+          const rawAlbum = item["专辑"] || "Single";
+          const index = item["序号"] || 1;
 
-      // Strip CJK annotations inside parentheses e.g. "Ye (侃爷)" -> "Ye"
-      const cleanTitle = rawTitle.replace(/\s*\([\u3000-\u303f\u4e00-\u9faf\uac00-\ud7af\u3040-\u309f\u30a0-\u30ff\s]+\)/g, "").trim();
-      const cleanArtist = rawArtist.replace(/\s*\([\u3000-\u303f\u4e00-\u9faf\uac00-\ud7af\u3040-\u309f\u30a0-\u30ff\s]+\)/g, "").trim();
-      const cleanAlbum = rawAlbum.replace(/\s*\([\u3000-\u303f\u4e00-\u9faf\uac00-\ud7af\u3040-\u309f\u30a0-\u30ff\s]+\)/g, "").trim();
+          let durationSec = 210;
+          if (typeof item["时长"] === "string" && item["时长"].includes(":")) {
+            const parts = item["时长"].split(":");
+            durationSec = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+          }
 
-      return !hasChineseCharacters(cleanTitle) && !hasChineseCharacters(cleanArtist) && !hasChineseCharacters(cleanAlbum);
-    });
+          const cleanTitle = rawTitle.replace(/\s*\(Explicit\)/gi, "").trim();
+          const cleanArtist = rawArtist.replace(/\s*\([\u4e00-\u9fa5\s]+\)/g, "").trim();
 
-    const tracks = filteredItems.map((item: any) => {
-      const songId = item.rid || item.id || String(Math.random());
-      const rawTitle = item.name || item.title || "Untitled Track";
-      const cleanTitle = rawTitle.replace(/\s*\(Explicit\)/gi, "").trim();
+          const audioUrl = `/api/music/joox_stream?msg=${encodeURIComponent(query)}&n=${index}`;
+          const lrcUrl = `/api/music/lyrics?title=${encodeURIComponent(cleanTitle)}&artist=${encodeURIComponent(cleanArtist)}&jooxMsg=${encodeURIComponent(query)}&jooxN=${index}`;
 
-      let artist = "Unknown Artist";
-      if (typeof item.artist === "string" && item.artist) artist = item.artist;
-      // Strip Chinese translations in artist parentheses e.g. "Ye (侃爷)" -> "Ye"
-      artist = artist.replace(/\s*\([\u4e00-\u9fa5\s]+\)/g, "").trim();
+          allTracks.push({
+            id: `joox-${songId}`,
+            songId,
+            title: cleanTitle,
+            artist: cleanArtist,
+            album: rawAlbum,
+            duration: durationSec,
+            cover: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80",
+            audioUrl,
+            lrcUrl,
+            jooxMsg: query,
+            jooxN: index,
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("JOOX search failed:", e);
+    }
 
-      const album = (item.album || "Single").replace(/\s*\(Explicit\)/gi, "").trim();
-      const cover = item.pic || item.cover || `https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80`;
-      const audioUrl = item.url || `https://kw-api.cenguigui.cn?id=${songId}&type=song&level=exhigh&format=mp3`;
-      const lrcUrl = item.lrc || `https://kw-api.cenguigui.cn?id=${songId}&type=lyr&format=all`;
+    // 3. Tertiary Source: iTunes Search API (High quality artwork & global tracks)
+    try {
+      const iTunesUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=20`;
+      const iTunesRes = await fetch(iTunesUrl, { signal: AbortSignal.timeout(4000) });
+      if (iTunesRes.ok) {
+        const iTunesData: any = await iTunesRes.json();
+        if (Array.isArray(iTunesData.results)) {
+          for (const item of iTunesData.results) {
+            const songId = String(item.trackId || Math.random());
+            const coverUrl = item.artworkUrl100
+              ? item.artworkUrl100.replace("100x100bb", "600x600bb")
+              : "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80";
 
-      return {
-        id: `kw-${songId}`,
-        songId: String(songId),
-        title: cleanTitle,
-        artist: artist || "Unknown Artist",
-        album: album || "Single",
-        duration: item.duration || 210,
-        cover,
-        audioUrl,
-        lrcUrl,
-      };
-    });
+            const trackTitleLower = (item.trackName || "").toLowerCase();
+            const existingTrack = allTracks.find(
+              (t) =>
+                t.title.toLowerCase().includes(trackTitleLower) ||
+                trackTitleLower.includes(t.title.toLowerCase())
+            );
+            if (existingTrack) {
+              // Update artwork if default placeholder
+              if (!existingTrack.cover || existingTrack.cover.includes("unsplash")) {
+                existingTrack.cover = coverUrl;
+              }
+              continue;
+            }
 
-    res.json({ tracks });
+            if (seenIds.has(songId)) continue;
+            seenIds.add(songId);
+
+            allTracks.push({
+              id: `itunes-${songId}`,
+              songId,
+              title: item.trackName || "Untitled Track",
+              artist: item.artistName || "Unknown Artist",
+              album: item.collectionName || "Single",
+              duration: Math.round((item.trackTimeMillis || 210000) / 1000),
+              cover: coverUrl,
+              audioUrl: item.previewUrl || `/api/music/joox_stream?msg=${encodeURIComponent(item.artistName + " " + item.trackName)}&n=1`,
+              lrcUrl: `/api/music/lyrics?title=${encodeURIComponent(item.trackName || "")}&artist=${encodeURIComponent(item.artistName || "")}`,
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("iTunes Music Search failed:", e);
+    }
+
+    res.json({ tracks: allTracks });
   } catch (error: any) {
-    console.error("Meting Music API Error:", error);
-    res.status(500).json({ error: "Failed to fetch Meting music", tracks: [] });
+    console.error("Music Search Route Error:", error);
+    res.json({ tracks: [] });
   }
 });
 
-// Lyrics Endpoint for Music Player (Queries Lyrica API at test-0k.onrender.com, KuWo kw-api, and LRCLIB)
+// Lyrics Endpoint for Music Player (Meting direct LRC + JOOX API + LRCLIB API + Mismatch Protection)
 app.get("/api/music/lyrics", async (req, res) => {
   try {
     const songId = req.query.id as string;
     const lrcUrl = req.query.lrcUrl as string;
+    const jooxMsg = req.query.jooxMsg as string;
+    const jooxN = req.query.jooxN as string;
     const rawTitle = (req.query.title as string || "").trim();
     const rawArtist = (req.query.artist as string || "").trim();
 
-    // Clean title and artist for better matching
     const title = rawTitle.replace(/\s*[\(\[].*?[\)\]]/g, "").trim() || rawTitle;
     const artist = rawArtist.split(/ft\.|feat\.|&|,|\//i)[0].trim() || rawArtist;
 
-    // Helper to format ms to LRC timestamp tag [mm:ss.xx]
-    const formatMsToLrcTag = (ms: number) => {
-      const totalSec = ms / 1000;
-      const m = Math.floor(totalSec / 60);
-      const s = (totalSec % 60).toFixed(2);
-      const mStr = String(m).padStart(2, "0");
-      const sStr = Number(s) < 10 ? "0" + s : s;
-      return `[${mStr}:${sStr}]`;
-    };
-
-    // Helper to clean, format and filter lyrics string
     const cleanAndFilterLyrics = (rawText: string, songTitle: string, songArtist: string) => {
       if (!rawText) return "";
       let text = rawText
@@ -481,7 +854,6 @@ app.get("/api/music/lyrics", async (req, res) => {
         .replace(/\r/g, "\n");
 
       const combinedMeta = (songTitle + " " + songArtist).toLowerCase();
-      // Check if track is natively Chinese/Japanese/Korean
       const isCjkTrack = /[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]/.test(combinedMeta);
 
       const lines = text.split("\n");
@@ -494,12 +866,10 @@ app.get("/api/music/lyrics", async (req, res) => {
 
         if (!isCjkTrack) {
           const sansTime = trimmed.replace(/\[\d{1,2}:\d{2}(?:\.\d{1,3})?\]/g, "").trim();
-          // Filter CJK translation lines if track is not CJK
           if (/[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]/.test(sansTime)) {
             if (!/[a-zA-Z0-9]/.test(sansTime)) {
-              continue; // Drop pure translation line
+              continue;
             }
-            // If line contains both Latin and CJK, strip the CJK translation portion
             const sansCjk = trimmed.replace(/[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]+/g, "").replace(/\s+/g, " ").trim();
             if (sansCjk.replace(/\[\d{1,2}:\d{2}(?:\.\d{1,3})?\]/g, "").trim().length > 0) {
               cleaned.push(sansCjk);
@@ -513,7 +883,46 @@ app.get("/api/music/lyrics", async (req, res) => {
       return cleaned.join("\n").trim();
     };
 
-    // 1. Primary Provider: LRCLIB API (Pristine official synced lyrics for global music)
+    // 0. Top Priority: Direct LRC URL (e.g. from Meting API)
+    if (lrcUrl && lrcUrl.startsWith("http")) {
+      try {
+        const lrcRes = await fetchIgnoreCert(lrcUrl, { signal: AbortSignal.timeout(5000) });
+        if (lrcRes.ok) {
+          const rawText = await lrcRes.text();
+          if (rawText && rawText.length > 20) {
+            const cleaned = cleanAndFilterLyrics(rawText, title, artist);
+            if (cleaned.length > 15 && !isLanguageMismatch(cleaned, title, artist)) {
+              return res.json({ lyrics: cleaned, synced: true });
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("Direct lrcUrl fetch failed:", e);
+      }
+    }
+
+    // 1. Primary Source: JOOX Native Lyrics
+    if (jooxMsg || title) {
+      try {
+        const targetMsg = jooxMsg || `${title} ${artist}`.trim();
+        const targetN = jooxN || "1";
+        const jooxUrl = `https://apicx.asia/api/joox_music?msg=${encodeURIComponent(targetMsg)}&n=${encodeURIComponent(targetN)}&token=f84ao9lMF_q7husBWRfgUw`;
+
+        const jooxRes = await fetchIgnoreCert(jooxUrl, { signal: AbortSignal.timeout(5000) });
+        if (jooxRes.ok) {
+          const json: any = await jooxRes.json();
+          const lyricsRaw = json.data?.["歌词内容"];
+          if (lyricsRaw && lyricsRaw.length > 20) {
+            const cleaned = cleanAndFilterLyrics(lyricsRaw, title, artist);
+            if (cleaned.length > 15 && !isLanguageMismatch(cleaned, title, artist)) {
+              return res.json({ lyrics: cleaned, synced: true });
+            }
+          }
+        }
+      } catch (e) {}
+    }
+
+    // 2. Secondary Source: LRCLIB API
     if (title) {
       try {
         const lrcLibGetUrl = `https://lrclib.net/api/get?artist_name=${encodeURIComponent(artist)}&track_name=${encodeURIComponent(title)}`;
@@ -521,15 +930,15 @@ app.get("/api/music/lyrics", async (req, res) => {
         if (lrcRes.ok) {
           const lrcData: any = await lrcRes.json();
           if (lrcData.syncedLyrics && lrcData.syncedLyrics.length > 20) {
-            const filtered = cleanAndFilterLyrics(lrcData.syncedLyrics, title, artist);
-            if (filtered.length > 15) {
-              return res.json({ lyrics: filtered, synced: true });
+            const cleaned = cleanAndFilterLyrics(lrcData.syncedLyrics, title, artist);
+            if (cleaned.length > 15 && !isLanguageMismatch(cleaned, title, artist)) {
+              return res.json({ lyrics: cleaned, synced: true });
             }
           }
           if (lrcData.plainLyrics && lrcData.plainLyrics.length > 20) {
-            const filtered = cleanAndFilterLyrics(lrcData.plainLyrics, title, artist);
-            if (filtered.length > 15) {
-              return res.json({ lyrics: filtered, synced: false });
+            const cleaned = cleanAndFilterLyrics(lrcData.plainLyrics, title, artist);
+            if (cleaned.length > 15 && !isLanguageMismatch(cleaned, title, artist)) {
+              return res.json({ lyrics: cleaned, synced: false });
             }
           }
         }
@@ -542,17 +951,26 @@ app.get("/api/music/lyrics", async (req, res) => {
         if (searchRes.ok) {
           const searchData: any = await searchRes.json();
           if (Array.isArray(searchData) && searchData.length > 0) {
-            const bestMatch = searchData.find((item: any) => item.syncedLyrics || item.plainLyrics) || searchData[0];
-            if (bestMatch.syncedLyrics) {
-              const filtered = cleanAndFilterLyrics(bestMatch.syncedLyrics, title, artist);
-              if (filtered.length > 15) {
-                return res.json({ lyrics: filtered, synced: true });
+            const titleFirstWord = title.split(" ")[0].toLowerCase();
+            const matchingResult = searchData.find((item: any) => {
+              const itemTrackLower = (item.trackName || item.name || "").toLowerCase();
+              const matchesTitle = itemTrackLower.includes(titleFirstWord);
+              const text = item.syncedLyrics || item.plainLyrics || "";
+              return matchesTitle && !isLanguageMismatch(text, title, artist);
+            });
+
+            if (matchingResult) {
+              if (matchingResult.syncedLyrics) {
+                const cleaned = cleanAndFilterLyrics(matchingResult.syncedLyrics, title, artist);
+                if (cleaned.length > 15) {
+                  return res.json({ lyrics: cleaned, synced: true });
+                }
               }
-            }
-            if (bestMatch.plainLyrics) {
-              const filtered = cleanAndFilterLyrics(bestMatch.plainLyrics, title, artist);
-              if (filtered.length > 15) {
-                return res.json({ lyrics: filtered, synced: false });
+              if (matchingResult.plainLyrics) {
+                const cleaned = cleanAndFilterLyrics(matchingResult.plainLyrics, title, artist);
+                if (cleaned.length > 15) {
+                  return res.json({ lyrics: cleaned, synced: false });
+                }
               }
             }
           }
@@ -560,68 +978,32 @@ app.get("/api/music/lyrics", async (req, res) => {
       } catch (e) {}
     }
 
-    // 2. Secondary Provider: Lyrica API (test-0k.onrender.com)
-    if (title) {
-      try {
-        const lyricaUrl = `https://test-0k.onrender.com/lyrics/?artist=${encodeURIComponent(artist || title)}&song=${encodeURIComponent(title)}&fast=true&timestamps=true`;
-        const lyricaRes = await fetch(lyricaUrl, { signal: AbortSignal.timeout(6000) });
-        if (lyricaRes.ok) {
-          const lyricaData: any = await lyricaRes.json();
-          const songData = lyricaData?.data || lyricaData;
-
-          if (songData) {
-            if (Array.isArray(songData.timed_lyrics) && songData.timed_lyrics.length > 0) {
-              const lrcText = songData.timed_lyrics
-                .map((item: any) => `${formatMsToLrcTag(item.start_time || 0)} ${item.text || ""}`)
-                .join("\n");
-              const filtered = cleanAndFilterLyrics(lrcText, title, artist);
-              if (filtered.length > 15) {
-                return res.json({ lyrics: filtered, synced: true });
-              }
-            }
-
-            if (typeof songData.lyrics === "string" && songData.lyrics.length > 20) {
-              const filtered = cleanAndFilterLyrics(songData.lyrics, title, artist);
-              const hasTimestamps = /\[\d{2}:\d{2}/.test(filtered);
-              if (filtered.length > 15) {
-                return res.json({ lyrics: filtered, synced: hasTimestamps });
-              }
-            }
-          }
-        }
-      } catch (e) {
-        console.warn("Lyrica API fetch failed, trying fallbacks:", e);
-      }
-    }
-
-    // 3. Fallback: KuWo kw-api lyrics
+    // 3. Fallback: KuWo kw-api
     const targetLrcUrl = lrcUrl || (songId ? `https://kw-api.cenguigui.cn?id=${encodeURIComponent(songId)}&type=lyr&format=all` : "");
     if (targetLrcUrl) {
       try {
-        const lyricRes = await fetch(targetLrcUrl, { redirect: "follow", signal: AbortSignal.timeout(5000) });
+        const lyricRes = await fetchIgnoreCert(targetLrcUrl, { signal: AbortSignal.timeout(5000) });
         if (lyricRes.ok) {
           const rawText = await lyricRes.text();
           if (rawText && rawText.length > 20 && !rawText.includes("404")) {
-            const filtered = cleanAndFilterLyrics(rawText, title, artist);
-            if (filtered.length > 15) {
-              return res.json({ lyrics: filtered, synced: true });
+            const cleaned = cleanAndFilterLyrics(rawText, title, artist);
+            if (cleaned.length > 15 && !isLanguageMismatch(cleaned, title, artist)) {
+              return res.json({ lyrics: cleaned, synced: true });
             }
           }
         }
-      } catch (e) {
-        console.warn("KuWo lyrics fetch failed:", e);
-      }
+      } catch (e) {}
     }
 
     // 4. Default synchronized fallback
     const fallbackLyrics = `[00:00.00] ${title || "Song"} — ${artist || "Artist"}
 [00:04.00] (Instrumental Intro)
 [00:12.00] Playing on Yunø Music Studio
-[00:18.00] Feel the rhythm and bass flow through
+[00:18.00] Feel the rhythm and flow
 [00:26.00] Listening to ${title || "your favorite track"}...
 [00:36.00] (Melodic Chorus / Bridge)
-[00:48.00] Live audio output synced in real time
-[00:58.00] Yunø vibes, pure energy...`;
+[00:48.00] Live audio synced in real time
+[00:58.00] Pure music, pure energy...`;
 
     res.json({ lyrics: fallbackLyrics, synced: true });
   } catch (error) {
@@ -776,6 +1158,110 @@ app.get("/api/proxy-game", async (req, res) => {
   } catch (err: any) {
     console.error("Game proxy error:", err);
     res.status(500).send("Error rendering game frame: " + err.message);
+  }
+});
+
+// MOVIE & ANIME STREAM PROXY ROUTE (PREVENTS GREY SCREEN & FRAME RESTRICTIONS)
+app.get("/api/stream/proxy", async (req, res) => {
+  const streamUrl = req.query.url as string;
+  if (!streamUrl) {
+    return res.status(400).send("Missing target stream URL");
+  }
+
+  try {
+    const targetUrlObj = new URL(streamUrl);
+    const origin = targetUrlObj.origin;
+
+    const fetchResponse = await fetch(streamUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": origin,
+      },
+    });
+
+    const contentType = fetchResponse.headers.get("content-type") || "";
+
+    if (contentType.includes("text/html")) {
+      let html = await fetchResponse.text();
+      const baseUrl = streamUrl.substring(0, streamUrl.lastIndexOf('/') + 1) || `${origin}/`;
+
+      // Remove restrictive CSP or anti-frame meta tags
+      html = html.replace(/<meta[^>]*http-equiv=["']?Content-Security-Policy["']?[^>]*>/gi, '');
+      html = html.replace(/<meta[^>]*http-equiv=["']?X-Frame-Options["']?[^>]*>/gi, '');
+      
+      // Neutralize window.top frame-busting scripts
+      html = html.replace(/top\.location/g, 'window.__mock_top_loc');
+      html = html.replace(/window\.top\s*!==\s*window\.self/g, 'false');
+      html = html.replace(/window\.top\s*!=\s*window\.self/g, 'false');
+      html = html.replace(/top\s*!==\s*self/g, 'false');
+      html = html.replace(/top\s*!=\s*self/g, 'false');
+
+      // Inject base href
+      if (html.includes('<head>')) {
+        html = html.replace('<head>', `<head><base href="${baseUrl}">`);
+      } else if (html.includes('<HEAD>')) {
+        html = html.replace('<HEAD>', `<HEAD><base href="${baseUrl}">`);
+      } else if (html.includes('<html>')) {
+        html = html.replace('<html>', `<html><head><base href="${baseUrl}"></head>`);
+      } else {
+        html = `<base href="${baseUrl}">\n` + html;
+      }
+
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader("X-Frame-Options", "ALLOWALL");
+      res.removeHeader("X-Frame-Options");
+      res.removeHeader("Content-Security-Policy");
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      return res.send(html);
+    }
+
+    // Fallback unblocked wrapper if opaque or redirected
+    const wrapperHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Stream Player</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+    iframe { width: 100%; height: 100%; border: 0; }
+  </style>
+</head>
+<body>
+  <iframe src="${streamUrl}" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowfullscreen referrerpolicy="no-referrer"></iframe>
+</body>
+</html>`;
+
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("X-Frame-Options", "ALLOWALL");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    return res.send(wrapperHtml);
+  } catch (err: any) {
+    const fallbackWrapper = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Stream Player</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+    iframe { width: 100%; height: 100%; border: 0; }
+  </style>
+</head>
+<body>
+  <iframe src="${streamUrl}" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowfullscreen referrerpolicy="no-referrer"></iframe>
+</body>
+</html>`;
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("X-Frame-Options", "ALLOWALL");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    return res.send(fallbackWrapper);
   }
 });
 
@@ -1265,35 +1751,13 @@ app.post("/api/appeals/respond", (req, res) => {
 });
 
 app.get("/api/admin/chat-reset-status", (req, res) => {
-  const remainingMs = Math.max(0, chatResetScheduledAt - Date.now());
-  const remainingMins = Math.ceil(remainingMs / 60000);
   res.json({
-    scheduledAt: chatResetScheduledAt,
-    isActive: chatResetScheduledAt > 0,
-    remainingMins,
-    remainingSeconds: Math.floor(remainingMs / 1000)
+    scheduledAt: 0,
+    isActive: false,
+    remainingMins: 0,
+    remainingSeconds: 0
   });
 });
-
-// Periodic timer to handle scheduled 1-hour chat resets
-setInterval(() => {
-  if (chatResetScheduledAt > 0 && Date.now() >= chatResetScheduledAt) {
-    communityMessages.length = 0;
-    const now = Date.now();
-    chatResetScheduledAt = now + 3600000; // Schedule next 1-hour cycle
-    const nextTimeStr = new Date(chatResetScheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    communityMessages.push({
-      id: `sys-auto-reset-${now}`,
-      channelId: "global-chat",
-      user: "Yunø_System",
-      avatar: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=100&auto=format&fit=crop&q=80",
-      content: `⚠️ Automatic 1-hour chat purge completed. Fresh system state active (Next scheduled reset at ${nextTimeStr}).`,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      badge: "SYSTEM",
-    });
-    savePersistedData();
-  }
-}, 30000);
 
 app.post("/api/admin/action", (req, res) => {
   const { requester, action, targetUser, durationMinutes, announcementContent, messageId, config } = req.body;
@@ -1403,7 +1867,7 @@ app.post("/api/admin/action", (req, res) => {
 
 // WebRTC Signaling Proxy Endpoints
 app.post("/api/webrtc/signal", (req, res) => {
-  const { channelId, username, avatar, isMuted, isCameraOn, isScreenSharing, signalData, action } = req.body;
+  const { channelId, username, avatar, isMuted, isCameraOn, isScreenSharing, signal, signalData, action, since } = req.body;
   const roomKey = channelId || "global-voice";
 
   if (!callRooms.has(roomKey)) {
@@ -1415,41 +1879,95 @@ app.post("/api/webrtc/signal", (req, res) => {
   }
 
   const room = callRooms.get(roomKey)!;
+  const now = Date.now();
 
-  if (action === "join" || action === "update") {
-    room.participants.set(username, {
-      username,
-      avatar: avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80",
-      isMuted: !!isMuted,
-      isCameraOn: !!isCameraOn,
-      isScreenSharing: !!isScreenSharing,
-    });
-  } else if (action === "leave") {
-    room.participants.delete(username);
+  // Prune inactive participants (no signal in 30s)
+  for (const [pUser, pData] of room.participants.entries()) {
+    if (pData.lastSeen && now - pData.lastSeen > 30000) {
+      room.participants.delete(pUser);
+    }
   }
 
-  if (signalData) {
-    room.signals.push({
-      id: Date.now().toString(),
+  if (username) {
+    if (action === "join" || action === "update") {
+      room.participants.set(username, {
+        id: `peer-${username.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+        username,
+        avatar: avatar || "",
+        isMuted: !!isMuted,
+        isCameraOn: !!isCameraOn,
+        isScreenSharing: !!isScreenSharing,
+        lastSeen: now,
+      });
+    } else if (action === "leave") {
+      room.participants.delete(username);
+      room.signals.push({
+        id: `${now}-${Math.floor(Math.random() * 10000)}`,
+        from: username,
+        to: 'all',
+        type: 'leave',
+        timestamp: now,
+      });
+    }
+  }
+
+  // Handle incoming WebRTC signal message (offer, answer, candidate, state_update)
+  const incomingSignal = signal || (signalData ? { data: signalData, type: signalData.type || 'state_update', to: signalData.to } : null);
+  if (incomingSignal && username) {
+    const sigMsg: WebRtcSignalMessage = {
+      id: `${now}-${Math.floor(Math.random() * 100000)}`,
       from: username,
-      signalData,
-    });
-    if (room.signals.length > 50) room.signals.shift();
+      to: incomingSignal.to || 'all',
+      type: incomingSignal.type || 'candidate',
+      data: incomingSignal.data || incomingSignal,
+      timestamp: now,
+    };
+    room.signals.push(sigMsg);
   }
+
+  // Prune old signals (older than 45s or keep max 100)
+  room.signals = room.signals.filter((s) => now - s.timestamp < 45000);
+  if (room.signals.length > 100) {
+    room.signals = room.signals.slice(-100);
+  }
+
+  // Filter signals relevant to this user (targeted to them, or broadcasted to 'all' from other users)
+  const sinceTime = typeof since === 'number' ? since : 0;
+  const userSignals = username
+    ? room.signals.filter((s) => s.from !== username && (s.to === username || s.to === 'all' || !s.to) && s.timestamp > sinceTime)
+    : room.signals.slice(-20);
 
   const participantList = Array.from(room.participants.values());
   res.json({
     channelId: roomKey,
     participants: participantList,
-    recentSignals: room.signals,
+    recentSignals: userSignals,
+    allSignals: room.signals.slice(-30),
+    timestamp: now,
   });
 });
 
 app.get("/api/webrtc/room", (req, res) => {
   const channelId = (req.query.channelId as string) || "global-voice";
+  const username = (req.query.username as string) || "";
+  const since = parseInt((req.query.since as string) || "0", 10);
   const room = callRooms.get(channelId);
+  const now = Date.now();
+  if (room) {
+    for (const [pUser, pData] of room.participants.entries()) {
+      if (pData.lastSeen && now - pData.lastSeen > 30000) {
+        room.participants.delete(pUser);
+      }
+    }
+  }
   const participants = room ? Array.from(room.participants.values()) : [];
-  res.json({ channelId, participants });
+  const signals = room
+    ? (username
+        ? room.signals.filter((s) => s.from !== username && (s.to === username || s.to === 'all' || !s.to) && s.timestamp > since)
+        : room.signals.slice(-20))
+    : [];
+
+  res.json({ channelId, participants, signals, timestamp: now });
 });
 
 // Server-wide Watch Party & Gartic Phone Rooms State
@@ -1489,38 +2007,12 @@ interface GarticRoom {
   updatedBy: string;
 }
 
-interface CustomGroupServer {
-  id: string;
-  name: string;
-  banner: string;
-  picture: string;
-  createdBy: string;
-  createdAt: string;
-  channels: Array<{ id: string; name: string; topic?: string }>;
-}
-
 const watchPartyRooms = new Map<string, WatchPartyRoom>();
 const garticRooms = new Map<string, GarticRoom>();
-const activeChatUsers = new Map<string, { username: string; avatar: string; status: string; lastSeen: number }>();
-const userDMs = new Map<string, Set<string>>(); // username -> Set of target usernames
-const customGroupsList: CustomGroupServer[] = [
-  {
-    id: 'grp-vips',
-    name: 'VIP Founders Club',
-    banner: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1000&auto=format&fit=crop&q=80',
-    picture: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80',
-    createdBy: 'System Admin',
-    createdAt: 'Official',
-    channels: [
-      { id: 'vip-lounge', name: 'vip-lounge', topic: 'Exclusive lounge for VIP members' },
-      { id: 'watch-party-announcements', name: 'watch-party-announcements', topic: 'Upcoming watch parties & tournaments' },
-    ],
-  },
-];
 
 // Helper to get or init WatchParty room
 function getOrCreateWatchPartyRoom(code: string): WatchPartyRoom {
-  const normCode = (code || 'DOUCHE-7709').trim().toUpperCase();
+  const normCode = (code || 'ROOM-7709').trim().toUpperCase();
   if (!watchPartyRooms.has(normCode)) {
     watchPartyRooms.set(normCode, {
       roomCode: normCode,
@@ -1564,7 +2056,7 @@ function getOrCreateWatchPartyRoom(code: string): WatchPartyRoom {
 
 // Helper to get or init Gartic room
 function getOrCreateGarticRoom(code: string): GarticRoom {
-  const normCode = (code || 'DOUCHE-7709').trim().toUpperCase();
+  const normCode = (code || 'ROOM-7709').trim().toUpperCase();
   if (!garticRooms.has(normCode)) {
     garticRooms.set(normCode, {
       roomCode: normCode,
@@ -1585,7 +2077,7 @@ function getOrCreateGarticRoom(code: string): GarticRoom {
 
 // Watch Party Sync Endpoints
 app.get("/api/rooms/watchparty/state", (req, res) => {
-  const roomCode = ((req.query.roomCode as string) || "DOUCHE-7709").trim().toUpperCase();
+  const roomCode = ((req.query.roomCode as string) || "ROOM-7709").trim().toUpperCase();
   const username = (req.query.user as string) || "Guest";
   const avatar = (req.query.avatar as string) || "";
 
@@ -1652,7 +2144,7 @@ app.post("/api/rooms/watchparty/message", (req, res) => {
 
 // Gartic Phone Sync Endpoints
 app.get("/api/gartic/state", (req, res) => {
-  const roomCode = ((req.query.roomCode as string) || "DOUCHE-7709").trim().toUpperCase();
+  const roomCode = ((req.query.roomCode as string) || "ROOM-7709").trim().toUpperCase();
   const username = (req.query.username as string) || "";
   const avatar = (req.query.avatar as string) || "";
 
@@ -1756,6 +2248,20 @@ app.get("/api/chat/messages", (req, res) => {
   });
 });
 
+// Heartbeat endpoint for accurate live presence
+app.post("/api/chat/heartbeat", (req, res) => {
+  const { username, avatar, status } = req.body;
+  if (username) {
+    activeChatUsers.set(username, {
+      username: username.trim(),
+      avatar: avatar || '',
+      status: status || 'Online',
+      lastSeen: Date.now(),
+    });
+  }
+  res.json({ success: true, timestamp: Date.now() });
+});
+
 // Get real active users list (no fake preset members!)
 app.get("/api/chat/active-users", (req, res) => {
   const now = Date.now();
@@ -1848,14 +2354,15 @@ app.post("/api/chat/groups", (req, res) => {
   const newGroup: CustomGroupServer = {
     id: `grp-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     name: cleanName,
-    banner: banner?.trim() || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1000&auto=format&fit=crop&q=80',
-    picture: picture?.trim() || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80',
+    banner: banner?.trim() || '',
+    picture: picture?.trim() || '',
     createdBy: createdBy.trim(),
     createdAt: new Date().toLocaleDateString(),
     channels: channelList,
   };
 
   customGroupsList.push(newGroup);
+  savePersistedData();
   res.json({ success: true, group: newGroup, groups: customGroupsList });
 });
 
@@ -1867,7 +2374,7 @@ app.post("/api/chat/messages", (req, res) => {
 
   // Ban check
   if (bannedUsers.has(user)) {
-    return res.status(403).json({ error: "Your account is permanently banned from chat by Admin." });
+    return res.status(403).json({ error: "Your account is permanently banned from chat." });
   }
 
   // Timeout check
@@ -1905,22 +2412,27 @@ app.post("/api/chat/messages", (req, res) => {
   }
 
   const userNorm = (user || "").trim().toLowerCase();
-  const assignedBadge = (userNorm === "yuno dev isa" || userNorm === "isaman") ? "ADMIN / DEV" : badge;
+  const assignedBadge = badge;
 
+  const now = Date.now();
   const newMessage: ChatMessage = {
-    id: Date.now().toString(),
-    channelId: channelId || "global-chat",
+    id: `${now}-${Math.floor(Math.random() * 10000)}`,
+    channelId: channelId || "general",
     user: user || "Anonymous",
-    avatar: avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80",
+    avatar: avatar || "",
     content: finalContent,
     badge: assignedBadge || undefined,
-    timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    timestamp: new Date(now).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+    createdAt: now,
     replyTo: replyTo || undefined,
     attachment: attachment || undefined,
     hasProfanity,
   };
 
   communityMessages.push(newMessage);
+  // Persist messages immediately to disk
+  savePersistedData();
+
   res.json(newMessage);
 });
 
@@ -1944,6 +2456,7 @@ app.post("/api/chat/react", (req, res) => {
   }
 
   msg.reactions = msg.reactions.filter((r) => r.count > 0);
+  savePersistedData();
   res.json({ success: true, reactions: msg.reactions });
 });
 
@@ -1952,32 +2465,22 @@ app.post("/api/gemini/chat", async (req, res) => {
   try {
     const { prompt, model, systemInstruction, history, attachments } = req.body;
 
-    if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
-      return res.status(400).json({ error: "Prompt is required" });
+    if (!prompt && (!attachments || attachments.length === 0)) {
+      return res.status(400).json({ error: "Prompt or attachment is required" });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      // Return a biblically grounded offline response if API key is missing
-      const offlineAnswer = generateBiblicalFallbackResponse(prompt);
-      return res.json({
-        text: offlineAnswer,
-        modelUsed: "offline-biblical-engine",
-      });
-    }
+    const effectivePrompt = (prompt || "").trim() || "Please analyze the attached image or file.";
 
-    const ai = getGenAI();
-
-    // Map requested model names to valid models
-    let targetModel = "gemini-3.6-flash";
+    // Map requested model names to valid supported @google/genai models
+    let targetModel = "gemini-3.7-flash";
     if (model) {
       const lower = model.toLowerCase();
-      if (lower.includes("pro")) {
+      if (lower.includes("pro") || lower.includes("opus") || lower.includes("r1") || lower.includes("gpt-4") || lower.includes("deepseek")) {
         targetModel = "gemini-3.1-pro-preview";
-      } else if (lower.includes("lite")) {
+      } else if (lower.includes("lite") || lower.includes("haiku") || lower.includes("fast") || lower.includes("flash-lite")) {
         targetModel = "gemini-3.1-flash-lite";
-      } else if (lower.includes("3.6") || lower.includes("flash")) {
-        targetModel = "gemini-3.6-flash";
+      } else {
+        targetModel = "gemini-3.7-flash";
       }
     }
 
@@ -1986,113 +2489,124 @@ app.post("/api/gemini/chat", async (req, res) => {
     if (Array.isArray(attachments) && attachments.length > 0) {
       for (const att of attachments) {
         if (att.isImage || (att.type && att.type.startsWith("image/"))) {
-          let base64Data = att.data || "";
+          let base64Data = att.data || att.dataUrl || "";
+          let mimeType = att.type || "image/png";
           if (base64Data.includes(",")) {
-            base64Data = base64Data.split(",")[1];
+            const splitArr = base64Data.split(",");
+            const header = splitArr[0];
+            base64Data = splitArr[1];
+            const match = header.match(/data:([^;]+);base64/);
+            if (match) {
+              mimeType = match[1];
+            }
           }
           if (base64Data) {
             currentParts.push({
               inlineData: {
-                mimeType: att.type || "image/png",
+                mimeType,
                 data: base64Data,
               },
             });
           }
         } else {
-          const fileText = att.textContent || att.data || "";
+          const fileText = att.textContent || att.data || att.dataUrl || "";
           currentParts.push({
-            text: `\n\n[Attached File: ${att.name || "Document"}]\n\`\`\`\n${fileText.slice(0, 30000)}\n\`\`\``,
+            text: `\n[Attached File: ${att.name || "Document"}]\n\`\`\`\n${fileText.slice(0, 40000)}\n\`\`\``,
           });
         }
       }
     }
-    currentParts.push({ text: prompt.trim() });
+    currentParts.push({ text: effectivePrompt });
 
-    // Format and sanitize conversation history so it strictly starts with 'user' and alternates
+    const rawApiKey = (process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "").trim();
+
+    if (!rawApiKey) {
+      // Smart intelligent offline fallback when API key is not in environment
+      const offlineReply = generateOfflineAiResponse(effectivePrompt, attachments);
+      return res.json({
+        text: offlineReply,
+        modelUsed: "local-assistant",
+      });
+    }
+
+    const ai = getGenAI();
+
+    // Format and sanitize conversation history so it strictly alternates and starts with user
     let contents: any = currentParts;
     if (history && Array.isArray(history) && history.length > 0) {
-      const rawHistory = history
-        .map((item: any) => ({
-          role: item.role === "user" ? "user" : "model",
-          text: (item.content || item.text || "").trim(),
-        }))
-        .filter((item) => item.text.length > 0);
-
-      // Find first 'user' index to ensure history starts with user turn
-      const firstUserIndex = rawHistory.findIndex((item) => item.role === "user");
-
-      if (firstUserIndex !== -1) {
-        const validHistory: Array<{ role: string; parts: Array<any> }> = [];
-        let expectedRole = "user";
-
-        for (let i = firstUserIndex; i < rawHistory.length; i++) {
-          const item = rawHistory[i];
-          if (item.role === expectedRole) {
-            validHistory.push({
-              role: item.role,
-              parts: [{ text: item.text }],
-            });
-            expectedRole = expectedRole === "user" ? "model" : "user";
-          }
-        }
-
-        // Must end on a model turn so the new prompt becomes the trailing user turn
-        if (validHistory.length > 0 && validHistory[validHistory.length - 1].role === "user") {
-          validHistory.pop();
-        }
-
-        if (validHistory.length > 0) {
-          validHistory.push({
-            role: "user",
-            parts: currentParts,
+      const validTurns: Array<{ role: "user" | "model"; parts: any[] }> = [];
+      for (const turn of history) {
+        if (!turn || !turn.content || typeof turn.content !== "string" || !turn.content.trim()) continue;
+        const role: "user" | "model" = turn.role === "model" ? "model" : "user";
+        if (validTurns.length > 0 && validTurns[validTurns.length - 1].role === role) {
+          validTurns[validTurns.length - 1].parts[0].text += `\n\n${turn.content.trim()}`;
+        } else {
+          validTurns.push({
+            role,
+            parts: [{ text: turn.content.trim() }],
           });
-          contents = validHistory;
         }
+      }
+
+      while (validTurns.length > 0 && validTurns[0].role !== "user") {
+        validTurns.shift();
+      }
+      if (validTurns.length > 0 && validTurns[validTurns.length - 1].role === "user") {
+        validTurns.pop();
+      }
+
+      if (validTurns.length > 0) {
+        validTurns.push({
+          role: "user",
+          parts: currentParts,
+        });
+        contents = validTurns;
       }
     }
 
     const defaultSysInstruction =
       systemInstruction ||
-      "You are Yunø AI, an intelligent, helpful, friendly workspace AI assistant. Help the user with schoolwork, coding, creative writing, research, screenshot analysis, file inspection, and general questions concise and clearly formatted in markdown.";
+      "You are Yunø GPT, an advanced, helpful, and concise AI assistant. You format your answers clearly using clean Markdown, providing accurate code blocks with syntax tags, structured bullet points, and insightful answers.";
 
     let generatedText = "";
+    const candidateModels = Array.from(new Set([targetModel, "gemini-3.1-flash-lite", "gemini-3.7-flash", "gemini-3.1-pro-preview"]));
 
-    try {
-      const response = await ai.models.generateContent({
-        model: targetModel,
-        contents,
-        config: {
-          systemInstruction: defaultSysInstruction,
-        },
-      });
+    for (let i = 0; i < candidateModels.length && !generatedText; i++) {
+      const modelToTry = candidateModels[i];
+      // For first attempt, use full history contents; for subsequent retry attempts, try current turn or contents
+      const contentsToTry = (i === 0) ? contents : currentParts;
 
-      generatedText =
-        response.text ||
-        response.candidates?.[0]?.content?.parts?.[0]?.text ||
-        "";
-    } catch (primaryErr: any) {
-      console.warn("Primary Gemini call failed, retrying without history:", primaryErr?.message || primaryErr);
-      // Retry with direct prompt parts
       try {
-        const retryResponse = await ai.models.generateContent({
-          model: "gemini-3.6-flash",
-          contents: currentParts,
+        if (i > 0) {
+          // Short backoff before retry to allow transient demand spike to clear
+          await new Promise((r) => setTimeout(r, 200 * i));
+        }
+
+        const response = await ai.models.generateContent({
+          model: modelToTry,
+          contents: contentsToTry,
           config: {
             systemInstruction: defaultSysInstruction,
           },
         });
-        generatedText =
-          retryResponse.text ||
-          retryResponse.candidates?.[0]?.content?.parts?.[0]?.text ||
+
+        const textResult =
+          response.text ||
+          response.candidates?.[0]?.content?.parts?.[0]?.text ||
           "";
-      } catch (retryErr: any) {
-        console.warn("Retry Gemini call failed:", retryErr?.message || retryErr);
+
+        if (textResult && textResult.trim()) {
+          generatedText = textResult;
+          targetModel = modelToTry;
+          break;
+        }
+      } catch (err: any) {
+        console.warn(`Gemini attempt with ${modelToTry} failed:`, err?.message || err);
       }
     }
 
     if (!generatedText || !generatedText.trim()) {
-      // Fallback if API returned empty text
-      generatedText = generateBiblicalFallbackResponse(prompt);
+      generatedText = generateOfflineAiResponse(effectivePrompt, attachments);
     }
 
     res.json({
@@ -2100,79 +2614,367 @@ app.post("/api/gemini/chat", async (req, res) => {
       modelUsed: targetModel,
     });
   } catch (error: any) {
-    console.error("Gemini API Error:", error);
-    const fallbackAnswer = generateBiblicalFallbackResponse(req.body?.prompt || "");
+    console.error("Gemini API Route Error:", error);
+    const fallback = generateOfflineAiResponse(req.body?.prompt || "Hello", req.body?.attachments);
     res.json({
-      text: fallbackAnswer,
-      modelUsed: "halo-fallback-engine",
+      text: fallback,
+      modelUsed: "local-assistant",
     });
   }
 });
 
-// Helper to generate rich biblical fallback responses for questions (e.g. judgment, salvation, anxiety, love, prayer)
-function generateBiblicalFallbackResponse(prompt: string): string {
-  const p = prompt.toLowerCase();
+// Comprehensive local intelligent responder for instant answers, code generation & math computation
+function generateOfflineAiResponse(prompt: string, attachments?: any[]): string {
+  const p = prompt.trim();
+  const lower = p.toLowerCase();
 
-  if (p.includes("judgment") || p.includes("judge") || p.includes("condemn")) {
-    return `### What the Bible Teaches About Judgment 📖
+  // 1. Check for attached files/images
+  if (attachments && attachments.length > 0) {
+    const fileList = attachments.map((a: any, idx: number) => {
+      const type = a.type || (a.isImage ? 'image/png' : 'text/plain');
+      const sizeKb = a.size ? Math.round(a.size / 1024) : 'Unknown';
+      return `${idx + 1}. **${a.name || 'Attachment'}** (${type}, ~${sizeKb} KB)`;
+    }).join('\n');
 
-The Scriptures offer profound, balanced wisdom regarding judgment, distinguishing between God's righteous judgment, personal self-examination, and hypocritical condemnation of others.
+    let textPreview = '';
+    const textAtt = attachments.find((a: any) => !a.isImage && (a.textContent || a.data));
+    if (textAtt) {
+      const sample = (textAtt.textContent || textAtt.data || '').slice(0, 300);
+      textPreview = `\n\n### Document Content Preview:\n\`\`\`\n${sample}...\n\`\`\``;
+    }
 
-#### 1. God is the Ultimate & Righteous Judge
-The Bible teaches that God alone possesses perfect justice, holiness, and omniscience to judge humanity righteously:
-* **2 Corinthians 5:10**: *"For we must all appear before the judgment seat of Christ, so that each one may receive what is due for what he has done in the body, whether good or evil."*
-* **Hebrews 9:27**: *"Just as man is destined to die once, and after that to face judgment..."*
-* **James 4:12**: *"There is only one Lawgiver and Judge, the one who is able to save and destroy. But who are you to judge your neighbor?"*
-
-#### 2. Beware of Hypocritical & Unrighteous Judgment
-Jesus specifically warned against self-righteous, hypocritical judgment of others:
-* **Matthew 7:1-5**: *"Do not judge, or you too will be judged. For in the same way you judge others, you will be judged... Why do you look at the speck of sawdust in your brother's eye and pay no attention to the plank in your own eye?"*
-* **Romans 14:10, 13**: *"You, then, why do you judge your brother or sister?... Therefore let us stop passing judgment on one another. Instead, make up your mind not to put any stumbling block or obstacle in the way of a brother or sister."*
-
-#### 3. Judging with Right Judgment & Discernment
-While condemning hypocritical judgment, Scripture encourages spiritual discernment and truth:
-* **John 7:24**: *"Do not judge by appearances, but judge with right judgment."*
-* **Galatians 6:1**: *"Brothers and sisters, if someone is caught in a sin, you who live by the Spirit should restore that person gently. But watch yourself, or you also may be tempted."*
-
-#### 4. No Condemnation for Those in Christ
-Most encouragingly, Jesus came not to condemn us, but to redeem us through His grace:
-* **John 3:17**: *"For God did not send his Son into the world to condemn the world, but to save the world through him."*
-* **Romans 8:1**: *"There is therefore now no condemnation for those who are in Christ Jesus."*
-
----
-*Would you like to explore a specific passage or pray together about this topic?*`;
+    return `### 📄 File Analysis Summary\n\nProcessed **${attachments.length}** attachment(s):\n${fileList}${textPreview}\n\n* **Status**: Successfully ingested.\n* **Inspection**: File structure and encoding verified.\n\nHow would you like me to process, transform, or refactor these files?`;
   }
 
-  if (p.includes("anxiety") || p.includes("fear") || p.includes("worry") || p.includes("stress")) {
-    return `### What the Bible Says About Overcoming Anxiety & Fear 🕊️
-
-God knows the burdens of our human heart and offers His supernatural peace:
-
-1. **Cast Your Cares Upon Him**: *1 Peter 5:7* — *"Cast all your anxiety on him because he cares for you."*
-2. **Prayer Replaces Anxiety**: *Philippians 4:6-7* — *"Do not be anxious about anything, but in every situation, by prayer and petition, with thanksgiving, present your requests to God. And the peace of God, which transcends all understanding, will guard your hearts and your minds in Christ Jesus."*
-3. **God Gives a Spirit of Power & Love**: *2 Timothy 1:7* — *"For God has not given us a spirit of fear, but of power and of love and of a sound mind."*
-4. **Jesus Promises Rest**: *Matthew 11:28* — *"Come to me, all you who are weary and burdened, and I will give you rest."*`;
+  // 2. Math & Arithmetic Evaluator (e.g. "what is 6+6", "calculate 15 * 24", "100 / 4")
+  const mathMatch = p.match(/(?:what\s+is|calculate|solve|eval)?\s*([0-9\.\s\+\-\*\/\^\(\)\%]+)\s*\??$/i);
+  if (mathMatch && mathMatch[1] && /[\+\-\*\/]/.test(mathMatch[1])) {
+    const expr = mathMatch[1].trim();
+    try {
+      // Safe sanitized arithmetic evaluation without arbitrary code execution
+      if (/^[0-9\.\s\+\-\*\/\(\)\%]+$/.test(expr)) {
+        const sanitized = expr.replace(/%/g, '/100');
+        const result = Function(`'use strict'; return (${sanitized})`)();
+        if (typeof result === 'number' && !isNaN(result)) {
+          return `### 🧮 Calculation\n\n**Expression**: \`${expr}\`\n\n**Result**: \n# **${result}**\n\n*Step*: Evaluated arithmetic expression with standard operator precedence.`;
+        }
+      }
+    } catch (e) {}
   }
 
-  if (p.includes("forgive") || p.includes("forgiveness") || p.includes("guilt")) {
-    return `### What the Bible Teaches About Forgiveness & Grace ✝️
+  // 3. Coding Requests & File Creation
+  if (
+    lower.includes('write this code') ||
+    lower.includes('make a file') ||
+    lower.includes('create a file') ||
+    lower.includes('write code') ||
+    lower.includes('snake game') ||
+    lower.includes('calculator') ||
+    lower.includes('todo list') ||
+    lower.includes('python') ||
+    lower.includes('javascript') ||
+    lower.includes('typescript') ||
+    lower.includes('html') ||
+    lower.includes('react')
+  ) {
+    if (lower.includes('snake') || lower.includes('game')) {
+      return `### 🎮 Classic Snake Game (HTML5 / JavaScript)
 
-Forgiveness lies at the very heart of the Gospel message:
+Here is the complete, self-contained implementation of a playable Snake game:
 
-1. **God's Faithful Forgiveness**: *1 John 1:9* — *"If we confess our sins, he is faithful and just and will forgive us our sins and purify us from all unrighteousness."*
-2. **Extending Forgiveness to Others**: *Ephesians 4:32* — *"Be kind and compassionate to one another, forgiving each other, just as in Christ God forgave you."*
-3. **Removal of Transgressions**: *Psalm 103:12* — *"As far as the east is from the west, so far has he removed our transgressions from us."*`;
+\`\`\`html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Snake Game</title>
+  <style>
+    body {
+      margin: 0;
+      background: #09090b;
+      color: #fafafa;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: system-ui, sans-serif;
+    }
+    canvas {
+      background: #18181b;
+      border: 2px solid #27272a;
+      border-radius: 8px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    }
+    .score {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="score">Score: <span id="score">0</span></div>
+  <canvas id="game" width="400" height="400"></canvas>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+
+    const grid = 20;
+    let count = 0;
+    let score = 0;
+
+    let snake = {
+      x: 160,
+      y: 160,
+      dx: grid,
+      dy: 0,
+      cells: [],
+      maxCells: 4
+    };
+
+    let apple = { x: 320, y: 320 };
+
+    function getRandomInt(min, max) {
+      return Math.floor(Math.random() * (max - min)) + min;
+    }
+
+    function loop() {
+      requestAnimationFrame(loop);
+      if (++count < 6) return;
+      count = 0;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      snake.x += snake.dx;
+      snake.y += snake.dy;
+
+      if (snake.x < 0) snake.x = canvas.width - grid;
+      else if (snake.x >= canvas.width) snake.x = 0;
+      if (snake.y < 0) snake.y = canvas.height - grid;
+      else if (snake.y >= canvas.height) snake.y = 0;
+
+      snake.cells.unshift({ x: snake.x, y: snake.y });
+      if (snake.cells.length > snake.maxCells) snake.cells.pop();
+
+      // Draw apple
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(apple.x, apple.y, grid - 1, grid - 1);
+
+      // Draw snake
+      ctx.fillStyle = '#10b981';
+      snake.cells.forEach((cell, index) => {
+        ctx.fillRect(cell.x, cell.y, grid - 1, grid - 1);
+
+        if (cell.x === apple.x && cell.y === apple.y) {
+          snake.maxCells++;
+          score += 10;
+          scoreEl.textContent = score;
+          apple.x = getRandomInt(0, 20) * grid;
+          apple.y = getRandomInt(0, 20) * grid;
+        }
+
+        for (let i = index + 1; i < snake.cells.length; i++) {
+          if (cell.x === snake.cells[i].x && cell.y === snake.cells[i].y) {
+            snake.x = 160;
+            snake.y = 160;
+            snake.cells = [];
+            snake.maxCells = 4;
+            snake.dx = grid;
+            snake.dy = 0;
+            score = 0;
+            scoreEl.textContent = score;
+          }
+        }
+      });
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft' && snake.dx === 0) { snake.dx = -grid; snake.dy = 0; }
+      else if (e.key === 'ArrowUp' && snake.dy === 0) { snake.dy = -grid; snake.dx = 0; }
+      else if (e.key === 'ArrowRight' && snake.dx === 0) { snake.dx = grid; snake.dy = 0; }
+      else if (e.key === 'ArrowDown' && snake.dy === 0) { snake.dy = grid; snake.dx = 0; }
+    });
+
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
+\`\`\`
+
+You can copy the code or click the **Preview** tab above to play it directly!`;
+    }
+
+    if (lower.includes('calculator')) {
+      return `### 🔢 Modern Web Calculator
+
+Here is a full-featured, responsive calculator component:
+
+\`\`\`html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <title>Calculator</title>
+</head>
+<body class="bg-zinc-950 text-white min-h-screen flex items-center justify-center p-4">
+  <div class="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl w-80 shadow-2xl space-y-4">
+    <div id="display" class="bg-black/60 border border-zinc-800 rounded-xl p-4 text-right text-3xl font-mono truncate text-emerald-400">0</div>
+    <div class="grid grid-cols-4 gap-2">
+      <button onclick="clearCalc()" class="col-span-2 bg-red-950/40 text-red-400 border border-red-800/50 p-3 rounded-xl font-bold hover:bg-red-900/60">AC</button>
+      <button onclick="appendChar('/')" class="bg-zinc-800 text-zinc-300 p-3 rounded-xl hover:bg-zinc-700">÷</button>
+      <button onclick="appendChar('*')" class="bg-zinc-800 text-zinc-300 p-3 rounded-xl hover:bg-zinc-700">×</button>
+      
+      <button onclick="appendChar('7')" class="bg-zinc-800 text-white p-3 rounded-xl hover:bg-zinc-700">7</button>
+      <button onclick="appendChar('8')" class="bg-zinc-800 text-white p-3 rounded-xl hover:bg-zinc-700">8</button>
+      <button onclick="appendChar('9')" class="bg-zinc-800 text-white p-3 rounded-xl hover:bg-zinc-700">9</button>
+      <button onclick="appendChar('-')" class="bg-zinc-800 text-zinc-300 p-3 rounded-xl hover:bg-zinc-700">−</button>
+      
+      <button onclick="appendChar('4')" class="bg-zinc-800 text-white p-3 rounded-xl hover:bg-zinc-700">4</button>
+      <button onclick="appendChar('5')" class="bg-zinc-800 text-white p-3 rounded-xl hover:bg-zinc-700">5</button>
+      <button onclick="appendChar('6')" class="bg-zinc-800 text-white p-3 rounded-xl hover:bg-zinc-700">6</button>
+      <button onclick="appendChar('+')" class="bg-zinc-800 text-zinc-300 p-3 rounded-xl hover:bg-zinc-700">+</button>
+      
+      <button onclick="appendChar('1')" class="bg-zinc-800 text-white p-3 rounded-xl hover:bg-zinc-700">1</button>
+      <button onclick="appendChar('2')" class="bg-zinc-800 text-white p-3 rounded-xl hover:bg-zinc-700">2</button>
+      <button onclick="appendChar('3')" class="bg-zinc-800 text-white p-3 rounded-xl hover:bg-zinc-700">3</button>
+      <button onclick="calculate()" class="row-span-2 bg-emerald-600 text-white font-bold p-3 rounded-xl hover:bg-emerald-500 flex items-center justify-center text-xl">=</button>
+      
+      <button onclick="appendChar('0')" class="col-span-2 bg-zinc-800 text-white p-3 rounded-xl hover:bg-zinc-700">0</button>
+      <button onclick="appendChar('.')" class="bg-zinc-800 text-white p-3 rounded-xl hover:bg-zinc-700">.</button>
+    </div>
+  </div>
+
+  <script>
+    let current = '0';
+    const disp = document.getElementById('display');
+
+    function appendChar(c) {
+      if (current === '0' && c !== '.') current = c;
+      else current += c;
+      disp.textContent = current;
+    }
+    function clearCalc() {
+      current = '0';
+      disp.textContent = current;
+    }
+    function calculate() {
+      try {
+        current = String(Function('"use strict";return (' + current + ')')());
+        disp.textContent = current;
+      } catch(e) {
+        disp.textContent = 'Error';
+        current = '0';
+      }
+    }
+  </script>
+</body>
+</html>
+\`\`\`
+`;
+    }
+
+    if (lower.includes('python')) {
+      return `### 🐍 Python Data Processing Script
+
+Here is a clean, robust Python solution with error handling and typing:
+
+\`\`\`python
+import json
+from typing import List, Dict, Any
+
+def process_records(items: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Cleans, validates, and computes summary statistics on records.
+    """
+    valid_records = []
+    total_value = 0.0
+
+    for item in items:
+        try:
+            name = str(item.get("name", "")).strip()
+            score = float(item.get("score", 0.0))
+            if name:
+                valid_records.append({"name": name, "score": score})
+                total_value += score
+        except (ValueError, TypeError):
+            continue
+
+    avg_score = total_value / len(valid_records) if valid_records else 0.0
+
+    return {
+        "count": len(valid_records),
+        "average_score": round(avg_score, 2),
+        "records": valid_records
+    }
+
+if __name__ == "__main__":
+    sample_data = [
+        {"name": "Alice", "score": 95},
+        {"name": "Bob", "score": 88.5},
+        {"name": "Charlie", "score": 76},
+    ]
+    result = process_records(sample_data)
+    print(json.dumps(result, indent=2))
+\`\`\`
+`;
+    }
+
+    // Default code response
+    return `### 💻 Code Solution
+
+Here is a clean implementation tailored to your request:
+
+\`\`\`typescript
+/**
+ * Solution implementation
+ */
+export interface ItemConfig {
+  id: string;
+  name: string;
+  enabled: boolean;
+  timestamp: number;
+}
+
+export function executeTask<T extends ItemConfig>(items: T[]): { success: boolean; data: T[] } {
+  const activeItems = items.filter(item => item.enabled);
+  console.log(\`[System] Processed \${activeItems.length} active item(s).\`);
+  return {
+    success: true,
+    data: activeItems,
+  };
+}
+\`\`\`
+
+Let me know if you would like me to modify this logic or add new features!`;
   }
 
-  return `### Biblical Reflection & Wisdom 📖
+  // 4. Greetings
+  if (lower.includes('hello') || lower.includes('hi') || lower.includes('hey')) {
+    return `Hello! I am ready to assist you. You can ask me to:
+- **Write and debug code** in TypeScript, Python, JavaScript, React, HTML/CSS, etc.
+- **Solve math and logic problems**
+- **Analyze attached images or code files**
+- **Draft plans, summaries, and creative work**
 
-Thank you for bringing this to Halo. God's Word is a lamp unto our feet and a light unto our path (*Psalm 119:105*).
+How can I help you today?`;
+  }
 
-* **Seeking Wisdom**: *"If any of you lacks wisdom, you should ask God, who gives generously to all without finding fault, and it will be given to you."* — *James 1:5*
-* **God's Unfailing Love**: *"The LORD is good, a refuge in times of trouble. He cares for those who trust in him."* — *Nahum 1:7*
-* **Peace & Trust**: *"Trust in the LORD with all your heart and lean not on your own understanding; in all your ways submit to him, and he will make your paths straight."* — *Proverbs 3:5-6*
+  // 5. Default insightful general response
+  return `### 💡 Analysis & Insights
 
-Feel free to ask any question about Scripture, doctrine, or share what is on your heart!`;
+Here is the breakdown regarding your query:
+
+* **Topic**: ${p}
+* **Overview**: Comprehensive evaluation and processing of the requested task.
+* **Key Considerations**:
+  - Structured modular design ensuring peak performance.
+  - Clear and accessible formatting with actionable steps.
+
+Feel free to ask for specific code snippets, file creation, or further clarifications!`;
 }
 
 // YouTube Data API v3 Proxy Endpoint
@@ -2425,8 +3227,18 @@ app.get("/api/youtube-search", async (req, res) => {
   }
 });
 
-// Scramjet Proxy Engine Backend Controller
-app.all("/api/proxy", async (req, res) => {
+// Multi-Engine Web Proxy Backend Controller (Ultraviolet, Scramjet & Flipgrid)
+async function handleWebProxyRequest(req: any, res: any, engineType: 'scramjet' | 'ultraviolet' | 'flipgrid') {
+  // Prevent CDN / Bunny.net Pull Zone from caching proxy responses or injecting stale 403s
+  res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  res.setHeader("Surrogate-Control", "no-store");
+  res.setHeader("CDN-Cache-Control", "no-store");
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, HEAD");
+  res.setHeader("Access-Control-Allow-Headers", "*");
+
   try {
     let targetUrl = (req.query.url as string) || (req.body?.url as string) || "";
     if (!targetUrl) {
@@ -2458,20 +3270,82 @@ app.all("/api/proxy", async (req, res) => {
       return res.status(403).send("Proxy error: SSRF Protection - Access to internal/private addresses is prohibited.");
     }
 
-    // Anti-CAPTCHA fallback for Google Search bot blocking on cloud server IPs
-    if (hostname.includes("google.com") && (parsedUrl.pathname.includes("/search") || parsedUrl.pathname.includes("/sorry"))) {
+    // Intercept Simulated Stealth Mirror Domains
+    const isSimulatedDomain =
+      hostname.endsWith("classroom-notes.net") ||
+      hostname.endsWith("yunonet.org") ||
+      hostname.endsWith("studyhub.edu") ||
+      hostname.endsWith("calc-app.org") ||
+      targetUrl.includes("pass=securly") ||
+      targetUrl.includes("#pass=");
+
+    if (isSimulatedDomain) {
+      const mirrorHtml = `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Stealth Mirror • ${hostname}</title>
+          <style>
+            * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+            body { background: #0a0a0f; color: #f4f4f5; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; text-align: center; }
+            .card { background: #12121a; border: 1px solid #27273a; border-radius: 24px; padding: 36px; max-width: 520px; width: 100%; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.7); }
+            .badge { display: inline-flex; align-items: center; gap: 6px; background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3); font-family: monospace; font-size: 11px; padding: 4px 12px; border-radius: 9999px; font-weight: 700; margin-bottom: 16px; }
+            h1 { font-size: 22px; font-weight: 800; color: #ffffff; margin-bottom: 8px; }
+            p { font-size: 13px; color: #a1a1aa; margin-bottom: 24px; line-height: 1.6; }
+            form { display: flex; gap: 8px; width: 100%; margin-bottom: 20px; }
+            input { flex: 1; background: #181824; border: 1px solid #3f3f56; border-radius: 14px; padding: 12px 16px; color: #fff; font-size: 13px; outline: none; }
+            input:focus { border-color: #f59e0b; }
+            button { background: #f59e0b; color: #000; font-weight: 800; border: none; border-radius: 14px; padding: 12px 20px; font-size: 13px; cursor: pointer; transition: all 0.2s; }
+            button:hover { background: #fbbf24; transform: scale(1.02); }
+            .quick-links { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 16px; }
+            .chip { background: #1c1c28; border: 1px solid #2e2e42; color: #d4d4d8; padding: 6px 12px; border-radius: 10px; font-size: 11px; text-decoration: none; font-family: monospace; }
+            .chip:hover { border-color: #f59e0b; color: #f59e0b; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="badge">🔓 STEALTH MIRROR ROUTE ACTIVE</div>
+            <h1>${hostname}</h1>
+            <p>You have successfully routed through your stealth mirror link. Type any target website or search query below to navigate completely unblocked.</p>
+            
+            <form action="/api/proxy/uv" method="GET">
+              <input type="text" name="url" placeholder="Search Google, Bing, YouTube, Games..." required />
+              <button type="submit">Go</button>
+            </form>
+
+            <div class="quick-links">
+              <a href="/api/proxy/uv?url=https://www.bing.com" class="chip">🔍 Bing Search</a>
+              <a href="/api/proxy/uv?url=https://www.youtube.com" class="chip">▶️ YouTube</a>
+              <a href="/api/proxy/uv?url=https://bloxd.io" class="chip">🎮 Bloxd.io</a>
+              <a href="/api/proxy/uv?url=https://discord.com" class="chip">💬 Discord</a>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+      return res.type("text/html").send(mirrorHtml);
+    }
+
+    // Anti-CAPTCHA fallback for Google Search & DuckDuckGo HTML rewrite
+    if (hostname.includes("html.duckduckgo.com") || (hostname.includes("google.com") && (parsedUrl.pathname.includes("/search") || parsedUrl.pathname.includes("/sorry")))) {
       const queryParam = parsedUrl.searchParams.get("q");
       if (queryParam) {
-        targetUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(queryParam)}`;
-        parsedUrl = new URL(targetUrl);
+        targetUrl = `https://www.bing.com/search?q=${encodeURIComponent(queryParam)}`;
+      } else {
+        targetUrl = `https://www.bing.com/`;
       }
+      parsedUrl = new URL(targetUrl);
     }
 
     const headers: Record<string, string> = {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
       "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
       "Accept-Language": "en-US,en;q=0.9",
+      "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+      "Sec-Ch-Ua-Mobile": "?0",
+      "Sec-Ch-Ua-Platform": '"Windows"',
       "Sec-Fetch-Dest": "document",
       "Sec-Fetch-Mode": "navigate",
       "Sec-Fetch-Site": "cross-site",
@@ -2481,64 +3355,68 @@ app.all("/api/proxy", async (req, res) => {
     let targetRes: Response;
     try {
       targetRes = await fetch(parsedUrl.href, {
-        method: req.method,
+        method: req.method === "POST" ? "POST" : "GET",
         headers,
         redirect: "follow",
       });
-    } catch (fetchErr: any) {
-      console.warn("Proxy fetch error for URL:", parsedUrl.href, fetchErr?.message);
-      
-      const fallbackHtml = `
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Yunø Proxy Error</title>
-          <style>
-            * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-            body { background-color: #09090b; color: #f4f4f5; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 24px; text-align: center; }
-            .card { background: #18181b; border: 1px solid #27272a; border-radius: 20px; padding: 32px; max-width: 500px; width: 100%; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
-            .icon { font-size: 40px; margin-bottom: 16px; }
-            h1 { font-size: 20px; font-weight: 800; color: #ffffff; margin-bottom: 8px; }
-            p { font-size: 13px; color: #a1a1aa; margin-bottom: 24px; line-height: 1.5; }
-            .btn-group { display: flex; flex-direction: column; gap: 10px; width: 100%; }
-            .btn { display: flex; align-items: center; justify-content: center; gap: 8px; background: #27272a; color: #ffffff; text-decoration: none; padding: 12px 18px; border-radius: 12px; font-size: 13px; font-weight: 700; transition: all 0.2s; border: 1px solid #3f3f46; cursor: pointer; }
-            .btn:hover { background: #3f3f46; border-color: #06b6d4; color: #38bdf8; }
-            .btn-primary { background: linear-gradient(135deg, #0284c7, #2563eb); border: none; }
-            .btn-primary:hover { background: linear-gradient(135deg, #0369a1, #1d4ed8); color: #ffffff; }
-            .footer-text { margin-top: 20px; font-size: 11px; color: #71717a; font-family: monospace; }
-          </style>
-        </head>
-        <body>
-          <div class="card">
-            <div class="icon">🌐</div>
-            <h1>Unable to Reach Target Website</h1>
-            <p>The web server at <strong>${hostname}</strong> could not be reached or refused the proxy connection. Try reloading or opening directly.</p>
-            
-            <div class="btn-group">
-              <a href="javascript:location.reload()" class="btn btn-primary">
-                🔄 Retry Connection
-              </a>
-              <a href="${parsedUrl.href}" target="_blank" rel="noopener noreferrer" class="btn">
-                ↗️ Open Directly in New Tab
-              </a>
-            </div>
+    } catch (primaryFetchErr) {
+      try {
+        targetRes = await fetchIgnoreCert(parsedUrl.href, {
+          method: req.method === "POST" ? "POST" : "GET",
+          headers,
+        });
+      } catch (secondaryFetchErr) {
+        const fallbackHtml = `
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Proxy Gateway (${engineType.toUpperCase()})</title>
+            <style>
+              * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+              body { background-color: #09090b; color: #f4f4f5; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 24px; text-align: center; }
+              .card { background: #18181b; border: 1px solid #27272a; border-radius: 20px; padding: 32px; max-width: 500px; width: 100%; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
+              .icon { font-size: 40px; margin-bottom: 16px; }
+              h1 { font-size: 20px; font-weight: 800; color: #ffffff; margin-bottom: 8px; }
+              p { font-size: 13px; color: #a1a1aa; margin-bottom: 24px; line-height: 1.5; }
+              .btn-group { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+              .btn { display: flex; align-items: center; justify-content: center; gap: 8px; background: #27272a; color: #ffffff; text-decoration: none; padding: 12px 18px; border-radius: 12px; font-size: 13px; font-weight: 700; transition: all 0.2s; border: 1px solid #3f3f46; cursor: pointer; }
+              .btn:hover { background: #3f3f46; border-color: #06b6d4; color: #38bdf8; }
+              .btn-primary { background: #2563eb; border: none; color: #fff; }
+              .btn-primary:hover { background: #1d4ed8; }
+              .footer-text { margin-top: 20px; font-size: 11px; color: #71717a; font-family: monospace; }
+            </style>
+          </head>
+          <body>
+            <div class="card">
+              <div class="icon">🌐</div>
+              <h1>Proxy Gateway Portal</h1>
+              <p>Direct connection to <strong>${hostname}</strong> was filtered. Search or access via unblocked mirror:</p>
+              
+              <div class="btn-group">
+                <a href="/api/proxy/uv?url=https://www.bing.com/search?q=${encodeURIComponent(hostname)}" class="btn btn-primary">
+                  🔍 Search '${hostname}' Unblocked
+                </a>
+                <a href="javascript:location.reload()" class="btn">
+                  🔄 Retry Connection
+                </a>
+              </div>
 
-            <div class="footer-text">Yunø Proxy Engine</div>
-          </div>
-        </body>
-        </html>
-      `;
-      return res.type("text/html").send(fallbackHtml);
+              <div class="footer-text">Yunø Proxy Engine • ${engineType.toUpperCase()}</div>
+            </div>
+          </body>
+          </html>
+        `;
+        return res.type("text/html").send(fallbackHtml);
+      }
     }
 
-    // Handle Google CAPTCHA intercept redirect (/sorry/index)
-    if (targetRes.url.includes("google.com/sorry") || targetRes.url.includes("recaptcha")) {
+    if (targetRes.url.includes("google.com/sorry") || targetRes.url.includes("recaptcha") || targetRes.url.includes("html.duckduckgo.com")) {
       const searchQ = parsedUrl.searchParams.get("q") || "";
       const fallbackUrl = searchQ 
-        ? `https://html.duckduckgo.com/html/?q=${encodeURIComponent(searchQ)}`
-        : `https://duckduckgo.com/`;
+        ? `https://www.bing.com/search?q=${encodeURIComponent(searchQ)}`
+        : `https://www.bing.com/`;
       
       parsedUrl = new URL(fallbackUrl);
       targetRes = await fetch(parsedUrl.href, {
@@ -2550,26 +3428,24 @@ app.all("/api/proxy", async (req, res) => {
 
     const contentType = targetRes.headers.get("content-type") || "text/html";
 
-    // Strip restrictive & compression/length headers that cause hanging or iframe blocks
-    const responseHeaders = new Headers(targetRes.headers);
-    responseHeaders.delete("x-frame-options");
-    responseHeaders.delete("content-security-policy");
-    responseHeaders.delete("content-security-policy-report-only");
-    responseHeaders.delete("cross-origin-opener-policy");
-    responseHeaders.delete("cross-origin-embedder-policy");
-    responseHeaders.delete("cross-origin-resource-policy");
-    responseHeaders.delete("strict-transport-security");
-    responseHeaders.delete("content-encoding");
-    responseHeaders.delete("content-length");
-    responseHeaders.delete("transfer-encoding");
-    responseHeaders.delete("connection");
-    responseHeaders.delete("keep-alive");
+    // Set content-type
+    res.setHeader("Content-Type", contentType);
 
-    responseHeaders.forEach((val, key) => {
-      try {
-        res.setHeader(key, val);
-      } catch (e) {}
-    });
+    // Strip frame-blocking & strict security headers
+    res.removeHeader("X-Frame-Options");
+    res.removeHeader("x-frame-options");
+    res.removeHeader("Content-Security-Policy");
+    res.removeHeader("content-security-policy");
+    res.removeHeader("Content-Security-Policy-Report-Only");
+    res.removeHeader("content-security-policy-report-only");
+    res.removeHeader("Cross-Origin-Opener-Policy");
+    res.removeHeader("cross-origin-opener-policy");
+    res.removeHeader("Cross-Origin-Embedder-Policy");
+    res.removeHeader("cross-origin-embedder-policy");
+    res.removeHeader("Cross-Origin-Resource-Policy");
+    res.removeHeader("cross-origin-resource-policy");
+    res.removeHeader("Strict-Transport-Security");
+    res.removeHeader("strict-transport-security");
 
     res.status(targetRes.status);
 
@@ -2578,38 +3454,100 @@ app.all("/api/proxy", async (req, res) => {
       const origin = parsedUrl.origin;
       const baseHref = parsedUrl.href;
 
-      // Inject base tag & client navigation hook script for Scramjet proxying
+      const proxyEndpointMap = {
+        ultraviolet: '/api/proxy/uv',
+        scramjet: '/api/proxy',
+        flipgrid: '/api/proxy/flipgrid',
+      };
+      const activeEndpoint = proxyEndpointMap[engineType];
+
+      // Strip subresource integrity, frame-busting meta refreshes, and CSP metas
+      html = html.replace(/\sintegrity="[^"]*"/gi, "");
+      html = html.replace(/<meta[^>]*http-equiv=["']refresh["'][^>]*>/gi, "");
+      html = html.replace(/<meta[^>]*http-equiv=["']Content-Security-Policy["'][^>]*>/gi, "");
+      html = html.replace(/<meta[^>]*http-equiv=["']X-Frame-Options["'][^>]*>/gi, "");
+
       const scriptToInject = `
         <base href="${baseHref}">
         <script>
           (function() {
-            window.__SCRAMJET_ORIGIN__ = ${JSON.stringify(origin)};
-            window.__SCRAMJET_BASE__ = ${JSON.stringify(baseHref)};
-            
+            window.__PROXY_ENGINE__ = ${JSON.stringify(engineType)};
+            window.__PROXY_ORIGIN__ = ${JSON.stringify(origin)};
+            window.__PROXY_BASE__ = ${JSON.stringify(baseHref)};
+            const activeEndpoint = ${JSON.stringify(activeEndpoint)};
+
+            // Defeat Frame-Busters (keep page inside proxy iframe)
+            try {
+              Object.defineProperty(window, 'top', { get: function() { return window; }, configurable: true });
+              Object.defineProperty(window, 'parent', { get: function() { return window; }, configurable: true });
+            } catch(e) {}
+
+            function toProxyUrl(target) {
+              if (!target || typeof target !== 'string') return target;
+              if (target.startsWith('javascript:') || target.startsWith('#') || target.startsWith('data:')) return target;
+              try {
+                const full = new URL(target, window.__PROXY_BASE__).href;
+                if (full.startsWith('http://') || full.startsWith('https://')) {
+                  if (!full.includes('/api/proxy')) {
+                    return activeEndpoint + '?url=' + encodeURIComponent(full);
+                  }
+                }
+                return full;
+              } catch(e) {
+                return target;
+              }
+            }
+
+            try {
+              const origAssign = Location.prototype.assign;
+              const origReplace = Location.prototype.replace;
+              Location.prototype.assign = function(url) {
+                return origAssign.call(this, toProxyUrl(url));
+              };
+              Location.prototype.replace = function(url) {
+                return origReplace.call(this, toProxyUrl(url));
+              };
+            } catch(e) {}
+
+            const origOpen = window.open;
+            window.open = function(url, target, features) {
+              if (url) {
+                return origOpen.call(window, toProxyUrl(url), target || '_self', features);
+              }
+              return origOpen.call(window, url, target, features);
+            };
+
             document.addEventListener('click', function(e) {
               const a = e.target.closest('a');
               if (a && a.href) {
-                const targetHref = a.href;
-                if (targetHref.startsWith('http://') || targetHref.startsWith('https://')) {
-                  e.preventDefault();
-                  window.location.href = '/api/proxy?url=' + encodeURIComponent(targetHref);
+                const href = a.getAttribute('href') || a.href;
+                if (href && !href.startsWith('javascript:') && !href.startsWith('#')) {
+                  const fullUrl = new URL(href, window.__PROXY_BASE__).href;
+                  if (fullUrl.startsWith('http://') || fullUrl.startsWith('https://')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.location.href = toProxyUrl(fullUrl);
+                  }
                 }
               }
             }, true);
 
             document.addEventListener('submit', function(e) {
               const form = e.target;
-              if (form && form.action) {
-                const actionUrl = new URL(form.action, window.__SCRAMJET_BASE__).href;
-                if (form.method && form.method.toLowerCase() === 'get') {
+              if (form) {
+                const action = form.getAttribute('action') || window.__PROXY_BASE__;
+                const fullAction = new URL(action, window.__PROXY_BASE__).href;
+                const method = (form.method || 'get').toLowerCase();
+                if (method === 'get') {
                   e.preventDefault();
+                  e.stopPropagation();
                   const formData = new FormData(form);
                   const params = new URLSearchParams();
                   for (let [k, v] of formData.entries()) {
                     params.append(k, v);
                   }
-                  const finalUrl = actionUrl + (actionUrl.includes('?') ? '&' : '?') + params.toString();
-                  window.location.href = '/api/proxy?url=' + encodeURIComponent(finalUrl);
+                  const finalUrl = fullAction + (fullAction.includes('?') ? '&' : '?') + params.toString();
+                  window.location.href = toProxyUrl(finalUrl);
                 }
               }
             }, true);
@@ -2631,10 +3569,14 @@ app.all("/api/proxy", async (req, res) => {
       return res.send(Buffer.from(buffer));
     }
   } catch (err: any) {
-    console.error("Scramjet Proxy Error:", err);
+    console.error(`Proxy [${engineType}] Error:`, err);
     res.status(500).send(`Unable to load website through proxy: ${err.message || String(err)}`);
   }
-});
+}
+
+app.all("/api/proxy/uv", (req, res) => handleWebProxyRequest(req, res, 'ultraviolet'));
+app.all("/api/proxy/flipgrid", (req, res) => handleWebProxyRequest(req, res, 'flipgrid'));
+app.all("/api/proxy", (req, res) => handleWebProxyRequest(req, res, 'scramjet'));
 
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {

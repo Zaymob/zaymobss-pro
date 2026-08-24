@@ -61,8 +61,8 @@ export const GAMES: GameItem[] = [
 
 export const AI_MODELS: AiModelOption[] = [
   {
-    id: 'gemini-3.6-flash',
-    name: 'Gemini 3.6 Flash',
+    id: 'gemini-3.7-flash',
+    name: 'Gemini 3.7 Flash',
     badge: 'DEFAULT',
     provider: 'GOOGLE',
     category: 'Google Models',

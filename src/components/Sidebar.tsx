@@ -33,9 +33,6 @@ interface SidebarProps {
   onOpenProfileModal?: () => void;
   currentUser?: string;
   currentAvatar?: string;
-  isPrivateChatUnlocked?: boolean;
-  onUnlockPrivateChat?: () => void;
-  isHaloUnlocked?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -49,8 +46,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenProfileModal,
   currentUser,
   currentAvatar,
-  isPrivateChatUnlocked = false,
-  isHaloUnlocked = false,
 }) => {
   const navItems = [
     { id: 'home' as NavTab, label: 'Home', icon: House },
@@ -58,14 +53,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'movies' as NavTab, label: 'Movies & TV', icon: FilmStrip },
     { id: 'games' as NavTab, label: 'Arcade Games', icon: GameController },
     { id: 'youtube' as NavTab, label: 'Yunø Tube', icon: Television },
-    { id: 'ai' as NavTab, label: 'AI Studio', icon: Robot },
-    ...(isHaloUnlocked
-      ? [{ id: 'halo' as NavTab, label: 'Halo Faith AI', icon: Sparkle }]
-      : []),
+    { id: 'ai' as NavTab, label: "Jack's cough", icon: Robot },
     { id: 'community' as NavTab, label: 'Community Chat', icon: ChatCircleText },
-    ...(isPrivateChatUnlocked
-      ? [{ id: 'private_chat' as NavTab, label: 'Watch Party', icon: ShieldCheck }]
-      : []),
     { id: 'music' as NavTab, label: 'Music', icon: MusicNotes },
     { id: 'settings' as NavTab, label: 'Settings', icon: Gear },
   ];

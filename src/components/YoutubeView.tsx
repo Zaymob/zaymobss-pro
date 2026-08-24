@@ -9,7 +9,6 @@ import {
   Share2,
   Calendar,
   User,
-  Sparkles,
   RefreshCw,
   Clock,
   CheckCircle2,
@@ -78,58 +77,58 @@ interface SkinConfig {
 const SKINS: SkinConfig[] = [
   {
     id: 'crimson',
-    name: 'Crimson Red',
+    name: 'Classic Red',
     badge: 'CLASSIC',
     accentBg: 'bg-red-600',
     accentText: 'text-red-500',
-    accentBorder: 'border-red-500/40',
-    glow: 'shadow-[0_0_25px_rgba(239,68,68,0.4)]',
-    gradient: 'from-red-600 via-red-500 to-rose-700',
+    accentBorder: 'border-red-600/40',
+    glow: '',
+    gradient: '',
     btnBg: 'bg-red-600 hover:bg-red-500',
   },
   {
-    id: 'cyberpunk',
-    name: 'Cyber Neon',
-    badge: 'NEON',
-    accentBg: 'bg-cyan-500',
-    accentText: 'text-cyan-400',
-    accentBorder: 'border-cyan-500/40',
-    glow: 'shadow-[0_0_25px_rgba(6,182,212,0.45)]',
-    gradient: 'from-cyan-500 via-fuchsia-500 to-purple-600',
-    btnBg: 'bg-cyan-500 hover:bg-cyan-400 text-black',
-  },
-  {
     id: 'obsidian',
-    name: 'Midnight Obsidian',
-    badge: 'SLEEK',
+    name: 'Charcoal Minimal',
+    badge: 'DARK',
     accentBg: 'bg-zinc-100',
     accentText: 'text-zinc-200',
     accentBorder: 'border-zinc-700',
-    glow: 'shadow-[0_0_25px_rgba(255,255,255,0.15)]',
-    gradient: 'from-zinc-700 via-zinc-800 to-zinc-950',
+    glow: '',
+    gradient: '',
     btnBg: 'bg-zinc-100 hover:bg-white text-zinc-950',
   },
   {
+    id: 'cyberpunk',
+    name: 'Slate Blue',
+    badge: 'SLATE',
+    accentBg: 'bg-blue-600',
+    accentText: 'text-blue-400',
+    accentBorder: 'border-blue-500/40',
+    glow: '',
+    gradient: '',
+    btnBg: 'bg-blue-600 hover:bg-blue-500 text-white',
+  },
+  {
     id: 'emerald',
-    name: 'Emerald Matrix',
-    badge: 'SYNTH',
-    accentBg: 'bg-emerald-500',
+    name: 'Forest Emerald',
+    badge: 'EMERALD',
+    accentBg: 'bg-emerald-600',
     accentText: 'text-emerald-400',
     accentBorder: 'border-emerald-500/40',
-    glow: 'shadow-[0_0_25px_rgba(16,185,129,0.4)]',
-    gradient: 'from-emerald-600 via-teal-500 to-green-700',
+    glow: '',
+    gradient: '',
     btnBg: 'bg-emerald-600 hover:bg-emerald-500',
   },
   {
     id: 'gold',
-    name: 'Golden Aura',
-    badge: 'LUXURY',
+    name: 'Amber Gold',
+    badge: 'AMBER',
     accentBg: 'bg-amber-500',
     accentText: 'text-amber-400',
     accentBorder: 'border-amber-500/40',
-    glow: 'shadow-[0_0_25px_rgba(245,158,11,0.4)]',
-    gradient: 'from-amber-500 via-yellow-500 to-orange-600',
-    btnBg: 'bg-amber-500 hover:bg-amber-400 text-black',
+    glow: '',
+    gradient: '',
+    btnBg: 'bg-amber-500 hover:bg-amber-400 text-zinc-950',
   },
 ];
 
@@ -549,7 +548,7 @@ export const YoutubeView: React.FC<YoutubeViewProps> = ({
       </AnimatePresence>
 
       {/* YOUTUBE TOP NAVBAR & SEARCH */}
-      <div className="bg-zinc-950/95 border-2 border-dashed border-red-500/40 handmade-box p-5 shadow-2xl backdrop-blur-xl sticky top-2 z-40 transition-all">
+      <div className="bg-[#111115] border border-zinc-800 p-4 rounded-2xl shadow-2xl backdrop-blur-xl sticky top-2 z-40 transition-all">
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
           
           {/* Logo & Brand */}
@@ -557,36 +556,37 @@ export const YoutubeView: React.FC<YoutubeViewProps> = ({
             className="flex items-center space-x-3 cursor-pointer group"
             onClick={() => { setSelectedVideo(null); setActiveTabMode('home'); }}
           >
-            <div className="w-11 h-11 handmade-box bg-gradient-to-br from-red-600 to-red-800 flex items-center justify-center text-white shadow-lg transition-transform group-hover:rotate-3">
+            <div className="w-10 h-10 rounded-xl bg-red-600 flex items-center justify-center text-white shadow-lg transition-transform group-hover:scale-105">
               <Tv className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <h1 className="text-2xl font-sketch font-bold text-amber-100 tracking-tight flex items-center gap-1">
+                <h1 className="text-xl font-extrabold text-white tracking-tight flex items-center gap-1">
                   Yunø<span className="text-red-500 font-extrabold">Tube</span>
                 </h1>
-                <span className="handmade-stamp text-[9px] py-0 px-1.5 text-red-400">HANDMADE</span>
+                <span className="px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 text-[9px] font-mono font-bold border border-red-500/30">
+                  UNBLOCKED
+                </span>
               </div>
-              <p className="text-[11px] font-handwriting text-amber-200/70">Hand-curated streaming player for YouTube Data API v3</p>
             </div>
           </div>
 
-          {/* Search Input Bar */}
-          <form onSubmit={handleSearchSubmit} className="w-full md:w-auto flex-1 max-w-2xl relative">
+          {/* Search Input Bar (Centered Pill as in Video) */}
+          <form onSubmit={handleSearchSubmit} className="w-full md:w-auto flex-1 max-w-xl relative">
             <div className="relative flex items-center">
               <Search className="absolute left-4 w-4 h-4 text-zinc-400" />
               <input
                 type="text"
-                placeholder="Search YouTube videos (e.g. Minecraft, Lofi, Gaming, Tech)..."
+                placeholder="Search videos (e.g. MrBeast, Minecraft, Lofi)..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className={`w-full pl-11 pr-28 py-3 bg-zinc-900/90 border border-zinc-800 rounded-2xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:${currentSkin.accentBorder} focus:ring-2 focus:ring-zinc-700 transition-all shadow-inner`}
+                className="w-full pl-10 pr-24 py-2.5 bg-[#18181f] border border-zinc-800 rounded-full text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-red-500/60 font-sans shadow-inner"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-24 text-zinc-500 hover:text-white p-1"
+                  className="absolute right-20 text-zinc-500 hover:text-white p-1"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -594,15 +594,12 @@ export const YoutubeView: React.FC<YoutubeViewProps> = ({
               <button
                 type="submit"
                 disabled={isLoading}
-                className={`absolute right-1.5 px-4 py-2 ${currentSkin.btnBg} text-white font-bold text-xs rounded-xl active:scale-95 shadow-md transition-all flex items-center space-x-1.5`}
+                className="absolute right-1.5 px-3.5 py-1.5 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-full active:scale-95 shadow-md transition-all flex items-center space-x-1"
               >
                 {isLoading ? (
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                 ) : (
-                  <>
-                    <Search className="w-3.5 h-3.5" />
-                    <span>Search</span>
-                  </>
+                  <span>Search</span>
                 )}
               </button>
             </div>
@@ -728,9 +725,9 @@ export const YoutubeView: React.FC<YoutubeViewProps> = ({
 
       {/* API KEY NOTICE IF FALLBACK */}
       {apiNotice && !selectedVideo && (
-        <div className="p-3 px-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-medium flex items-center justify-between">
+        <div className="p-3 px-4 rounded-2xl bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs font-medium flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <Sparkles className="w-4 h-4 text-amber-400 flex-shrink-0" />
+            <Tv className="w-4 h-4 text-zinc-400 flex-shrink-0" />
             <span>{apiNotice}</span>
           </div>
         </div>
@@ -1096,10 +1093,8 @@ export const YoutubeView: React.FC<YoutubeViewProps> = ({
                               {cmt.badge && (
                                 <span className={`px-1.5 py-0.2 rounded text-[9px] font-mono font-black ${
                                   cmt.badge === 'CREATOR'
-                                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                                    : cmt.badge === 'VIP'
-                                    ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
-                                    : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                                    ? 'bg-red-500/20 text-red-400 border border-red-500/40'
+                                    : 'bg-zinc-800 text-zinc-300 border border-zinc-700'
                                 }`}>
                                   {cmt.badge}
                                 </span>
@@ -1237,7 +1232,7 @@ export const YoutubeView: React.FC<YoutubeViewProps> = ({
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         loading="lazy"
                       />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                         <div className={`w-12 h-12 rounded-full ${currentSkin.accentBg} text-white flex items-center justify-center shadow-lg ${currentSkin.glow} scale-90 group-hover:scale-100 transition-transform`}>
                           <Play className="w-5 h-5 ml-0.5 fill-white" />
                         </div>

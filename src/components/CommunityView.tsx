@@ -1,41 +1,38 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { ChatMessage, FriendItem, CallState } from '../types';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { ChatMessage, CallState, ChatAttachment } from '../types';
 import {
   Hash,
   Send,
   Users,
-  Shield,
   MessageSquare,
-  Sparkles,
   Crown,
   Volume2,
   Phone,
   Video,
-  PhoneOff,
-  Mic,
-  MicOff,
-  Camera,
-  UserPlus,
-  MessageCircle,
   User,
-  Settings,
-  CheckCircle2,
-  Image,
+  Image as ImageIcon,
   Smile,
-  Paperclip,
-  Trash2,
   Reply,
   ShieldAlert,
-  Flame,
   Radio,
-  Eye,
-  EyeOff,
   Plus,
   Monitor,
-  MoreVertical,
   X,
+  Compass,
+  Search,
+  Lock,
+  Mic,
+  MicOff,
+  Square,
+  Play,
+  Pause,
+  Paperclip,
+  Download,
+  FileText,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { UserAvatar } from './UserAvatar';
+import { getSavedChatPreferences } from '../utils/chatSettings';
 
 interface UserProfile {
   configured: boolean;
@@ -43,48 +40,86 @@ interface UserProfile {
   avatar: string;
   bio: string;
   badge?: string;
+  status?: 'online' | 'idle' | 'dnd' | 'invisible';
 }
 
 interface CommunityViewProps {
   callState: CallState;
   onStartCall: (channelId: string, channelName: string, callType: 'voice' | 'video' | 'screen') => void;
-  onOpenAdminPanel: () => void;
-  onUnlockHalo?: () => void;
 }
 
-const DEFAULT_CHANNELS = [
-  { id: 'global-chat', name: 'global-chat', icon: 'Hash', topic: 'General discussion, streaming & hanging out' },
-  { id: 'movies-lounge', name: 'movies-lounge', icon: 'Tv', topic: 'Watch movies & TV shows together' },
-  { id: 'gaming-hub', name: 'gaming-hub', icon: 'Gamepad', topic: 'Unblocked arcade games & high scores' },
-  { id: 'code-and-ai', name: 'code-and-ai', icon: 'Cpu', topic: 'AI models, prompt engineering & dev projects' },
-  { id: 'announcements', name: 'announcements', icon: 'Radio', topic: 'Official Yunø system updates' },
-];
-
-const VOICE_CHANNELS = [
-  { id: 'global-voice', name: '🔊 Global Voice Lounge', type: 'voice' as const },
-  { id: 'movies-watch-party', name: '🎬 Movie Watch Party', type: 'video' as const },
-  { id: 'gaming-screen-share', name: '🎮 Gaming Screen Share', type: 'screen' as const },
-];
+const EMOJI_PILLS = ['👍', '❤️', '🔥', '😂', '🎉', '👑', '🚀', '👀'];
 
 const PROFANITY_WORDS = [
   'shit', 'fuck', 'bitch', 'asshole', 'crap', 'bastard', 'dick', 'pussy', 'slut', 'whore', 'fucking', 'bullshit',
   'vibecoded', 'vibe coded', 'vibe-coded', 'vibecoded slop', 'slop'
 ];
 
-// Helper to render user avatar or default icon if no avatar provided
-const renderUserAvatar = (url: string | undefined, name: string | undefined, sizeClass: string = "w-8 h-8", borderClass: string = "border border-zinc-700") => {
-  if (url && url.trim()) {
-    return (
-      <img
-        src={url}
-        alt={name || 'User'}
-        className={`${sizeClass} rounded-full object-cover flex-shrink-0 ${borderClass}`}
-      />
-    );
-  }
+// Audio Voice Note Player Component
+const AudioMessagePlayer: React.FC<{ url: string; duration?: number }> = ({ url, duration }) => {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [totalDuration, setTotalDuration] = useState(duration || 0);
+
+  const togglePlay = () => {
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play().catch(() => {});
+    }
+  };
+
   return (
-    <div className={`${sizeClass} rounded-full bg-zinc-800 flex items-center justify-center flex-shrink-0 text-cyan-400 font-bold ${borderClass}`}>
-      <User className="w-1/2 h-1/2" />
+    <div className="flex items-center space-x-3 bg-zinc-900/90 p-2 px-3 rounded-xl border border-zinc-800 my-1 max-w-xs shadow-inner">
+      <audio
+        ref={audioRef}
+        src={url}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onEnded={() => {
+          setIsPlaying(false);
+          setCurrentTime(0);
+        }}
+        onTimeUpdate={() => {
+          if (audioRef.current) {
+            setCurrentTime(audioRef.current.currentTime);
+          }
+        }}
+        onLoadedMetadata={() => {
+          if (audioRef.current && (!totalDuration || isNaN(totalDuration))) {
+            setTotalDuration(audioRef.current.duration);
+          }
+        }}
+      />
+      <button
+        type="button"
+        onClick={togglePlay}
+        className="w-8 h-8 rounded-full bg-amber-500 hover:bg-amber-400 text-zinc-950 flex items-center justify-center flex-shrink-0 transition-colors shadow-sm"
+        title={isPlaying ? 'Pause voice message' : 'Play voice message'}
+      >
+        {isPlaying ? <Pause className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current ml-0.5" />}
+      </button>
+      <div className="flex-1 space-y-1 min-w-0">
+        <input
+          type="range"
+          min="0"
+          max={totalDuration || 1}
+          step="0.1"
+          value={currentTime}
+          onChange={(e) => {
+            const val = parseFloat(e.target.value);
+            setCurrentTime(val);
+            if (audioRef.current) audioRef.current.currentTime = val;
+          }}
+          className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
+        />
+        <div className="flex justify-between text-[10px] font-mono text-zinc-400">
+          <span>{Math.floor(currentTime / 60)}:{String(Math.floor(currentTime % 60)).padStart(2, '0')}</span>
+          <span>{Math.floor(totalDuration / 60)}:{String(Math.floor(totalDuration % 60)).padStart(2, '0')}</span>
+        </div>
+      </div>
     </div>
   );
 };
@@ -92,19 +127,42 @@ const renderUserAvatar = (url: string | undefined, name: string | undefined, siz
 export const CommunityView: React.FC<CommunityViewProps> = ({
   callState,
   onStartCall,
-  onOpenAdminPanel,
-  onUnlockHalo,
 }) => {
-  const [activeChannel, setActiveChannel] = useState<string>('global-chat');
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [activeTab, setActiveTab] = useState<'groups' | 'dms'>('groups');
+  const [activeChannel, setActiveChannel] = useState<string>('general');
+
+  // Messages with localStorage cache for instant persistence
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    try {
+      const cached = localStorage.getItem(`yuno_chat_cache_general`);
+      if (cached) return JSON.parse(cached);
+    } catch (e) {}
+    return [];
+  });
+
   const [inputMessage, setInputMessage] = useState<string>('');
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
-  const [attachmentUrl, setAttachmentUrl] = useState<string>('');
+  
+  // Rich media attachments state
+  const [pendingAttachment, setPendingAttachment] = useState<ChatAttachment | null>(null);
   const [showAttachmentInput, setShowAttachmentInput] = useState<boolean>(false);
-  const [showEmojiPicker, setShowEmojiPicker] = useState<boolean>(false);
+  const [attachmentUrlInput, setAttachmentUrlInput] = useState<string>('');
+  const [selectedPreviewImage, setSelectedPreviewImage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Profanity Blur State
-  const [blurProfanity, setBlurProfanity] = useState<boolean>(true);
+  // Voice recording state
+  const [isRecordingVoice, setIsRecordingVoice] = useState<boolean>(false);
+  const [recordingSeconds, setRecordingSeconds] = useState<number>(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<any>(null);
+
+  const [showMemberList, setShowMemberList] = useState<boolean>(true);
+
+  // Filter State synced with chat settings (profanity toggle is in Settings only)
+  const [blurProfanity, setBlurProfanity] = useState<boolean>(() => {
+    return getSavedChatPreferences().blurProfanity;
+  });
 
   // User Profile
   const [profile, setProfile] = useState<UserProfile>(() => {
@@ -116,9 +174,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     }
     return {
       configured: false,
-      username: '',
+      username: 'Guest',
       avatar: '',
       bio: 'Yunø Community Member',
+      status: 'online',
     };
   });
 
@@ -132,7 +191,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   const [newDmName, setNewDmName] = useState<string>('');
   const [showAddDmModal, setShowAddDmModal] = useState<boolean>(false);
 
-  // Groups / Servers
+  // Joined Groups / Servers
   const [groupsList, setGroupsList] = useState<
     Array<{
       id: string;
@@ -144,13 +203,19 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       channels: Array<{ id: string; name: string; topic?: string }>;
     }>
   >([]);
-  const [showAddGroupModal, setShowAddGroupModal] = useState<boolean>(false);
+  const [joinedGroupIds, setJoinedGroupIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('yuno_joined_groups');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return [];
+  });
+  const [showCreateGroupModal, setShowCreateGroupModal] = useState<boolean>(false);
+  const [showJoinGroupModal, setShowJoinGroupModal] = useState<boolean>(false);
   const [newGroupName, setNewGroupName] = useState<string>('');
-  const [newGroupBanner, setNewGroupBanner] = useState<string>('');
-  const [newGroupPicture, setNewGroupPicture] = useState<string>('');
-  const [newGroupChannels, setNewGroupChannels] = useState<string>('general, lounge');
+  const [groupJoinCode, setGroupJoinCode] = useState<string>('');
 
-  // Active Users Online (no presets)
+  // Active Users Online
   const [activeOnlineUsers, setActiveOnlineUsers] = useState<
     Array<{ username: string; avatar: string; status: string }>
   >([]);
@@ -160,12 +225,19 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  // Auto-scroll chat stream
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // Fetch DMs
+  // Sync settings when preferences update in the global Settings modal
+  useEffect(() => {
+    const handleStorage = () => {
+      setBlurProfanity(getSavedChatPreferences().blurProfanity);
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
   const fetchDms = async () => {
     if (!profile.username) return;
     try {
@@ -174,12 +246,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         const data = await res.json();
         setDmsList(data.dms || []);
       }
-    } catch (e) {
-      console.warn('Failed to fetch DMs:', e);
-    }
+    } catch (e) {}
   };
 
-  // Fetch Groups
   const fetchGroups = async () => {
     try {
       const res = await fetch('/api/chat/groups');
@@ -187,25 +256,244 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         const data = await res.json();
         setGroupsList(data.groups || []);
       }
-    } catch (e) {
-      console.warn('Failed to fetch groups:', e);
-    }
+    } catch (e) {}
   };
 
-  // Fetch Active Users
+  // Real-time Heartbeat & Active Users Fetch
+  const sendHeartbeat = async () => {
+    if (!profile.username) return;
+    try {
+      await fetch('/api/chat/heartbeat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: profile.username,
+          avatar: profile.avatar,
+          status: 'Online',
+        }),
+      });
+    } catch (e) {}
+  };
+
   const fetchActiveUsers = async () => {
     try {
       const res = await fetch('/api/chat/active-users');
       if (res.ok) {
         const data = await res.json();
-        setActiveOnlineUsers(data.activeUsers || []);
+        if (Array.isArray(data.activeUsers)) {
+          setActiveOnlineUsers(data.activeUsers);
+        }
       }
-    } catch (e) {
-      console.warn('Failed to fetch active users:', e);
+    } catch (e) {}
+  };
+
+  const fetchMessages = async () => {
+    try {
+      const res = await fetch(`/api/chat/messages?channelId=${encodeURIComponent(activeChannel)}&username=${encodeURIComponent(profile.username)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.messages)) {
+          setMessages(data.messages);
+          // Persist to local cache for instant load
+          try {
+            localStorage.setItem(`yuno_chat_cache_${activeChannel}`, JSON.stringify(data.messages));
+          } catch (e) {}
+        }
+        if (data.announcements) setAnnouncements(data.announcements);
+      }
+    } catch (e) {}
+  };
+
+  // Channel switch: load from cache first
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem(`yuno_chat_cache_${activeChannel}`);
+      if (cached) setMessages(JSON.parse(cached));
+    } catch (e) {}
+    fetchMessages();
+  }, [activeChannel]);
+
+  useEffect(() => {
+    sendHeartbeat();
+    fetchDms();
+    fetchGroups();
+    fetchActiveUsers();
+
+    const interval = setInterval(() => {
+      sendHeartbeat();
+      fetchDms();
+      fetchGroups();
+      fetchActiveUsers();
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [profile.username, profile.avatar]);
+
+  useEffect(() => {
+    const interval = setInterval(fetchMessages, 2000);
+    return () => clearInterval(interval);
+  }, [activeChannel, profile.username]);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  // Voice Note Recording Handlers
+  const handleStartVoiceRecording = async () => {
+    if (!profile.configured || !profile.username) {
+      setIsEditingProfile(true);
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        stream.getTracks().forEach((track) => track.stop());
+
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64Audio = reader.result as string;
+          setPendingAttachment({
+            type: 'audio',
+            url: base64Audio,
+            fileName: `Voice Note (${recordingSeconds || 1}s)`,
+            duration: recordingSeconds || 1,
+          });
+        };
+        reader.readAsDataURL(audioBlob);
+      };
+
+      mediaRecorder.start();
+      setIsRecordingVoice(true);
+      setRecordingSeconds(0);
+
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingSeconds((prev) => prev + 1);
+      }, 1000);
+    } catch (err) {
+      console.warn('Microphone permission needed to record voice note:', err);
     }
   };
 
-  // Create DM handler
+  const handleStopVoiceRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    setIsRecordingVoice(false);
+  };
+
+  const handleCancelVoiceRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop());
+      mediaRecorderRef.current = null;
+    }
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    setIsRecordingVoice(false);
+    setRecordingSeconds(0);
+    audioChunksRef.current = [];
+  };
+
+  // File Upload Handler
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const isImg = file.type.startsWith('image/');
+    const isAud = file.type.startsWith('audio/');
+    const type: 'image' | 'audio' | 'file' = isImg ? 'image' : isAud ? 'audio' : 'file';
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setPendingAttachment({
+        type,
+        url: reader.result as string,
+        fileName: file.name,
+        fileSize: file.size,
+      });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleAttachUrl = () => {
+    const url = attachmentUrlInput.trim();
+    if (!url) return;
+
+    setPendingAttachment({
+      type: 'image',
+      url,
+      fileName: 'Image Link',
+    });
+    setAttachmentUrlInput('');
+    setShowAttachmentInput(false);
+  };
+
+  const handleCreateGroup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const gName = newGroupName.trim();
+    if (!gName || !profile.username) return;
+
+    try {
+      const res = await fetch('/api/chat/groups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: gName,
+          createdBy: profile.username,
+          channels: ['general', 'media'],
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.group) {
+          const nextJoined = Array.from(new Set([...joinedGroupIds, data.group.id]));
+          setJoinedGroupIds(nextJoined);
+          localStorage.setItem('yuno_joined_groups', JSON.stringify(nextJoined));
+          await fetchGroups();
+          if (data.group.channels && data.group.channels[0]) {
+            setActiveChannel(data.group.channels[0].id);
+          }
+        }
+        setShowCreateGroupModal(false);
+        setNewGroupName('');
+      }
+    } catch (err) {}
+  };
+
+  const handleJoinGroup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const code = groupJoinCode.trim();
+    if (!code) return;
+
+    const found = groupsList.find(
+      (g) => g.id.toLowerCase() === code.toLowerCase() || g.name.toLowerCase() === code.toLowerCase()
+    );
+
+    if (found) {
+      const nextJoined = Array.from(new Set([...joinedGroupIds, found.id]));
+      setJoinedGroupIds(nextJoined);
+      localStorage.setItem('yuno_joined_groups', JSON.stringify(nextJoined));
+      if (found.channels && found.channels[0]) {
+        setActiveChannel(found.channels[0].id);
+      }
+      setShowJoinGroupModal(false);
+      setGroupJoinCode('');
+    }
+  };
+
   const handleCreateDm = async (e: React.FormEvent) => {
     e.preventDefault();
     const target = newDmName.trim();
@@ -229,98 +517,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         if (data.channelId) {
           setActiveChannel(data.channelId);
         }
-      } else {
-        const err = await res.json();
-        alert(err.error || 'Could not create DM');
       }
-    } catch (err) {
-      console.error('Create DM failed:', err);
-    }
+    } catch (err) {}
   };
 
-  // Create Group handler
-  const handleCreateGroup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const name = newGroupName.trim();
-    if (!name || !profile.username) return;
-
-    const channelsArray = newGroupChannels
-      .split(',')
-      .map((c) => c.trim())
-      .filter(Boolean);
-
-    try {
-      const res = await fetch('/api/chat/groups', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name,
-          banner: newGroupBanner.trim(),
-          picture: newGroupPicture.trim(),
-          createdBy: profile.username,
-          channels: channelsArray,
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        setShowAddGroupModal(false);
-        setNewGroupName('');
-        setNewGroupBanner('');
-        setNewGroupPicture('');
-        setNewGroupChannels('general, lounge');
-        await fetchGroups();
-        if (data.group && data.group.channels && data.group.channels.length > 0) {
-          setActiveChannel(data.group.channels[0].id);
-        }
-      } else {
-        const err = await res.json();
-        alert(err.error || 'Could not create group');
-      }
-    } catch (err) {
-      console.error('Create Group failed:', err);
-    }
-  };
-
-  useEffect(() => {
-    fetchDms();
-    fetchGroups();
-    fetchActiveUsers();
-
-    const interval = setInterval(() => {
-      fetchDms();
-      fetchGroups();
-      fetchActiveUsers();
-    }, 4000);
-
-    return () => clearInterval(interval);
-  }, [profile.username]);
-
-  // Fetch messages from backend
-  const fetchMessages = async () => {
-    try {
-      const res = await fetch(`/api/chat/messages?channelId=${activeChannel}`);
-      if (res.ok) {
-        const data = await res.json();
-        setMessages(data.messages || []);
-        if (data.announcements) setAnnouncements(data.announcements);
-      }
-    } catch (e) {
-      console.warn('Failed to fetch chat messages:', e);
-    }
-  };
-
-  useEffect(() => {
-    fetchMessages();
-    const interval = setInterval(fetchMessages, 3000);
-    return () => clearInterval(interval);
-  }, [activeChannel]);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  // Profile Save & Security Check for "Yuno dev isa"
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setProfileError(null);
@@ -331,40 +531,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       return;
     }
 
-    // Check if user is attempting to claim "Yuno dev isa" or "isaman"
-    const lowerTrimmed = trimmed.toLowerCase();
-    let assignedBadge = 'MEMBER';
-    if (lowerTrimmed === 'yuno dev isa' || lowerTrimmed === 'isaman') {
-      try {
-        const clientKey = localStorage.getItem('yuno_client_key') || `client-${Date.now()}`;
-        localStorage.setItem('yuno_client_key', clientKey);
-
-        const res = await fetch('/api/admin/claim-developer', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: trimmed, clientKey }),
-        });
-
-        const claimData = await res.json();
-        if (!res.ok || !claimData.claimed) {
-          setProfileError(
-            claimData.error || `The handle '${trimmed}' is taken and secured by another administrator session. Please choose another username.`
-          );
-          return;
-        }
-        assignedBadge = 'ADMIN / DEV';
-      } catch (err) {
-        setProfileError('Network error checking developer credentials.');
-        return;
-      }
-    }
-
     const updatedProfile: UserProfile = {
       configured: true,
       username: trimmed,
       avatar: tempAvatar ? tempAvatar.trim() : '',
       bio: 'Yunø Community Member',
-      badge: assignedBadge,
+      badge: 'MEMBER',
+      status: 'online',
     };
 
     setProfile(updatedProfile);
@@ -372,23 +545,87 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     setIsEditingProfile(false);
   };
 
-  // Send Message Handler
+  const getMessageDateLabel = (timestampMs?: number, fallbackStr?: string): { label: string; key: string } => {
+    let date: Date;
+    if (timestampMs && !isNaN(timestampMs)) {
+      date = new Date(timestampMs);
+    } else {
+      date = new Date();
+    }
+
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday = date.toDateString() === yesterday.toDateString();
+
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+    if (isToday) {
+      return { label: 'Today', key };
+    }
+    if (isYesterday) {
+      return { label: 'Yesterday', key };
+    }
+
+    const isSameYear = date.getFullYear() === now.getFullYear();
+    const label = date.toLocaleDateString(undefined, {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      ...(isSameYear ? {} : { year: 'numeric' }),
+    });
+
+    return { label, key };
+  };
+
+  const getMessageTimeString = (timestampMs?: number, fallbackTime?: string): string => {
+    if (timestampMs && !isNaN(timestampMs)) {
+      return new Date(timestampMs).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
+    return fallbackTime || new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  };
+
+  const groupedMessages = useMemo(() => {
+    const groups: Array<{ label: string; key: string; items: ChatMessage[] }> = [];
+
+    messages.forEach((msg) => {
+      let msgTime = msg.createdAt;
+      if (!msgTime) {
+        const parsedId = parseInt(msg.id, 10);
+        if (!isNaN(parsedId) && parsedId > 1600000000000) {
+          msgTime = parsedId;
+        }
+      }
+
+      const { label, key } = getMessageDateLabel(msgTime, msg.timestamp);
+      const existingGroup = groups.find((g) => g.key === key);
+
+      if (existingGroup) {
+        existingGroup.items.push(msg);
+      } else {
+        groups.push({
+          label,
+          key,
+          items: [msg],
+        });
+      }
+    });
+
+    return groups;
+  }, [messages]);
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    const rawContent = inputMessage.trim();
-    if (!rawContent && !attachmentUrl.trim()) return;
-
-    if (rawContent.toLowerCase() === '/e jesus') {
-      if (onUnlockHalo) onUnlockHalo();
-      setInputMessage('');
-      return;
-    }
+    if (!inputMessage.trim() && !pendingAttachment) return;
 
     if (!profile.configured || !profile.username) {
       setIsEditingProfile(true);
       return;
     }
 
+    const now = Date.now();
     const payload = {
       channelId: activeChannel,
       user: profile.username,
@@ -402,17 +639,34 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             content: replyingTo.content.substring(0, 60),
           }
         : undefined,
-      attachment: attachmentUrl.trim()
-        ? {
-            type: 'image' as const,
-            url: attachmentUrl.trim(),
-          }
-        : undefined,
+      attachment: pendingAttachment || undefined,
     };
+
+    // Optimistic message append
+    const optimisticMsg: ChatMessage = {
+      id: `${now}-${Math.floor(Math.random() * 10000)}`,
+      channelId: activeChannel,
+      user: profile.username,
+      avatar: profile.avatar,
+      content: inputMessage.trim(),
+      badge: profile.badge,
+      timestamp: new Date(now).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+      createdAt: now,
+      replyTo: payload.replyTo,
+      attachment: payload.attachment,
+    };
+
+    setMessages((prev) => {
+      const next = [...prev, optimisticMsg];
+      try {
+        localStorage.setItem(`yuno_chat_cache_${activeChannel}`, JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
 
     setInputMessage('');
     setReplyingTo(null);
-    setAttachmentUrl('');
+    setPendingAttachment(null);
     setShowAttachmentInput(false);
 
     try {
@@ -424,16 +678,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
       if (res.ok) {
         fetchMessages();
-      } else {
-        const errData = await res.json();
-        alert(errData.error || 'Failed to send message.');
       }
-    } catch (e) {
-      console.error('Send message failed:', e);
-    }
+    } catch (e) {}
   };
 
-  // Add Emoji Reaction
   const handleReact = async (messageId: string, emoji: string) => {
     try {
       await fetch('/api/chat/react', {
@@ -446,12 +694,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         }),
       });
       fetchMessages();
-    } catch (e) {
-      console.warn('React error:', e);
-    }
+    } catch (e) {}
   };
 
-  // Format Message Text with Profanity Blur
   const renderMessageContent = (content: string) => {
     if (!blurProfanity) return <span>{content}</span>;
 
@@ -465,12 +710,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             return (
               <span
                 key={idx}
-                className="inline-block bg-zinc-800 text-transparent hover:text-white backdrop-blur-md px-1.5 py-0.5 rounded transition-all cursor-pointer select-none font-mono text-[11px] border border-red-500/30 group relative"
-                title="Profanity blurred. Hover or tap to reveal"
+                className="inline-block bg-zinc-800 text-transparent hover:text-white px-1 py-0.5 rounded transition-all cursor-pointer select-none font-mono text-[11px] border border-zinc-700 group relative"
+                title="Profanity blurred according to Settings"
               >
-                ██████
-                <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-0.5 bg-black/90 text-amber-300 text-[9px] rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border border-amber-500/40">
-                  Click to reveal: {word}
+                [blurred]
+                <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-0.5 bg-zinc-900 text-amber-300 text-[9px] rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border border-zinc-700">
+                  Reveal: {word}
                 </span>
               </span>
             );
@@ -481,724 +726,711 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     );
   };
 
-  const normUser = profile.username.trim().toLowerCase();
-  const isAdminUser = normUser === 'yuno' || normUser === 'yuno dev isa' || normUser === 'isaman' || normUser.startsWith('yuno') || normUser.startsWith('isaman');
+  // Get active channel display name
+  const currentGroup = groupsList.find((g) => g.channels.some((c) => c.id === activeChannel));
+  const currentGroupChannel = currentGroup?.channels.find((c) => c.id === activeChannel);
+
+  const currentChannelName =
+    currentGroupChannel?.name
+      ? `#${currentGroupChannel.name}`
+      : activeChannel.startsWith('dm_')
+      ? `DM with ${activeChannel.replace('dm_', '').replace(profile.username, '').replace('_', '')}`
+      : activeChannel;
 
   return (
-    <div className="h-[calc(100vh-100px)] w-full flex flex-col bg-[#121212] border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl">
-      {/* Setup Profile Modal */}
+    <div className="h-[calc(100vh-75px)] w-full flex bg-zinc-950 text-zinc-100 font-sans select-none overflow-hidden">
+      {/* Hidden File Input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*,audio/*,.pdf,.txt,.zip,.doc,.docx"
+        onChange={handleFileUpload}
+        className="hidden"
+      />
+
+      {/* IMAGE PREVIEW LIGHTBOX MODAL */}
+      {selectedPreviewImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md"
+          onClick={() => setSelectedPreviewImage(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh] flex flex-col items-center">
+            <button
+              onClick={() => setSelectedPreviewImage(null)}
+              className="absolute -top-10 right-0 p-2 text-zinc-400 hover:text-white transition-colors"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <img
+              src={selectedPreviewImage}
+              alt="Preview"
+              className="max-h-[85vh] max-w-full rounded-xl object-contain shadow-2xl border border-zinc-800"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* PROFILE SETUP MODAL */}
       {isEditingProfile && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-[#181818] border border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-5">
+          <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-5">
             <div className="text-center space-y-1">
-              <div className="w-12 h-12 rounded-xl bg-zinc-800 border border-zinc-700 text-white mx-auto flex items-center justify-center mb-2">
-                <User className="w-6 h-6" />
+              <div className="w-12 h-12 rounded-xl bg-zinc-800 border border-zinc-700 text-amber-400 mx-auto flex items-center justify-center mb-2 font-bold text-lg">
+                Y
               </div>
-              <h3 className="text-xl font-bold text-white">Join Yunø Community</h3>
-              <p className="text-xs text-zinc-400">Choose your handle to start chatting and sharing calls.</p>
+              <h3 className="text-lg font-bold text-white">Set Up Yunø Chat Handle</h3>
+              <p className="text-xs text-zinc-400">Join real-time channels, video & voice calls, and direct messages.</p>
             </div>
 
             {profileError && (
-              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-400 font-semibold text-center">
+              <div className="p-3 rounded-xl bg-red-900/30 border border-red-800 text-xs text-red-400 font-medium text-center">
                 {profileError}
               </div>
             )}
 
             <form onSubmit={handleSaveProfile} className="space-y-4">
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
-                  DISPLAY NAME / HANDLE *
-                </label>
+                <label className="text-xs font-semibold text-zinc-300">Username / Handle</label>
                 <input
                   type="text"
-                  required
-                  placeholder="Enter Here"
                   value={tempName}
                   onChange={(e) => setTempName(e.target.value)}
-                  className="w-full px-4 py-3 bg-[#121212] border border-zinc-800 rounded-xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500"
+                  placeholder="e.g. ShadowRider"
+                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
                 />
               </div>
 
-              {/* Profile Avatar Upload / URL / Go Without */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
-                    Profile Picture (Optional)
-                  </label>
-                  {tempAvatar && (
-                    <button
-                      type="button"
-                      onClick={() => setTempAvatar('')}
-                      className="text-[11px] text-red-400 hover:underline"
-                    >
-                      Remove Picture
-                    </button>
-                  )}
-                </div>
-
-                <div className="flex items-center space-x-3 p-3 rounded-xl bg-[#121212] border border-zinc-800">
-                  {tempAvatar ? (
-                    <img src={tempAvatar} alt="Preview" className="w-12 h-12 rounded-xl object-cover ring-1 ring-zinc-700" />
-                  ) : (
-                    <div className="w-12 h-12 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-400">
-                      <User className="w-6 h-6" />
-                    </div>
-                  )}
-
-                  <div className="flex-1 space-y-1.5 min-w-0">
-                    <label className="inline-flex items-center justify-center px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-200 font-semibold cursor-pointer transition-colors border border-zinc-700">
-                      <Image className="w-3.5 h-3.5 mr-1.5 text-zinc-300" />
-                      <span>Upload Picture...</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onload = (ev) => {
-                              if (ev.target?.result) {
-                                setTempAvatar(ev.target.result as string);
-                              }
-                            };
-                            reader.readAsDataURL(file);
-                          }
-                        }}
-                      />
-                    </label>
-
-                    <input
-                      type="url"
-                      placeholder="or paste image URL..."
-                      value={tempAvatar}
-                      onChange={(e) => setTempAvatar(e.target.value)}
-                      className="w-full px-2.5 py-1 bg-zinc-900 border border-zinc-800 rounded-md text-[11px] text-white focus:outline-none focus:border-zinc-600 truncate"
-                    />
-                  </div>
-                </div>
-                <p className="text-[10px] text-zinc-500 font-mono">
-                  Upload an image file, paste a direct URL, or leave blank to continue without a profile picture.
-                </p>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-zinc-300">Avatar Image URL (Optional)</label>
+                <input
+                  type="text"
+                  value={tempAvatar}
+                  onChange={(e) => setTempAvatar(e.target.value)}
+                  placeholder="Paste direct image URL or leave empty for Yunø initials"
+                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
+                />
               </div>
 
               <button
                 type="submit"
-                className="w-full py-3 rounded-xl bg-white hover:bg-zinc-200 text-black font-bold text-sm shadow-md transition-all cursor-pointer"
+                className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs rounded-xl transition-colors"
               >
-                Join Community Chat
+                Join Yunø Chat
               </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Main 3-Column Desktop Chat Grid */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* COLUMN 1: LEFT SIDEBAR (Channels & Direct Messages) */}
-        <div className="w-64 bg-[#181818] border-r border-zinc-800 flex flex-col justify-between select-none">
-          {/* Header */}
-          <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
-            <div className="flex items-center space-x-2.5">
-              <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-white">
-                <MessageSquare className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-white tracking-tight">Yunø Community</h3>
-                <span className="text-[10px] text-emerald-400 font-mono flex items-center space-x-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  <span>Live Network</span>
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Channels & Voice Scroll */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-6">
-            {/* Text Channels */}
-            <div className="space-y-1">
-              <span className="px-2 text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">
-                TEXT CHANNELS
-              </span>
-              {DEFAULT_CHANNELS.map((ch) => {
-                const isActive = activeChannel === ch.id;
-                return (
-                  <button
-                    key={ch.id}
-                    onClick={() => setActiveChannel(ch.id)}
-                    className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                      isActive
-                        ? 'bg-[#282828] text-white'
-                        : 'text-zinc-400 hover:bg-[#202020] hover:text-white'
-                    }`}
-                  >
-                    <Hash className="w-4 h-4 text-zinc-400" />
-                    <span className="truncate">{ch.name}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Voice & Video Party Channels */}
-            <div className="space-y-1">
-              <span className="px-2 text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">
-                VOICE & WATCH PARTIES
-              </span>
-              {VOICE_CHANNELS.map((vc) => (
-                <button
-                  key={vc.id}
-                  onClick={() => onStartCall(vc.id, vc.name, vc.type)}
-                  className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold text-zinc-300 hover:bg-[#202020] hover:text-white transition-colors group cursor-pointer"
-                >
-                  <div className="flex items-center space-x-2.5 min-w-0">
-                    <Volume2 className="w-4 h-4 text-emerald-400" />
-                    <span className="truncate">{vc.name}</span>
-                  </div>
-                  <span className="text-[9px] font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    Join
-                  </span>
-                </button>
-              ))}
-            </div>
-
-            {/* GROUPS / CUSTOM SERVERS */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between px-2">
-                <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-                  GROUPS & SERVERS
-                </span>
-                <button
-                  onClick={() => setShowAddGroupModal(true)}
-                  className="text-zinc-500 hover:text-white p-0.5 rounded transition-colors cursor-pointer"
-                  title="Create New Group"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              {groupsList.map((grp) => (
-                <div key={grp.id} className="space-y-1 rounded-xl bg-[#202020] p-2 border border-zinc-800 my-1">
-                  {/* Group Header Banner & Picture */}
-                  <div className="relative h-10 w-full rounded-lg overflow-hidden border border-zinc-700">
-                    <img src={grp.banner} alt={grp.name} className="w-full h-full object-cover brightness-75" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-2 space-x-2">
-                      <img src={grp.picture} alt={grp.name} className="w-5 h-5 rounded object-cover ring-1 ring-zinc-500 flex-shrink-0" />
-                      <span className="text-xs font-bold text-white truncate drop-shadow">{grp.name}</span>
-                    </div>
-                  </div>
-
-                  {/* Group Channels List */}
-                  <div className="space-y-0.5 pt-1 pl-1">
-                    {grp.channels.map((c) => {
-                      const isActive = activeChannel === c.id;
-                      return (
-                        <button
-                          key={c.id}
-                          onClick={() => setActiveChannel(c.id)}
-                          className={`w-full flex items-center space-x-2 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
-                            isActive
-                              ? 'bg-[#282828] text-white'
-                              : 'text-zinc-400 hover:bg-[#282828] hover:text-white'
-                          }`}
-                        >
-                          <Hash className="w-3.5 h-3.5 text-zinc-400" />
-                          <span className="truncate">{c.name}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Direct Messages */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between px-2">
-                <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-                  DIRECT MESSAGES
-                </span>
-                <button
-                  onClick={() => setShowAddDmModal(true)}
-                  className="text-zinc-500 hover:text-white p-0.5 rounded transition-colors cursor-pointer"
-                  title="New DM"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              {dmsList.length === 0 ? (
-                <div className="p-2 text-[11px] text-zinc-500 text-center">
-                  No DMs yet. Click + to add!
-                </div>
-              ) : (
-                dmsList.map((dm) => {
-                  const isActive = activeChannel === dm.id;
-                  return (
-                    <button
-                      key={dm.id}
-                      onClick={() => setActiveChannel(dm.id)}
-                      className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                        isActive
-                          ? 'bg-[#282828] text-white'
-                          : 'text-zinc-400 hover:bg-[#202020] hover:text-white'
-                      }`}
-                    >
-                      {renderUserAvatar(dm.avatar, dm.username, "w-5 h-5", "border border-zinc-700")}
-                      <span className="truncate">{dm.username}</span>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          {/* User Footer Card */}
-          <div className="p-3 bg-[#121212] border-t border-zinc-800 flex items-center justify-between">
-            <div
-              onClick={() => setIsEditingProfile(true)}
-              className="flex items-center space-x-2.5 cursor-pointer hover:opacity-80 transition-opacity min-w-0"
-            >
-              {renderUserAvatar(profile.avatar, profile.username || 'My Avatar', "w-8 h-8", "border border-zinc-700")}
-              <div className="truncate">
-                <div className="flex items-center space-x-1">
-                  <span className="text-xs font-bold text-white truncate">{profile.username || 'Set Handle'}</span>
-                  {isAdminUser && <Crown className="w-3 h-3 text-amber-400" />}
-                </div>
-                <span className="text-[10px] text-zinc-400 block truncate">{profile.badge || 'MEMBER'}</span>
-              </div>
-            </div>
-
-            {isAdminUser && (
-              <button
-                onClick={onOpenAdminPanel}
-                className="p-2 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors cursor-pointer"
-                title="Open Admin Panel"
-              >
-                <ShieldAlert className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* COLUMN 2: MIDDLE MAIN CHAT PANEL */}
-        <div className="flex-1 flex flex-col bg-zinc-950/60 overflow-hidden">
-          {/* Channel Header Bar */}
-          <div className="p-4 bg-[#181818] border-b border-zinc-800 flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <Hash className="w-5 h-5 text-zinc-400" />
-              <div>
-                <h2 className="text-sm font-bold text-white">{activeChannel}</h2>
-                <p className="text-[11px] text-zinc-400">
-                  {DEFAULT_CHANNELS.find((c) => c.id === activeChannel)?.topic || 'Direct Message Channel'}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              {/* Profanity Blur Toggle */}
-              <button
-                onClick={() => setBlurProfanity(!blurProfanity)}
-                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${
-                  blurProfanity
-                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                    : 'bg-zinc-800 text-zinc-400 border-zinc-700'
-                }`}
-                title="Toggle Profanity Filter"
-              >
-                {blurProfanity ? <EyeOff className="w-3.5 h-3.5 text-emerald-400" /> : <Eye className="w-3.5 h-3.5" />}
-                <span>{blurProfanity ? 'Filter ON' : 'Filter OFF'}</span>
-              </button>
-
-              {/* Start Call Launchers */}
-              <button
-                onClick={() => onStartCall(activeChannel, `# ${activeChannel}`, 'voice')}
-                className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer"
-                title="Start Voice Call"
-              >
-                <Phone className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => onStartCall(activeChannel, `# ${activeChannel}`, 'video')}
-                className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer"
-                title="Start Video Call"
-              >
-                <Video className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => onStartCall(activeChannel, `# ${activeChannel}`, 'screen')}
-                className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer"
-                title="Share Screen"
-              >
-                <Monitor className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          {/* Announcements Banner */}
-          {announcements.length > 0 && (
-            <div className="bg-amber-500/10 border-b border-amber-500/20 p-2.5 px-4 flex items-center space-x-2 text-xs text-amber-300 font-medium">
-              <Radio className="w-4 h-4 text-amber-400 flex-shrink-0" />
-              <span className="font-bold">ANNOUNCEMENT:</span>
-              <span className="truncate">{announcements[0].content}</span>
-            </div>
-          )}
-
-          {/* Chat Stream */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {messages.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-2">
-                <MessageSquare className="w-10 h-10 text-zinc-700" />
-                <h4 className="text-sm font-semibold text-zinc-400">No messages in this channel yet</h4>
-                <p className="text-xs text-zinc-600">Be the first to say hello!</p>
-              </div>
-            ) : (
-              messages.map((msg) => {
-                const isMe = msg.user === profile.username;
-                const isDevAdmin = msg.user === 'Yuno dev isa' || msg.badge?.includes('ADMIN');
-
-                return (
-                  <div
-                    key={msg.id}
-                    className={`group relative flex space-x-3 p-2.5 rounded-xl transition-colors ${
-                      isMe ? 'bg-[#202020]' : 'hover:bg-[#1a1a1a]'
-                    }`}
-                  >
-                    {renderUserAvatar(
-                      msg.avatar,
-                      msg.user,
-                      "w-8 h-8",
-                      isDevAdmin ? 'border border-amber-500/50' : 'border border-zinc-700'
-                    )}
-
-                    <div className="flex-1 min-w-0 space-y-1">
-                      <div className="flex items-center space-x-2">
-                        <span className={`text-xs font-bold ${isDevAdmin ? 'text-amber-400' : 'text-white'}`}>
-                          {msg.user}
-                        </span>
-
-                        {isDevAdmin && (
-                          <span className="px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30 text-[9px] font-bold">
-                            ADMIN
-                          </span>
-                        )}
-
-                        <span className="text-[10px] text-zinc-500">{msg.timestamp}</span>
-                      </div>
-
-                      {/* Reply quote */}
-                      {msg.replyTo && (
-                        <div className="p-2 rounded-lg bg-zinc-900 border-l-2 border-zinc-500 text-xs text-zinc-400">
-                          <span className="font-semibold text-zinc-300 mr-1">@{msg.replyTo.user}:</span>
-                          <span>{msg.replyTo.content}</span>
-                        </div>
-                      )}
-
-                      {/* Message Content */}
-                      <div className="text-xs text-zinc-200 leading-relaxed break-words">
-                        {renderMessageContent(msg.content)}
-                      </div>
-
-                      {/* Image Attachment */}
-                      {msg.attachment && msg.attachment.url && (
-                        <div className="mt-2 max-w-sm rounded-lg overflow-hidden border border-zinc-800">
-                          <img src={msg.attachment.url} alt="Attachment" className="w-full object-cover max-h-60" />
-                        </div>
-                      )}
-
-                      {/* Reaction Emojis Row */}
-                      {msg.reactions && msg.reactions.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 pt-1">
-                          {msg.reactions.map((r, rIdx) => (
-                            <button
-                              key={rIdx}
-                              onClick={() => handleReact(msg.id, r.emoji)}
-                              className="px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-300 hover:border-zinc-700 flex items-center space-x-1 cursor-pointer"
-                            >
-                              <span>{r.emoji}</span>
-                              <span className="font-mono text-[10px] text-zinc-400">{r.count}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Quick Hover Toolbar */}
-                    <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-900 border border-zinc-800 rounded-lg p-1 flex items-center space-x-1 shadow-md">
-                      {['👍', '❤️', '🔥', '👑'].map((emoji) => (
-                        <button
-                          key={emoji}
-                          onClick={() => handleReact(msg.id, emoji)}
-                          className="p-1 hover:bg-zinc-800 rounded text-xs cursor-pointer"
-                        >
-                          {emoji}
-                        </button>
-                      ))}
-                      <button
-                        onClick={() => setReplyingTo(msg)}
-                        className="p-1 text-zinc-400 hover:text-white rounded cursor-pointer"
-                        title="Reply"
-                      >
-                        <Reply className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Replying Banner */}
-          {replyingTo && (
-            <div className="px-4 py-2 bg-[#181818] border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-300">
-              <div className="flex items-center space-x-2 truncate">
-                <Reply className="w-3.5 h-3.5 text-zinc-400" />
-                <span>Replying to <span className="font-bold text-white">@{replyingTo.user}</span>: {replyingTo.content}</span>
-              </div>
-              <X className="w-4 h-4 cursor-pointer text-zinc-500 hover:text-white" onClick={() => setReplyingTo(null)} />
-            </div>
-          )}
-
-          {/* Input Bar */}
-          <div className="p-3 bg-[#181818] border-t border-zinc-800">
-            {showAttachmentInput && (
-              <div className="mb-2 flex items-center space-x-2">
-                <input
-                  type="text"
-                  placeholder="Paste image URL attachment..."
-                  value={attachmentUrl}
-                  onChange={(e) => setAttachmentUrl(e.target.value)}
-                  className="flex-1 px-3 py-1.5 bg-[#121212] border border-zinc-800 rounded-lg text-xs text-white focus:outline-none focus:border-zinc-600"
-                />
-                <X className="w-4 h-4 cursor-pointer text-zinc-400" onClick={() => setShowAttachmentInput(false)} />
-              </div>
-            )}
-
-            <form onSubmit={handleSendMessage} className="flex items-center space-x-2">
-              <button
-                type="button"
-                onClick={() => setShowAttachmentInput(!showAttachmentInput)}
-                className="p-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors cursor-pointer"
-                title="Attach Image"
-              >
-                <Image className="w-4 h-4" />
-              </button>
-
-              <input
-                type="text"
-                placeholder={`Message #${activeChannel}...`}
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                className="flex-1 px-4 py-2.5 bg-[#121212] border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
-              />
-
-              <button
-                type="submit"
-                disabled={!inputMessage.trim() && !attachmentUrl.trim()}
-                className="p-2.5 rounded-xl bg-white hover:bg-zinc-200 text-black font-bold disabled:opacity-40 transition-colors cursor-pointer"
-              >
-                <Send className="w-4 h-4" />
-              </button>
-            </form>
-          </div>
-        </div>
-
-        {/* COLUMN 3: RIGHT SIDEBAR (Online Members) */}
-        <div className="w-56 bg-[#181818] border-l border-zinc-800 p-4 hidden md:flex flex-col space-y-4 select-none">
-          <div className="flex items-center space-x-2 border-b border-zinc-800 pb-3">
-            <Users className="w-4 h-4 text-zinc-400" />
-            <h4 className="text-xs font-bold text-white uppercase tracking-wider">ONLINE MEMBERS</h4>
-          </div>
-
-          <div className="flex-1 overflow-y-auto space-y-4">
-            {/* Developer / Admin Section */}
-            <div className="space-y-2">
-              <span className="text-[10px] font-mono font-bold text-amber-400 uppercase tracking-wider block">
-                ADMIN / DEVELOPERS
-              </span>
-              <div className="flex items-center space-x-2.5 p-2 rounded-xl bg-amber-500/10 border border-amber-500/30">
-                <div className="relative">
-                  <img
-                    src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=100&auto=format&fit=crop&q=80"
-                    alt="Yuno dev isa"
-                    className="w-8 h-8 rounded-full object-cover border border-amber-500/50"
-                  />
-                  <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-black" />
-                </div>
-                <div className="truncate">
-                  <span className="text-xs font-bold text-amber-400 block truncate">Yuno dev isa</span>
-                  <span className="text-[9px] text-amber-400/80">DEV OWNER</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Active Online Members */}
-            <div className="space-y-2">
-              <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">
-                ONLINE MEMBERS ({activeOnlineUsers.length + (profile.username ? 1 : 0)})
-              </span>
-
-              {/* Current user */}
-              {profile.username && (
-                <div className="flex items-center space-x-2.5 p-1.5 rounded-lg bg-[#202020] border border-zinc-800">
-                  <div className="relative">
-                    {renderUserAvatar(profile.avatar, profile.username, "w-7 h-7", "border border-zinc-700")}
-                    <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-emerald-500 border border-black" />
-                  </div>
-                  <div className="truncate">
-                    <span className="text-xs font-bold text-white block truncate">{profile.username} (You)</span>
-                    <span className="text-[9px] text-zinc-400 block truncate">{profile.badge || 'Online'}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Server Active Users */}
-              {activeOnlineUsers.filter((u) => u.username !== profile.username).map((m) => (
-                <div key={m.username} className="flex items-center space-x-2.5 p-1.5 rounded-lg hover:bg-[#202020] transition-colors">
-                  <div className="relative">
-                    {renderUserAvatar(m.avatar, m.username, "w-7 h-7", "border border-zinc-700")}
-                    <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-emerald-500 border border-black" />
-                  </div>
-                  <div className="truncate">
-                    <span className="text-xs font-medium text-zinc-200 block truncate">{m.username}</span>
-                    <span className="text-[9px] text-zinc-500 block truncate">{m.status || 'Active'}</span>
-                  </div>
-                </div>
-              ))}
-
-              {activeOnlineUsers.length === 0 && !profile.username && (
-                <div className="text-[10px] text-zinc-500 text-center p-2">
-                  No other active members online right now.
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* CREATE DM MODAL */}
-      {showAddDmModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="w-full max-w-sm bg-zinc-900 border border-indigo-500/30 rounded-3xl p-5 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-              <div className="flex items-center space-x-2">
-                <MessageSquare className="w-4 h-4 text-indigo-400" />
-                <h4 className="text-sm font-bold text-white">Create Direct Message</h4>
-              </div>
-              <button onClick={() => setShowAddDmModal(false)} className="text-zinc-500 hover:text-white">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateDm} className="space-y-3">
-              <div className="space-y-1">
-                <label className="text-[11px] font-mono text-zinc-400 font-bold uppercase">Target Username</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Enter handle e.g. Kairo_Dev..."
-                  value={newDmName}
-                  onChange={(e) => setNewDmName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-400"
-                />
-              </div>
-
-              <div className="flex items-center justify-end space-x-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddDmModal(false)}
-                  className="px-3.5 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-bold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white text-xs font-bold shadow-lg hover:brightness-110"
-                >
-                  Start DM
-                </button>
-              </div>
             </form>
           </div>
         </div>
       )}
 
       {/* CREATE GROUP MODAL */}
-      {showAddGroupModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="w-full max-w-md bg-zinc-900 border border-cyan-500/30 rounded-3xl p-5 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-              <div className="flex items-center space-x-2">
-                <Users className="w-4 h-4 text-cyan-400" />
-                <h4 className="text-sm font-bold text-white">Create Group / Server</h4>
-              </div>
-              <button onClick={() => setShowAddGroupModal(false)} className="text-zinc-500 hover:text-white">
+      {showCreateGroupModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="w-full max-w-sm bg-zinc-900 border border-zinc-800 rounded-2xl p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-white">Create Group Chat</h3>
+              <button onClick={() => setShowCreateGroupModal(false)} className="text-zinc-500 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             </div>
+            <form onSubmit={handleCreateGroup} className="space-y-3">
+              <input
+                type="text"
+                placeholder="Group chat name..."
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
+              />
+              <button
+                type="submit"
+                className="w-full py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white font-semibold text-xs rounded-xl border border-zinc-700"
+              >
+                Create Group
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
-            <form onSubmit={handleCreateGroup} className="space-y-3.5">
-              <div className="space-y-1">
-                <label className="text-[11px] font-mono text-zinc-400 font-bold uppercase">Group Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. VIP Gaming Guild, Arcade Squad..."
-                  value={newGroupName}
-                  onChange={(e) => setNewGroupName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400"
-                />
+      {/* JOIN GROUP MODAL */}
+      {showJoinGroupModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="w-full max-w-sm bg-zinc-900 border border-zinc-800 rounded-2xl p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-white">Join Group Chat</h3>
+              <button onClick={() => setShowJoinGroupModal(false)} className="text-zinc-500 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <form onSubmit={handleJoinGroup} className="space-y-3">
+              <input
+                type="text"
+                placeholder="Group ID or Name..."
+                value={groupJoinCode}
+                onChange={(e) => setGroupJoinCode(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
+              />
+              <button
+                type="submit"
+                className="w-full py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white font-semibold text-xs rounded-xl border border-zinc-700"
+              >
+                Join
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* NEW DM MODAL */}
+      {showAddDmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="w-full max-w-sm bg-zinc-900 border border-zinc-800 rounded-2xl p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-white">Start Direct Message</h3>
+              <button onClick={() => setShowAddDmModal(false)} className="text-zinc-500 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <form onSubmit={handleCreateDm} className="space-y-3">
+              <input
+                type="text"
+                placeholder="Enter username..."
+                value={newDmName}
+                onChange={(e) => setNewDmName(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
+              />
+              <button
+                type="submit"
+                className="w-full py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white font-semibold text-xs rounded-xl border border-zinc-700"
+              >
+                Open DM
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* CHAT SIDEBAR (GROUPS & DMS) */}
+      <div className="w-64 bg-zinc-900 border-r border-zinc-800 flex flex-col flex-shrink-0">
+        {/* Navigation Tabs: Group Chats vs Direct Messages */}
+        <div className="p-2 border-b border-zinc-800 flex items-center space-x-1">
+          <button
+            onClick={() => setActiveTab('groups')}
+            className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold text-center transition-colors ${
+              activeTab === 'groups'
+                ? 'bg-zinc-800 text-white'
+                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+            }`}
+          >
+            Groups
+          </button>
+          <button
+            onClick={() => setActiveTab('dms')}
+            className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold text-center transition-colors ${
+              activeTab === 'dms'
+                ? 'bg-zinc-800 text-white'
+                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+            }`}
+          >
+            Direct Messages
+          </button>
+        </div>
+
+        {/* Content list */}
+        <div className="flex-1 overflow-y-auto p-2.5 space-y-3">
+          {activeTab === 'groups' ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-[10px] font-mono text-zinc-400 uppercase font-semibold">
+                  Joined Groups
+                </span>
+                <div className="flex items-center space-x-1">
+                  <button
+                    onClick={() => setShowJoinGroupModal(true)}
+                    className="text-[10px] text-zinc-400 hover:text-white px-1.5 py-0.5 rounded bg-zinc-800/80 border border-zinc-700"
+                    title="Join Group"
+                  >
+                    Join
+                  </button>
+                  <button
+                    onClick={() => setShowCreateGroupModal(true)}
+                    className="text-zinc-400 hover:text-white p-1"
+                    title="Create Group"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-[11px] font-mono text-zinc-400 font-bold uppercase">Group Banner Image URL</label>
-                <input
-                  type="url"
-                  placeholder="https://images.unsplash.com/..."
-                  value={newGroupBanner}
-                  onChange={(e) => setNewGroupBanner(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400"
-                />
+              {/* Show only groups user has joined or created */}
+              {groupsList.filter((g) => joinedGroupIds.includes(g.id) || g.createdBy === profile.username).length === 0 ? (
+                <div className="p-3 text-center rounded-lg bg-zinc-950/40 border border-zinc-800/60 space-y-1">
+                  <p className="text-[11px] text-zinc-500">No joined group chats.</p>
+                  <p className="text-[10px] text-zinc-600">Join or create a group to start.</p>
+                </div>
+              ) : (
+                groupsList
+                  .filter((g) => joinedGroupIds.includes(g.id) || g.createdBy === profile.username)
+                  .map((grp) => (
+                    <div key={grp.id} className="space-y-1">
+                      <div className="text-xs font-semibold text-zinc-300 px-2 py-1 flex items-center justify-between">
+                        <span className="truncate">{grp.name}</span>
+                      </div>
+                      {grp.channels.map((ch) => (
+                        <button
+                          key={ch.id}
+                          onClick={() => setActiveChannel(ch.id)}
+                          className={`w-full flex items-center space-x-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors text-left ${
+                            activeChannel === ch.id
+                              ? 'bg-zinc-800 text-white font-semibold'
+                              : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'
+                          }`}
+                        >
+                          <Hash className="w-3.5 h-3.5 flex-shrink-0 text-zinc-500" />
+                          <span className="truncate">{ch.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ))
+              )}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-[10px] font-mono text-zinc-400 uppercase font-semibold">
+                  Conversations
+                </span>
+                <button
+                  onClick={() => setShowAddDmModal(true)}
+                  className="text-zinc-400 hover:text-white p-1"
+                  title="New Direct Message"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-[11px] font-mono text-zinc-400 font-bold uppercase">Group Picture / Logo URL</label>
-                <input
-                  type="url"
-                  placeholder="https://images.unsplash.com/..."
-                  value={newGroupPicture}
-                  onChange={(e) => setNewGroupPicture(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400"
-                />
-              </div>
+              {dmsList.length === 0 ? (
+                <div className="p-3 text-center rounded-lg bg-zinc-950/40 border border-zinc-800/60">
+                  <p className="text-[11px] text-zinc-500">No direct messages.</p>
+                </div>
+              ) : (
+                dmsList.map((dm) => (
+                  <button
+                    key={dm.id}
+                    onClick={() => setActiveChannel(dm.id)}
+                    className={`w-full flex items-center space-x-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors text-left ${
+                      activeChannel === dm.id
+                        ? 'bg-zinc-800 text-white font-semibold'
+                        : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'
+                    }`}
+                  >
+                    <UserAvatar username={dm.username} avatar={dm.avatar} size="xs" showOnlineDot isOnline={dm.status === 'Online'} />
+                    <span className="truncate">{dm.username}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
 
-              <div className="space-y-1">
-                <label className="text-[11px] font-mono text-zinc-400 font-bold uppercase">Text Channels / Sections (Comma Separated)</label>
-                <input
-                  type="text"
-                  placeholder="e.g. general, announcements, lounge, clips"
-                  value={newGroupChannels}
-                  onChange={(e) => setNewGroupChannels(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400"
-                />
-              </div>
+        {/* User Handle Footer */}
+        <div className="p-2.5 bg-zinc-950 border-t border-zinc-800 flex items-center justify-between">
+          <div className="flex items-center space-x-2 min-w-0">
+            <UserAvatar username={profile.username} avatar={profile.avatar} size="sm" showOnlineDot isOnline />
+            <div className="truncate">
+              <span className="text-xs font-bold text-zinc-200 block truncate">{profile.username}</span>
+              <span className="text-[10px] text-emerald-400 font-mono">Online</span>
+            </div>
+          </div>
 
-              <div className="flex items-center justify-end space-x-2 pt-2 border-t border-zinc-800">
+          <button
+            onClick={() => setIsEditingProfile(true)}
+            className="text-[10px] text-zinc-400 hover:text-white px-2 py-1 rounded bg-zinc-800 border border-zinc-700"
+          >
+            Edit
+          </button>
+        </div>
+      </div>
+
+      {/* MAIN CHAT AREA */}
+      <div className="flex-1 flex flex-col min-w-0 bg-zinc-950">
+        {/* Chat Channel Header (Profanity blur removed from here; only in Settings) */}
+        <div className="p-3 px-4 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between">
+          <div className="flex items-center space-x-2 min-w-0">
+            <Hash className="w-4 h-4 text-zinc-400 flex-shrink-0" />
+            <div className="truncate">
+              <h3 className="text-xs font-bold text-white truncate">{currentChannelName}</h3>
+              <p className="text-[10px] text-zinc-400 truncate hidden sm:block">
+                {currentGroupChannel?.topic || (activeChannel.startsWith('dm_') ? 'Direct Message' : 'Chat Channel')}
+              </p>
+            </div>
+          </div>
+
+          {/* Action Toolbar */}
+          <div className="flex items-center space-x-2 flex-shrink-0">
+            {/* Real WebRTC Calls */}
+            <button
+              onClick={() => onStartCall(activeChannel, currentChannelName, 'voice')}
+              className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors border border-zinc-700"
+              title="Start Voice Call"
+            >
+              <Phone className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => onStartCall(activeChannel, currentChannelName, 'video')}
+              className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors border border-zinc-700"
+              title="Start Video Call"
+            >
+              <Video className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => onStartCall(activeChannel, currentChannelName, 'screen')}
+              className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors border border-zinc-700"
+              title="Share Screen"
+            >
+              <Monitor className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setShowMemberList(!showMemberList)}
+              className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors border border-zinc-700"
+              title="Toggle Online Members"
+            >
+              <Users className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Announcements Banner */}
+        {announcements.length > 0 && (
+          <div className="bg-zinc-900 border-b border-zinc-800 px-4 py-2 flex items-center space-x-2 text-xs text-amber-400">
+            <Radio className="w-3.5 h-3.5 flex-shrink-0" />
+            <span className="font-bold">ANNOUNCEMENT:</span>
+            <span className="truncate text-zinc-300">{announcements[0].content}</span>
+          </div>
+        )}
+
+        {/* Messages Feed */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {messages.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-2">
+              <MessageSquare className="w-8 h-8 text-zinc-700" />
+              <h4 className="text-sm font-bold text-zinc-400">Welcome to {currentChannelName}!</h4>
+              <p className="text-xs text-zinc-500 max-w-sm">
+                This is the start of persistent conversation history. Send messages, voice recordings, and files with everyone.
+              </p>
+            </div>
+          ) : (
+            groupedMessages.map((group) => (
+              <div key={group.key} className="space-y-3">
+                {/* Date Group Divider */}
+                <div className="flex items-center my-3">
+                  <div className="flex-1 border-t border-zinc-800" />
+                  <span className="px-3 py-0.5 text-[10px] font-semibold text-zinc-400 bg-zinc-900 border border-zinc-800 rounded-full shadow-sm">
+                    {group.label}
+                  </span>
+                  <div className="flex-1 border-t border-zinc-800" />
+                </div>
+
+                {group.items.map((msg) => {
+                  const isSelf = msg.user === profile.username;
+                  const timeFormatted = getMessageTimeString(msg.createdAt, msg.timestamp);
+
+                  return (
+                    <div
+                      key={msg.id}
+                      className={`group flex items-start space-x-3 p-1.5 -mx-1.5 rounded-xl hover:bg-zinc-900/60 transition-colors relative ${
+                        isSelf ? 'flex-row-reverse space-x-reverse' : ''
+                      }`}
+                    >
+                      <UserAvatar username={msg.user} avatar={msg.avatar} size="sm" />
+
+                      <div className={`flex-1 min-w-0 space-y-1 ${isSelf ? 'items-end text-right' : ''}`}>
+                        {/* Header info */}
+                        <div className={`flex items-center space-x-2 ${isSelf ? 'justify-end space-x-reverse' : ''}`}>
+                          <span className="text-xs font-bold text-white">{msg.user}</span>
+                          {msg.badge && (
+                            <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 text-[9px] font-mono border border-amber-500/30">
+                              {msg.badge}
+                            </span>
+                          )}
+                          <span className="text-[10px] text-zinc-500 font-mono">{timeFormatted}</span>
+                        </div>
+
+                        {/* Replying banner indicator */}
+                        {msg.replyTo && (
+                          <div
+                            className={`flex items-center space-x-1.5 text-[11px] text-zinc-400 bg-zinc-900/80 px-2 py-0.5 rounded border border-zinc-800/80 ${
+                              isSelf ? 'justify-end' : ''
+                            }`}
+                          >
+                            <Reply className="w-3 h-3 text-zinc-500" />
+                            <span>
+                              <span className="font-semibold text-zinc-300">@{msg.replyTo.user}:</span> {msg.replyTo.content}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Message content */}
+                        {msg.content && (
+                          <div
+                            className={`text-xs text-zinc-200 leading-relaxed break-words max-w-prose ${
+                              isSelf
+                                ? 'bg-zinc-800 text-zinc-100 p-2.5 px-3.5 rounded-2xl rounded-tr-sm inline-block border border-zinc-700'
+                                : 'bg-zinc-900 text-zinc-200 p-2.5 px-3.5 rounded-2xl rounded-tl-sm inline-block border border-zinc-800'
+                            }`}
+                          >
+                            {renderMessageContent(msg.content)}
+                          </div>
+                        )}
+
+                        {/* Rich Attachments (Image, Voice / Audio, File) */}
+                        {msg.attachment && (
+                          <div className={`mt-1.5 ${isSelf ? 'flex justify-end' : ''}`}>
+                            {msg.attachment.type === 'image' && (
+                              <div
+                                onClick={() => setSelectedPreviewImage(msg.attachment?.url || null)}
+                                className="relative rounded-xl overflow-hidden border border-zinc-800 bg-zinc-900 max-w-xs cursor-pointer group/img"
+                              >
+                                <img
+                                  src={msg.attachment.url}
+                                  alt="Attachment"
+                                  className="max-h-60 w-full object-cover group-hover/img:scale-105 transition-transform duration-200"
+                                />
+                              </div>
+                            )}
+
+                            {msg.attachment.type === 'audio' && (
+                              <AudioMessagePlayer url={msg.attachment.url} duration={msg.attachment.duration} />
+                            )}
+
+                            {msg.attachment.type === 'file' && (
+                              <a
+                                href={msg.attachment.url}
+                                download={msg.attachment.fileName || 'file'}
+                                className="flex items-center space-x-2.5 p-2.5 px-3 bg-zinc-900 hover:bg-zinc-800/80 rounded-xl border border-zinc-800 max-w-xs transition-colors"
+                              >
+                                <FileText className="w-5 h-5 text-amber-400 flex-shrink-0" />
+                                <div className="truncate flex-1 min-w-0 text-left">
+                                  <span className="text-xs font-semibold text-white truncate block">
+                                    {msg.attachment.fileName || 'Attached Document'}
+                                  </span>
+                                  {msg.attachment.fileSize && (
+                                    <span className="text-[10px] text-zinc-400 font-mono">
+                                      {(msg.attachment.fileSize / 1024).toFixed(1)} KB
+                                    </span>
+                                  )}
+                                </div>
+                                <Download className="w-4 h-4 text-zinc-400 hover:text-white" />
+                              </a>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Reactions */}
+                        {msg.reactions && msg.reactions.length > 0 && (
+                          <div className={`flex flex-wrap gap-1 pt-1 ${isSelf ? 'justify-end' : ''}`}>
+                            {msg.reactions.map((r, rIdx) => (
+                              <button
+                                key={rIdx}
+                                onClick={() => handleReact(msg.id, r.emoji)}
+                                className="px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-300 hover:border-zinc-700 flex items-center space-x-1"
+                              >
+                                <span>{r.emoji}</span>
+                                <span className="font-mono text-zinc-500">{r.count}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Reaction Toolbar */}
+                      <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-900 border border-zinc-800 rounded-lg p-1 flex items-center space-x-1 shadow-md z-10">
+                        {EMOJI_PILLS.slice(0, 4).map((emoji) => (
+                          <button
+                            key={emoji}
+                            onClick={() => handleReact(msg.id, emoji)}
+                            className="p-1 hover:bg-zinc-800 rounded text-xs"
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => setReplyingTo(msg)}
+                          className="p-1 text-zinc-400 hover:text-white rounded"
+                          title="Reply"
+                        >
+                          <Reply className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ))
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Replying Banner */}
+        {replyingTo && (
+          <div className="px-4 py-1.5 bg-zinc-900 border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-300">
+            <div className="flex items-center space-x-2 truncate">
+              <Reply className="w-3.5 h-3.5 text-zinc-400" />
+              <span>Replying to <span className="font-bold text-white">@{replyingTo.user}</span>: {replyingTo.content}</span>
+            </div>
+            <X className="w-3.5 h-3.5 cursor-pointer text-zinc-500 hover:text-white" onClick={() => setReplyingTo(null)} />
+          </div>
+        )}
+
+        {/* Attachment URL Stager Modal */}
+        {showAttachmentInput && (
+          <div className="px-4 py-2 bg-zinc-900 border-t border-zinc-800 flex items-center space-x-2">
+            <input
+              type="text"
+              placeholder="Paste direct image URL..."
+              value={attachmentUrlInput}
+              onChange={(e) => setAttachmentUrlInput(e.target.value)}
+              className="flex-1 px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-white focus:outline-none"
+            />
+            <button
+              onClick={handleAttachUrl}
+              className="px-3 py-1.5 rounded-lg bg-amber-500 text-zinc-950 font-bold text-xs hover:bg-amber-400"
+            >
+              Attach
+            </button>
+            <X className="w-4 h-4 cursor-pointer text-zinc-400 hover:text-white" onClick={() => setShowAttachmentInput(false)} />
+          </div>
+        )}
+
+        {/* Pending Attachment Preview Banner */}
+        {pendingAttachment && (
+          <div className="px-4 py-2 bg-zinc-900/90 border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-200">
+            <div className="flex items-center space-x-2 truncate">
+              {pendingAttachment.type === 'image' ? (
+                <ImageIcon className="w-4 h-4 text-amber-400" />
+              ) : pendingAttachment.type === 'audio' ? (
+                <Volume2 className="w-4 h-4 text-emerald-400" />
+              ) : (
+                <FileText className="w-4 h-4 text-blue-400" />
+              )}
+              <span className="font-medium text-white truncate">{pendingAttachment.fileName || 'Attached item'}</span>
+            </div>
+            <button
+              onClick={() => setPendingAttachment(null)}
+              className="text-zinc-400 hover:text-white"
+              title="Remove attachment"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Input Bar & Live Voice Recorder */}
+        <div className="p-3 bg-zinc-900 border-t border-zinc-800 space-y-2">
+          {isRecordingVoice ? (
+            <div className="flex items-center justify-between p-2 px-3 bg-red-950/40 border border-red-900 rounded-xl animate-pulse">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-3 h-3 rounded-full bg-red-500 animate-ping" />
+                <span className="text-xs font-bold text-red-300">Recording Voice Note...</span>
+                <span className="text-xs font-mono text-zinc-300">
+                  {Math.floor(recordingSeconds / 60)}:{String(recordingSeconds % 60).padStart(2, '0')}
+                </span>
+              </div>
+              <div className="flex items-center space-x-2">
                 <button
                   type="button"
-                  onClick={() => setShowAddGroupModal(false)}
-                  className="px-3.5 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-bold"
+                  onClick={handleCancelVoiceRecording}
+                  className="px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-300 hover:text-white text-xs border border-zinc-700"
                 >
                   Cancel
                 </button>
                 <button
-                  type="submit"
-                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-black text-xs font-bold shadow-lg hover:brightness-110"
+                  type="button"
+                  onClick={handleStopVoiceRecording}
+                  className="px-3 py-1 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex items-center space-x-1"
                 >
-                  Create Group
+                  <Square className="w-3 h-3 fill-current" />
+                  <span>Done</span>
                 </button>
               </div>
+            </div>
+          ) : (
+            <form onSubmit={handleSendMessage} className="flex items-center space-x-2">
+              {/* Media File Upload Button */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="p-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors border border-zinc-700"
+                title="Upload File / Image / Audio"
+              >
+                <Paperclip className="w-4 h-4" />
+              </button>
+
+              {/* Paste Image URL Button */}
+              <button
+                type="button"
+                onClick={() => setShowAttachmentInput(!showAttachmentInput)}
+                className="p-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors border border-zinc-700"
+                title="Attach Image Link"
+              >
+                <ImageIcon className="w-4 h-4" />
+              </button>
+
+              {/* Text Input */}
+              <input
+                type="text"
+                placeholder={`Message ${currentChannelName}...`}
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                className="flex-1 px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
+              />
+
+              {/* Voice Note Button */}
+              <button
+                type="button"
+                onClick={handleStartVoiceRecording}
+                className="p-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-emerald-400 transition-colors border border-zinc-700"
+                title="Record Voice Note"
+              >
+                <Mic className="w-4 h-4" />
+              </button>
+
+              {/* Send Button */}
+              <button
+                type="submit"
+                className="p-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold transition-colors shadow-md"
+                title="Send Message"
+              >
+                <Send className="w-4 h-4" />
+              </button>
             </form>
+          )}
+        </div>
+      </div>
+
+      {/* RIGHT SIDEBAR: REAL ONLINE MEMBERS LIST */}
+      {showMemberList && (
+        <div className="w-56 bg-zinc-900 border-l border-zinc-800 flex flex-col flex-shrink-0">
+          <div className="p-3.5 border-b border-zinc-800 flex items-center justify-between">
+            <span className="text-xs font-bold text-white">Online Users ({activeOnlineUsers.length})</span>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-2.5 space-y-1">
+            {activeOnlineUsers.length === 0 ? (
+              <p className="text-[11px] text-zinc-500 px-2 py-1 italic">No other users online</p>
+            ) : (
+              activeOnlineUsers.map((user) => (
+                <div
+                  key={user.username}
+                  className="flex items-center space-x-2.5 px-2.5 py-1.5 rounded-lg hover:bg-zinc-800/60 transition-colors"
+                >
+                  <UserAvatar username={user.username} avatar={user.avatar} size="xs" showOnlineDot isOnline />
+                  <div className="truncate">
+                    <span className="text-xs font-medium text-zinc-200 block truncate">{user.username}</span>
+                    <span className="text-[9px] text-emerald-400 font-mono">Online</span>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}

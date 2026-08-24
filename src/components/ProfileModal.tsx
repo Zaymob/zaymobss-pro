@@ -23,11 +23,11 @@ interface ProfileModalProps {
 }
 
 const ACCENT_COLORS = [
-  { name: 'Cyan', value: 'from-cyan-500 to-blue-600', ring: 'ring-cyan-400', badge: 'bg-cyan-500 text-black' },
-  { name: 'Purple', value: 'from-purple-500 to-indigo-600', ring: 'ring-purple-400', badge: 'bg-purple-500 text-white' },
-  { name: 'Amber', value: 'from-amber-500 to-orange-600', ring: 'ring-amber-400', badge: 'bg-amber-500 text-black' },
-  { name: 'Emerald', value: 'from-emerald-500 to-teal-600', ring: 'ring-emerald-400', badge: 'bg-emerald-500 text-black' },
-  { name: 'Rose', value: 'from-rose-500 to-pink-600', ring: 'ring-rose-400', badge: 'bg-rose-500 text-white' },
+  { name: 'Amber', value: 'bg-amber-500', ring: 'ring-amber-400', badge: 'bg-amber-500 text-zinc-950' },
+  { name: 'Zinc', value: 'bg-zinc-700', ring: 'ring-zinc-400', badge: 'bg-zinc-700 text-white' },
+  { name: 'Emerald', value: 'bg-emerald-600', ring: 'ring-emerald-400', badge: 'bg-emerald-600 text-white' },
+  { name: 'Blue', value: 'bg-blue-600', ring: 'ring-blue-400', badge: 'bg-blue-600 text-white' },
+  { name: 'Rose', value: 'bg-rose-600', ring: 'ring-rose-400', badge: 'bg-rose-600 text-white' },
 ];
 
 export const ProfileModal: React.FC<ProfileModalProps> = ({
@@ -43,7 +43,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [bio, setBio] = useState(currentProfile?.bio || '');
   const [status, setStatus] = useState(currentProfile?.status || 'Online');
   const [badge, setBadge] = useState(currentProfile?.badge || '');
-  const [accentColor, setAccentColor] = useState(currentProfile?.accentColor || 'from-cyan-500 to-blue-600');
+  const [accentColor, setAccentColor] = useState(currentProfile?.accentColor || 'bg-amber-500');
 
   useEffect(() => {
     if (isOpen) {
@@ -143,9 +143,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   {banner ? (
                     <img src={banner} alt="Profile Banner" className="w-full h-full object-cover" />
                   ) : (
-                    <div className={`w-full h-full bg-gradient-to-r ${accentColor}`} />
+                    <div className={`w-full h-full ${accentColor}`} />
                   )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-transparent to-transparent opacity-80" />
                 </div>
 
                 {/* Profile Card Body */}
@@ -320,10 +319,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               </div>
             </div>
 
-            {/* Accent Theme Color Gradient */}
+            {/* Accent Theme Color */}
             <div className="space-y-2">
               <label className="text-xs font-mono font-semibold text-zinc-300 uppercase tracking-wider">
-                Profile Accent Gradient
+                Profile Accent Color
               </label>
               <div className="flex flex-wrap gap-2">
                 {ACCENT_COLORS.map((col) => (
@@ -331,8 +330,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                     key={col.name}
                     type="button"
                     onClick={() => setAccentColor(col.value)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all bg-gradient-to-r ${col.value} ${
-                      accentColor === col.value ? 'ring-2 ring-white scale-105 shadow-lg' : 'opacity-70 hover:opacity-100'
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${col.value} text-white ${
+                      accentColor === col.value ? 'ring-2 ring-white scale-105 shadow-md' : 'opacity-80 hover:opacity-100'
                     }`}
                   >
                     {col.name}
@@ -352,7 +351,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               </button>
               <button
                 type="submit"
-                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:brightness-110 text-white font-bold text-xs shadow-lg shadow-cyan-500/20 transition-all"
+                className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs shadow-md transition-colors"
               >
                 Save Profile Changes
               </button>

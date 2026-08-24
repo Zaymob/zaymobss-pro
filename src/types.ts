@@ -1,4 +1,4 @@
-export type NavTab = 'home' | 'movies' | 'games' | 'youtube' | 'ai' | 'community' | 'music' | 'settings' | 'proxy' | 'private_chat' | 'halo';
+export type NavTab = 'home' | 'movies' | 'games' | 'youtube' | 'ai' | 'community' | 'music' | 'settings' | 'proxy' | 'private_chat' | 'links';
 
 export interface ProxyBrowserTab {
   id: string;
@@ -52,7 +52,13 @@ export interface MovieItem {
   episodesCount?: number;
 }
 
-export type StreamSource = 'vidcore' | 'vidfast' | 'streamrip' | 'viduki' | 'vidsrc' | 'streamrip-anime';
+export type StreamSource =
+  | 'vidfast'
+  | 'vidcore'
+  | 'streamrip'
+  | 'viduki'
+  | 'vidsrc'
+  | 'streamrip-anime';
 
 export interface GameItem {
   id: string;
@@ -84,6 +90,14 @@ export interface ChatReaction {
   users: string[];
 }
 
+export interface ChatAttachment {
+  type: 'image' | 'audio' | 'link' | 'file';
+  url: string;
+  fileName?: string;
+  duration?: number; // duration in seconds for voice notes
+  fileSize?: string;
+}
+
 export interface ChatMessage {
   id: string;
   channelId?: string;
@@ -91,6 +105,7 @@ export interface ChatMessage {
   avatar: string;
   content: string;
   timestamp: string;
+  createdAt?: number;
   badge?: string;
   isMe?: boolean;
   replyTo?: {
@@ -98,10 +113,7 @@ export interface ChatMessage {
     user: string;
     content: string;
   };
-  attachment?: {
-    type: 'image' | 'link';
-    url: string;
-  };
+  attachment?: ChatAttachment;
   reactions?: ChatReaction[];
   hasProfanity?: boolean;
   isUpsideDown?: boolean;
@@ -109,12 +121,16 @@ export interface ChatMessage {
 
 export interface MusicTrack {
   id: string;
+  songId?: string;
   title: string;
   artist: string;
   album?: string;
   duration: number; // in seconds
   cover: string;
   audioUrl?: string;
+  lrcUrl?: string;
+  jooxMsg?: string;
+  jooxN?: number;
   audioFreqs?: number[];
   genre: string;
   synthType?: 'lofi' | 'synthwave' | 'ambient' | 'chill';
@@ -210,5 +226,71 @@ export interface PlaybackContext {
   type: 'playlist' | 'general';
   playlistId?: string;
   playlistTracks?: MusicTrack[];
+}
+
+export interface TabMaskPreset {
+  id: string;
+  name: string;
+  title: string;
+  icon: string;
+  category: 'Google' | 'School' | 'Tools' | 'Reference' | 'Custom';
+  description?: string;
+}
+
+export interface TabCloakSettings {
+  activeMaskId: string;
+  customTitle: string;
+  customIcon: string;
+  panicKey: string;
+  panicUrl: string;
+  antiCloseEnabled: boolean;
+  autoAboutBlank: boolean;
+}
+
+export type AiSpeakingStyle =
+  | 'jacks_cough'
+  | 'sarcastic'
+  | 'chill'
+  | 'concise'
+  | 'academic'
+  | 'tutor'
+  | 'custom'
+  | 'friendly'
+  | 'cyberpunk'
+  | 'pirate';
+
+export type AiResponseSpeed = 'fast' | 'smooth' | 'balanced' | 'instant' | 'thoughtful';
+export type AiEmojiMode = 'heavily' | 'standard' | 'minimal' | 'none';
+
+export interface AiPersonalitySettings {
+  style: AiSpeakingStyle;
+  customToneText?: string;
+  speed: AiResponseSpeed;
+  emojiMode: AiEmojiMode;
+  userCallSign: string; // What AI calls the user (e.g. "user", "Boss", "bruh", username)
+  customPrompt: string; // Custom instructions
+  customSymbolRules: string; // Formatting / symbol rules (e.g. "use symbols for list items")
+  memoryEnabled: boolean;
+  memories: string[]; // Cross-chat persistent memories / facts
+  creativity: number; // 0 to 100
+}
+
+export interface ChatPreferences {
+  enableProfanityFilter: boolean;
+  blurProfanity: boolean;
+  profanityStrictness: 'strict' | 'standard' | 'off';
+  blockedWords: string[];
+  soundEffects: boolean;
+  compactMode: boolean;
+  showTimestamps: boolean;
+  autoScroll: boolean;
+}
+
+export interface BanAppealItem {
+  id: string;
+  username: string;
+  reason: string;
+  timestamp: string;
+  status: 'pending' | 'approved' | 'rejected';
 }
 

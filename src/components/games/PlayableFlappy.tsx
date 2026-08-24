@@ -65,7 +65,7 @@ export const PlayableFlappy: React.FC = () => {
 
       <div
         onClick={flap}
-        className="relative w-64 h-72 bg-gradient-to-b from-sky-950 via-zinc-900 to-zinc-950 border border-zinc-800 rounded-2xl overflow-hidden cursor-pointer shadow-inner"
+        className="relative w-64 h-72 bg-zinc-950 border border-zinc-800 rounded-2xl overflow-hidden cursor-pointer shadow-inner"
       >
         {/* Bird */}
         <div

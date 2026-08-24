@@ -4,29 +4,90 @@ import { MovieItem, StreamSource } from '../types';
 import {
   Play,
   Star,
-  Film,
-  Search,
+  FilmStrip as Film,
+  MagnifyingGlass as Search,
   X,
   Heart,
-  Tv,
+  Television as Tv,
   Info,
-  ChevronLeft,
-  ChevronRight,
+  CaretLeft as ChevronLeft,
+  CaretRight as ChevronRight,
   Plus,
   Check,
-  Volume2,
-  VolumeX,
-  Sparkles,
-  Clapperboard,
+  SpeakerHigh as Volume2,
+  SpeakerSlash as VolumeX,
+  FilmSlate as Clapperboard,
   Flame,
-  Zap,
-  TrendingUp,
-} from 'lucide-react';
+  Lightning as Zap,
+  TrendUp as TrendingUp,
+  ArrowClockwise as RefreshCw,
+  ArrowSquareOut as ExternalLink,
+  CornersOut as Maximize2,
+  WarningCircle as AlertCircle,
+  TelevisionSimple as Tv2,
+  ShieldCheck,
+} from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface MoviesViewProps {
   selectedMovieId?: string;
 }
+
+const FEATURED_MEDIA_DICT: Record<string, MovieItem> = {
+  'movie-1': {
+    id: 'tmdb-569094',
+    tmdbId: 569094,
+    mediaType: 'movie',
+    title: 'Spider-Man: Across the Spider-Verse',
+    year: 2023,
+    rating: 8.8,
+    category: 'movies',
+    image: 'https://image.tmdb.org/t/p/w500/8Vt6mWEReuy4Of61Lnj5Xj7sM48.jpg',
+    backdrop: 'https://image.tmdb.org/t/p/original/nnLOuh2A3P33C33C33C33.jpg',
+    description: 'Miles Morales catapults across the Multiverse, where he encounters a team of Spider-People charged with protecting its very existence.',
+    genres: ['Animation', 'Action', 'Adventure'],
+    duration: '2h 20m',
+  },
+  'movie-2': {
+    id: 'tmdb-2232',
+    tmdbId: 2232,
+    mediaType: 'tv',
+    title: 'The Boondocks',
+    year: 2005,
+    rating: 8.6,
+    category: 'shows',
+    image: 'https://image.tmdb.org/t/p/w500/bJ8K0h0j0d0j0d0j0d0j0d0j0d0.jpg',
+    backdrop: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=1200&auto=format&fit=crop&q=80',
+    description: 'Based on the satiric strip, two young brothers move from Chicago to Woodcrest, living with their grandfather Huey and Riley.',
+    genres: ['Animation', 'Comedy'],
+    duration: 'TV Series',
+    seasonsCount: 4,
+  },
+  'movie-3': {
+    id: 'anilist-20',
+    tmdbId: 20,
+    anilistId: 20,
+    mediaType: 'anime',
+    title: 'Death Note',
+    year: 2006,
+    rating: 8.7,
+    category: 'anime',
+    image: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500&auto=format&fit=crop&q=80',
+    backdrop: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=1200&auto=format&fit=crop&q=80',
+    description: 'Light Yagami finds a high school notebook that grants the ability to kill anyone whose name is written in it.',
+    genres: ['Anime', 'Psychological', 'Thriller'],
+    duration: '37 Episodes',
+  },
+};
+
+const STREAM_SERVERS: Array<{ id: StreamSource; label: string }> = [
+  { id: 'vidcore', label: 'VidCore' },
+  { id: 'vidfast', label: 'VidFast' },
+  { id: 'streamrip', label: 'StreamRip' },
+  { id: 'viduki', label: 'VidUki' },
+  { id: 'vidsrc', label: 'VidSrc' },
+  { id: 'streamrip-anime', label: 'StreamRip Anime' },
+];
 
 export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
   // Navigation & Category filter
@@ -52,9 +113,12 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
   const [isPlayerOpen, setIsPlayerOpen] = useState<boolean>(false);
   const [isInfoModalOpen, setIsInfoModalOpen] = useState<boolean>(false);
   const [modalMovie, setModalMovie] = useState<MovieItem | null>(null);
-  const [selectedSource, setSelectedSource] = useState<StreamSource>('vidfast');
+  const [selectedSource, setSelectedSource] = useState<StreamSource>('vidcore');
   const [season, setSeason] = useState<number>(1);
   const [episode, setEpisode] = useState<number>(1);
+  const [iframeKey, setIframeKey] = useState<number>(0);
+  const [trailerKey, setTrailerKey] = useState<string | null>(null);
+  const [isIframeLoading, setIsIframeLoading] = useState<boolean>(false);
   const [watchlist, setWatchlist] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('yuno_watchlist');
@@ -216,6 +280,49 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
     };
   }, []);
 
+  // Handle selected movie / show / anime selection from HomeView
+  useEffect(() => {
+    if (!selectedMovieId) return;
+
+    if (FEATURED_MEDIA_DICT[selectedMovieId]) {
+      const item = FEATURED_MEDIA_DICT[selectedMovieId];
+      setModalMovie(item);
+      setIsInfoModalOpen(true);
+      return;
+    }
+
+    const allMovies = [
+      ...trendingList,
+      ...popularMoviesList,
+      ...popularTvList,
+      ...animeList,
+      ...topRatedList,
+      ...actionList,
+      ...sciFiList,
+    ];
+
+    const found = allMovies.find(
+      (m) => m.id === selectedMovieId || (m.tmdbId && `tmdb-${m.tmdbId}` === selectedMovieId)
+    );
+
+    if (found) {
+      setModalMovie(found);
+      setIsInfoModalOpen(true);
+    } else {
+      const queryTitle = selectedMovieId.replace(/[-_]/g, ' ');
+      fetch(`/api/tmdb/search?query=${encodeURIComponent(queryTitle)}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.results && data.results.length > 0) {
+            const mapped = mapTmdbItem(data.results[0], data.results[0].media_type || 'movie', 'Featured');
+            setModalMovie(mapped);
+            setIsInfoModalOpen(true);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [selectedMovieId, trendingList, popularMoviesList, popularTvList, animeList]);
+
   // Handle Live Search
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -258,16 +365,17 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
   }, [modalMovie, season]);
 
   // Stream URL builder
-  const getStreamEmbedUrl = (movie: MovieItem) => {
+  const getStreamRawUrl = (movie: MovieItem | null): string => {
+    if (!movie) return '';
     const isAnime = movie.mediaType === 'anime' || movie.category === 'anime' || activeCategory === 'anime';
-    const animeId = movie.anilistId || movie.tmdbId || 21;
+    const animeId = movie.anilistId || movie.tmdbId || 20;
 
     if (isAnime || selectedSource === 'streamrip-anime') {
       return `https://streamrip.fun/anime/${animeId}/${episode}`;
     }
 
     const tmdbId = movie.tmdbId || 550;
-    const isTv = movie.mediaType === 'tv' || movie.duration.includes('Series');
+    const isTv = movie.mediaType === 'tv' || movie.duration?.includes('Series');
 
     switch (selectedSource) {
       case 'vidfast':
@@ -284,24 +392,54 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
           : `https://streamrip.fun/play?type=movie&id=${tmdbId}`;
       case 'viduki':
         return isTv
-          ? `https://viduki.net/1/tv/${tmdbId}/${season}/${episode}?color=e50914`
-          : `https://viduki.net/1/movie/${tmdbId}?color=e50914`;
+          ? `https://viduki.net/1/tv/${tmdbId}/${season}/${episode}?color=06b6d4`
+          : `https://viduki.net/1/movie/${tmdbId}?color=06b6d4`;
       case 'vidsrc':
         return isTv
           ? `https://vidsrc.me/embed/tv?tmdb=${tmdbId}&season=${season}&episode=${episode}`
           : `https://vidsrc.me/embed/movie?tmdb=${tmdbId}`;
       default:
-        return `https://vidfast.vc/movie/${tmdbId}?autoPlay=true`;
+        return isTv
+          ? `https://vidcore.net/tv/${tmdbId}/${season}/${episode}?autoPlay=true`
+          : `https://vidcore.net/movie/${tmdbId}?autoPlay=true`;
     }
+  };
+
+  const getStreamEmbedUrl = (movie: MovieItem | null): string => {
+    const raw = getStreamRawUrl(movie);
+    if (!raw) return '';
+    return `/api/stream/proxy?url=${encodeURIComponent(raw)}`;
   };
 
   const openPlayMovie = (movie: MovieItem) => {
     setModalMovie(movie);
-    if (movie.mediaType === 'anime' || movie.category === 'anime') {
+    setIframeKey((k) => k + 1);
+    setIsIframeLoading(true);
+    const isTv = movie.mediaType === 'tv' || movie.duration?.includes('Series');
+    const isAnime = movie.mediaType === 'anime' || movie.category === 'anime' || activeCategory === 'anime';
+
+    if (isAnime) {
       setSelectedSource('streamrip-anime');
     } else if (selectedSource === 'streamrip-anime') {
-      setSelectedSource('vidfast');
+      setSelectedSource('vidcore');
     }
+
+    // Fetch official HD Trailer in background
+    if (movie.tmdbId) {
+      fetch(`/api/tmdb/trailer?id=${movie.tmdbId}&type=${isTv ? 'tv' : 'movie'}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data && data.success && data.key) {
+            setTrailerKey(data.key);
+          } else {
+            setTrailerKey(null);
+          }
+        })
+        .catch(() => setTrailerKey(null));
+    } else {
+      setTrailerKey(null);
+    }
+
     setSeason(1);
     setEpisode(1);
     setIsPlayerOpen(true);
@@ -339,14 +477,14 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
   return (
     <div className="w-full max-w-full lg:max-w-7xl mx-auto space-y-6 sm:space-y-8 pb-16 min-w-0 text-white">
       {/* YUNØFLIX BRANDING & TOP CONTROL BAR */}
-      <div className="sticky top-0 z-30 bg-zinc-950/95 backdrop-blur-xl border-b-2 border-dashed border-red-600/40 -mx-3 sm:-mx-5 lg:-mx-8 px-3 sm:px-5 lg:px-8 py-3.5 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 shadow-2xl">
+      <div className="sticky top-0 z-30 bg-zinc-950/95 backdrop-blur-xl border-b border-zinc-800 -mx-3 sm:-mx-5 lg:-mx-8 px-3 sm:px-5 lg:px-8 py-3.5 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
         <div className="flex items-center space-x-4 overflow-x-auto scrollbar-none py-1">
           {/* YUNØFLIX Brand Logo */}
           <div className="flex items-center space-x-2 flex-shrink-0 cursor-pointer" onClick={() => setActiveCategory('all')}>
-            <span className="font-sketch font-extrabold text-2xl text-amber-100 tracking-wider flex items-center">
+            <span className="font-black text-2xl text-white tracking-wider flex items-center">
               YUNØ<span className="text-red-600 ml-1">FLIX</span>
             </span>
-            <span className="handmade-stamp text-[10px] py-0 px-1.5 text-red-400 border-red-500">HANDMADE</span>
+            <span className="text-[10px] font-mono py-0.5 px-2 rounded bg-zinc-800 text-zinc-300 border border-zinc-700">PORTAL</span>
           </div>
 
           {/* Navigation Category Tabs */}
@@ -364,10 +502,10 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
                   setActiveCategory(tab.id as any);
                   setSearchQuery('');
                 }}
-                className={`px-3.5 py-1.5 handmade-pill text-xs font-sketch font-bold transition-all whitespace-nowrap ${
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
                   activeCategory === tab.id
-                    ? 'bg-red-600 text-white shadow-md shadow-red-600/40 rotate-[-1deg]'
-                    : 'text-zinc-400 hover:text-amber-100 hover:bg-zinc-900 border border-transparent'
+                    ? 'bg-red-600 text-white'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-900 border border-transparent'
                 }`}
               >
                 {tab.label}
@@ -398,25 +536,22 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
           </div>
 
           {/* Stream Server Source Selector Dropdown */}
-          <div className="hidden sm:flex items-center space-x-1 bg-zinc-900 border border-zinc-800 p-1 rounded-xl text-[11px]">
-            {[
-              { id: 'vidfast', label: 'VidFast' },
-              { id: 'vidcore', label: 'VidCore' },
-              { id: 'streamrip-anime', label: 'Anime' },
-              { id: 'vidsrc', label: 'Vidsrc' },
-            ].map((src) => (
-              <button
-                key={src.id}
-                onClick={() => setSelectedSource(src.id as StreamSource)}
-                className={`px-2.5 py-1 rounded-lg font-mono font-bold transition-all ${
-                  selectedSource === src.id
-                    ? 'bg-red-600 text-white shadow-sm'
-                    : 'text-zinc-400 hover:text-white'
-                }`}
-              >
-                {src.label}
-              </button>
-            ))}
+          <div className="flex items-center space-x-1.5 bg-zinc-900 border border-zinc-800 px-3 py-1.5 rounded-xl text-xs">
+            <span className="text-[11px] font-mono text-zinc-400 font-bold uppercase hidden sm:inline">Source:</span>
+            <select
+              value={selectedSource}
+              onChange={(e) => {
+                setSelectedSource(e.target.value as StreamSource);
+                setIframeKey((k) => k + 1);
+              }}
+              className="bg-transparent text-white font-mono text-xs font-semibold focus:outline-none cursor-pointer"
+            >
+              {STREAM_SERVERS.map((src) => (
+                <option key={src.id} value={src.id} className="bg-zinc-900 text-white">
+                  {src.label}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       </div>
@@ -605,7 +740,7 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
             {(activeCategory === 'all' || activeCategory === 'anime') && animeList.length > 0 && (
               <NetflixRow
                 title="Trending Anime Vault"
-                icon={<Sparkles className="w-4 h-4 text-purple-400" />}
+                icon={<Tv2 className="w-4 h-4 text-red-400" />}
                 movies={animeList}
                 rowKey="anime"
                 rowRefs={rowRefs}
@@ -636,8 +771,8 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
             {/* ROW 6: SCI-FI & FANTASY */}
             {(activeCategory === 'all' || activeCategory === 'movies') && sciFiList.length > 0 && (
               <NetflixRow
-                title="Sci-Fi & Cyberpunk"
-                icon={<TrendingUp className="w-4 h-4 text-cyan-400" />}
+                title="Sci-Fi & Fantasy"
+                icon={<Film className="w-4 h-4 text-zinc-300" />}
                 movies={sciFiList}
                 rowKey="scifi"
                 rowRefs={rowRefs}
@@ -856,63 +991,93 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md p-2 sm:p-4"
           >
-            <div className="relative w-full max-w-6xl bg-zinc-950 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl flex flex-col my-auto">
+            <div className="relative w-full max-w-6xl bg-zinc-950 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl flex flex-col my-auto max-h-[96vh]">
               {/* Player Top Bar */}
-              <div className="flex items-center justify-between px-4 py-3 bg-zinc-900 border-b border-zinc-800">
+              <div className="flex items-center justify-between px-4 py-3 bg-zinc-900 border-b border-zinc-800 flex-shrink-0">
                 <div className="flex items-center space-x-3 min-w-0">
-                  <Film className="w-5 h-5 text-red-500 flex-shrink-0" />
+                  <div className="w-7 h-7 rounded-lg bg-red-600/20 border border-red-500/40 flex items-center justify-center text-red-400 flex-shrink-0">
+                    <Film className="w-4 h-4" />
+                  </div>
                   <div className="min-w-0">
                     <h3 className="text-xs sm:text-sm font-bold text-white truncate flex items-center space-x-2">
                       <span>{modalMovie.title}</span>
                       {modalMovie.mediaType === 'tv' && (
-                        <span className="text-[10px] text-red-400 font-mono">S{season} E{episode}</span>
+                        <span className="text-[10px] text-red-400 font-mono bg-red-950/60 px-1.5 py-0.5 rounded border border-red-800/50">
+                          S{season} E{episode}
+                        </span>
                       )}
                     </h3>
                   </div>
                 </div>
 
-                <div className="flex items-center space-x-3">
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => {
+                      setIframeKey((k) => k + 1);
+                      setIsIframeLoading(true);
+                    }}
+                    className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-mono text-zinc-300 hover:text-white transition-colors flex items-center gap-1.5"
+                    title="Reload current stream mirror"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Reload</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      const url = getStreamEmbedUrl(modalMovie);
+                      window.open(url, '_blank', 'noopener,noreferrer');
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-xs font-mono text-white transition-colors flex items-center gap-1.5 shadow-sm font-bold"
+                    title="Open stream in a clean unblocked tab"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Pop-out Unblocked ↗</span>
+                  </button>
+
                   <button
                     onClick={() => setIsPlayerOpen(false)}
-                    className="p-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors"
+                    className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors"
                   >
-                    <X className="w-5 h-5" />
+                    <X className="w-4 h-4" />
                   </button>
                 </div>
               </div>
 
               {/* Streaming Source & Episode Selector Bar */}
-              <div className="px-4 py-2 bg-zinc-900/80 border-b border-zinc-800/80 flex flex-wrap items-center justify-between gap-2 text-xs">
-                <div className="flex items-center space-x-2 overflow-x-auto scrollbar-none py-1">
-                  <span className="font-mono text-zinc-400 font-bold text-[11px] uppercase flex-shrink-0">Server:</span>
-                  {[
-                    { id: 'vidfast', label: 'VidFast VC' },
-                    { id: 'vidcore', label: 'VidCore' },
-                    { id: 'streamrip-anime', label: 'StreamRip Anime' },
-                    { id: 'streamrip', label: 'StreamRip' },
-                    { id: 'vidsrc', label: 'Vidsrc Pro' },
-                  ].map((src) => (
-                    <button
-                      key={src.id}
-                      onClick={() => setSelectedSource(src.id as StreamSource)}
-                      className={`px-3 py-1 rounded-lg text-xs font-mono font-bold transition-all flex-shrink-0 ${
-                        selectedSource === src.id
-                          ? 'bg-red-600 text-white shadow'
-                          : 'bg-zinc-800 text-zinc-400 hover:text-white'
-                      }`}
-                    >
-                      {src.label}
-                    </button>
-                  ))}
+              <div className="px-4 py-2.5 bg-zinc-900/90 border-b border-zinc-800 flex flex-wrap items-center justify-between gap-3 text-xs flex-shrink-0">
+                <div className="flex items-center space-x-2">
+                  <span className="font-mono text-zinc-400 font-bold text-[11px] uppercase flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 inline" />
+                    Source:
+                  </span>
+                  <select
+                    value={selectedSource}
+                    onChange={(e) => {
+                      setSelectedSource(e.target.value as StreamSource);
+                      setIframeKey((k) => k + 1);
+                      setIsIframeLoading(true);
+                    }}
+                    className="bg-zinc-800 border border-zinc-700 text-white font-mono text-xs font-semibold rounded-lg px-3 py-1.5 focus:outline-none focus:border-red-500 cursor-pointer"
+                  >
+                    {STREAM_SERVERS.map((src) => (
+                      <option key={src.id} value={src.id} className="bg-zinc-900 text-white">
+                        {src.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {modalMovie.mediaType === 'tv' && (
                   <div className="flex items-center space-x-2">
-                    <span className="text-zinc-400 font-mono text-xs">Ep:</span>
+                    <span className="text-zinc-400 font-mono text-xs">Episode:</span>
                     <select
                       value={episode}
-                      onChange={(e) => setEpisode(Number(e.target.value))}
-                      className="bg-zinc-900 text-red-400 font-bold rounded-lg px-2.5 py-1 text-xs border border-zinc-700 focus:outline-none"
+                      onChange={(e) => {
+                        setEpisode(Number(e.target.value));
+                        setIframeKey((k) => k + 1);
+                      }}
+                      className="bg-zinc-900 text-red-400 font-bold rounded-lg px-2.5 py-1 text-xs border border-zinc-700 focus:outline-none cursor-pointer"
                     >
                       {Array.from({ length: 24 }, (_, i) => i + 1).map((ep) => (
                         <option key={ep} value={ep}>
@@ -924,23 +1089,45 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
                 )}
               </div>
 
-              {/* Video Player Iframe Embed */}
-              <div className="w-full aspect-video bg-black relative">
+              {/* Video Player Container */}
+              <div className="w-full aspect-video bg-zinc-950 relative overflow-hidden flex items-center justify-center">
+                {/* Background loader & fallback card */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950 text-zinc-400 p-4 text-center select-none pointer-events-none">
+                  <div className="w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+                  <p className="text-xs font-mono text-zinc-300">Loading stream mirror ({selectedSource})...</p>
+                </div>
+
                 <iframe
+                  key={`${selectedSource}-${modalMovie.id}-${season}-${episode}-${iframeKey}`}
                   src={getStreamEmbedUrl(modalMovie)}
                   title={modalMovie.title}
-                  className="w-full h-full border-0"
+                  className="w-full h-full border-0 relative z-10 bg-transparent"
                   allowFullScreen
                   allow="autoplay; encrypted-media; picture-in-picture; accelerometer; gyroscope; clipboard-write; display-capture; fullscreen"
                   referrerPolicy="no-referrer"
+                  onLoad={() => setIsIframeLoading(false)}
                 />
               </div>
 
-              <div className="p-2.5 bg-zinc-900 text-[11px] text-zinc-400 flex items-center justify-between px-4">
-                <span>
-                  Source: <span className="text-red-500 font-bold uppercase">{selectedSource}</span>
-                </span>
-                <span>Press F11 or click full screen icon inside player controls for cinema mode</span>
+              {/* Unblock & Troubleshooting Helper Footer */}
+              <div className="p-3 bg-zinc-900/95 border-t border-zinc-800 text-[11px] text-zinc-400 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 px-4 flex-shrink-0">
+                <div className="flex items-center space-x-2 text-zinc-300">
+                  <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                  <span>
+                    <strong>Blocked at school/filter?</strong> Switch mirror buttons above or click{' '}
+                    <button
+                      onClick={() => window.open(getStreamEmbedUrl(modalMovie), '_blank', 'noopener,noreferrer')}
+                      className="text-red-400 hover:text-red-300 underline font-bold"
+                    >
+                      Pop-out Unblocked ↗
+                    </button>{' '}
+                    to play without iframe blocks.
+                  </span>
+                </div>
+
+                <div className="text-[10px] font-mono text-zinc-500 flex-shrink-0">
+                  Active Server: <span className="text-red-400 font-bold uppercase">{selectedSource}</span>
+                </div>
               </div>
             </div>
           </motion.div>
@@ -981,9 +1168,8 @@ const NetflixRow: React.FC<NetflixRowProps> = ({
       {title && (
         <div className="flex items-center space-x-2">
           {icon}
-          <h2 className="text-lg sm:text-xl font-sketch font-bold text-amber-100 tracking-wide flex items-center gap-2">
+          <h2 className="text-lg sm:text-xl font-bold text-white tracking-wide flex items-center gap-2">
             <span>{title}</span>
-            <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
           </h2>
         </div>
       )}
@@ -993,7 +1179,7 @@ const NetflixRow: React.FC<NetflixRowProps> = ({
         {/* Left Arrow Button */}
         <button
           onClick={() => scrollRow(rowKey, 'left')}
-          className="absolute left-0 top-0 bottom-0 z-20 w-10 bg-black/70 hover:bg-black/90 text-white flex items-center justify-center opacity-0 group-hover/row:opacity-100 transition-opacity backdrop-blur-sm handmade-pill"
+          className="absolute left-0 top-0 bottom-0 z-20 w-10 bg-black/70 hover:bg-black/90 text-white flex items-center justify-center opacity-0 group-hover/row:opacity-100 transition-opacity backdrop-blur-sm rounded-r-lg"
         >
           <ChevronLeft className="w-6 h-6" />
         </button>
@@ -1007,19 +1193,18 @@ const NetflixRow: React.FC<NetflixRowProps> = ({
             <div
               key={`${rowKey}-${movie.id}-${idx}`}
               onClick={() => onInfo(movie)}
-              className="group/card relative flex-shrink-0 w-36 sm:w-44 md:w-48 lg:w-52 handmade-card overflow-hidden bg-zinc-950 border border-amber-300/20 hover:border-red-600/80 cursor-pointer transition-all duration-300 hover:scale-105 hover:z-20 shadow-lg"
-              style={{ transform: idx % 2 === 0 ? 'rotate(-0.5deg)' : 'rotate(0.5deg)' }}
+              className="group/card relative flex-shrink-0 w-36 sm:w-44 md:w-48 lg:w-52 rounded-xl overflow-hidden bg-zinc-950 border border-zinc-800 hover:border-zinc-700 cursor-pointer transition-all duration-200 hover:scale-105 hover:z-20 shadow-md"
             >
               <div className="aspect-[2/3] w-full relative overflow-hidden bg-zinc-800">
                 <img
                   src={movie.image}
                   alt={movie.title}
-                  className="w-full h-full object-cover group-hover/card:scale-110 transition-transform duration-500"
+                  className="w-full h-full object-cover group-hover/card:scale-105 transition-transform duration-300"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-transparent to-transparent opacity-85" />
+                <div className="absolute inset-0 bg-black/30 opacity-0 group-hover/card:opacity-100 transition-opacity" />
 
-                <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded bg-black/80 text-[10px] font-mono text-amber-400 font-bold border border-amber-500/30 flex items-center space-x-1">
-                  <Star className="w-3 h-3 fill-current" />
+                <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded bg-black/80 text-[10px] font-mono text-zinc-200 font-bold border border-zinc-700 flex items-center space-x-1">
+                  <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
                   <span>{movie.rating}</span>
                 </div>
 
@@ -1033,7 +1218,7 @@ const NetflixRow: React.FC<NetflixRowProps> = ({
                     e.stopPropagation();
                     onPlay(movie);
                   }}
-                  className="absolute inset-0 m-auto w-11 h-11 rounded-full bg-red-600 text-white flex items-center justify-center opacity-0 group-hover/card:opacity-100 transition-opacity shadow-2xl hover:scale-110"
+                  className="absolute inset-0 m-auto w-11 h-11 rounded-full bg-red-600 text-white flex items-center justify-center opacity-0 group-hover/card:opacity-100 transition-opacity shadow-lg hover:scale-110"
                 >
                   <Play className="w-5 h-5 fill-current ml-0.5" />
                 </div>

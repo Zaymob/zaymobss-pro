@@ -30,6 +30,8 @@ import { MOVIES } from '../data/portalData';
 import { MovieItem, UserProfile, StreamSource, CallState } from '../types';
 import { audioEngine } from '../utils/audioSynth';
 import { GarticPhone } from './GarticPhone';
+import { UserAvatar } from './UserAvatar';
+import { getSavedChatPreferences } from '../utils/chatSettings';
 
 interface PrivateChatMessage {
   id: string;
@@ -53,6 +55,7 @@ interface PrivateChatViewProps {
   callState?: CallState;
   screenStream?: MediaStream | null;
   onToggleScreenShare?: () => void;
+  onTriggerIncomingCall?: (callerName?: string, callerAvatar?: string, channelName?: string) => void;
 }
 
 export const PrivateChatView: React.FC<PrivateChatViewProps> = ({
@@ -61,6 +64,7 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({
   callState,
   screenStream,
   onToggleScreenShare,
+  onTriggerIncomingCall,
 }) => {
   const [activeTab, setActiveTab] = useState<'watch_party' | 'gartic_phone'>('watch_party');
 
@@ -124,7 +128,7 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({
         id: '2',
         user: 'Ghost_Vip',
         avatar: '',
-        content: 'Yo! /e douche squad in the house. Let\'s stream a movie or start a Gartic Phone game!',
+        content: "Yo! Let's stream a movie or start a Gartic Phone game together!",
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         badge: 'FOUNDER VIP',
       },
@@ -404,9 +408,9 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({
   }, [isPlaying]);
 
   // Compute stream URL
-  const getStreamEmbedUrl = (movie: MovieItem) => {
+  const getStreamRawUrl = (movie: MovieItem) => {
     const isAnime = movie.mediaType === 'anime' || movie.category === 'anime';
-    const animeId = movie.anilistId || movie.tmdbId || 21;
+    const animeId = movie.anilistId || movie.tmdbId || 20;
 
     if (isAnime || selectedSource === 'streamrip-anime') {
       return `https://streamrip.fun/anime/${animeId}/${episode}`;
@@ -439,6 +443,12 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({
       default:
         return `https://vidcore.net/movie/${tmdbId}?autoPlay=true`;
     }
+  };
+
+  const getStreamEmbedUrl = (movie: MovieItem) => {
+    const raw = getStreamRawUrl(movie);
+    if (!raw) return '';
+    return `/api/stream/proxy?url=${encodeURIComponent(raw)}`;
   };
 
   const handleSearchTMDB = async (e: React.FormEvent) => {
@@ -714,43 +724,70 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
+  const renderPrivateMessageText = (content: string) => {
+    const blurEnabled = getSavedChatPreferences().blurProfanity;
+    if (!blurEnabled) return <span>{content}</span>;
+
+    const PROFANITY_LIST = ['shit', 'fuck', 'bitch', 'asshole', 'crap', 'bastard', 'dick', 'pussy', 'slut', 'whore', 'fucking', 'bullshit', 'vibecoded', 'slop'];
+    const words = content.split(/(\s+)/);
+    return (
+      <span>
+        {words.map((word, idx) => {
+          const lower = word.toLowerCase().replace(/[^a-z0-9]/g, '');
+          const isBad = PROFANITY_LIST.some((b) => lower.includes(b));
+          if (isBad) {
+            return (
+              <span
+                key={idx}
+                className="inline-block bg-zinc-800 text-transparent hover:text-white px-1 py-0.5 rounded transition-all cursor-pointer select-none font-mono text-[11px] border border-zinc-700 group relative"
+                title="Profanity blurred"
+              >
+                [blurred]
+                <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-0.5 bg-zinc-900 text-amber-300 text-[9px] rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border border-zinc-700">
+                  Reveal: {word}
+                </span>
+              </span>
+            );
+          }
+          return <React.Fragment key={idx}>{word}</React.Fragment>;
+        })}
+      </span>
+    );
+  };
+
   const isTvShow = selectedMovie.mediaType === 'tv' || selectedMovie.duration.includes('Series');
 
   return (
-    <div className="space-y-6 pb-12 max-w-7xl mx-auto">
+    <div className="w-full min-h-[calc(100vh-80px)] p-3 sm:p-5 lg:p-6 space-y-6">
       {/* Header Banner */}
-      <div className="p-6 rounded-3xl bg-gradient-to-r from-amber-950/50 via-zinc-950 to-purple-950/50 border border-amber-500/30 backdrop-blur-2xl shadow-2xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
-          <ShieldCheck className="w-64 h-64 text-amber-400" />
-        </div>
-
+      <div className="p-5 rounded-2xl bg-zinc-900 border border-zinc-800 shadow-md relative overflow-hidden">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             <div className="flex items-center space-x-2">
-              <span className="p-2 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.2)]">
-                <ShieldCheck className="w-6 h-6" />
+              <span className="p-1.5 rounded-lg bg-zinc-800 text-amber-400 border border-zinc-700">
+                <ShieldCheck className="w-4 h-4" />
               </span>
-              <span className="px-3 py-1 rounded-full text-[10px] font-mono font-bold uppercase tracking-widest bg-amber-500 text-black shadow-md">
-                VIP SECRET LOUNGE
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-amber-500 text-zinc-950">
+                VIP SECRET ROOM
               </span>
             </div>
 
-            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-              Secret VIP Watch Party & Gartic Phone Lounge
+            <h1 className="text-xl font-bold text-white tracking-tight">
+              VIP Watch Party & Gartic Phone Room
             </h1>
             <p className="text-xs text-zinc-400 max-w-2xl">
-              Unlocked via <code className="text-amber-400 font-mono font-bold bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">/e douche</code> command. Stream full movies & TV shows in 4K or play Gartic Phone with friends.
+              Stream synchronized media and play Gartic Phone in real-time with friends.
             </p>
           </div>
 
           {/* Room Controls & Call Launchers */}
           <div className="flex flex-wrap items-center gap-2">
             {onStartCall && (
-              <div className="flex items-center space-x-1.5 p-1 rounded-2xl bg-zinc-900/90 border border-zinc-800 shadow-md">
+              <div className="flex items-center space-x-1.5 p-1 rounded-xl bg-zinc-950 border border-zinc-800">
                 <button
                   type="button"
                   onClick={() => onStartCall(`vip-voice-${roomCode}`, `VIP Voice Lounge #${roomCode}`, 'voice')}
-                  className="px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500 hover:text-black text-emerald-400 font-bold text-xs transition-all flex items-center space-x-1 border border-emerald-500/30"
+                  className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold text-xs transition-colors flex items-center space-x-1 border border-zinc-700"
                   title="Start VIP Voice Call"
                 >
                   <Phone className="w-3.5 h-3.5" />
@@ -760,7 +797,7 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({
                 <button
                   type="button"
                   onClick={() => onStartCall(`vip-video-${roomCode}`, `VIP Video Room #${roomCode}`, 'video')}
-                  className="px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500 hover:text-black text-cyan-300 font-bold text-xs transition-all flex items-center space-x-1 border border-cyan-500/30"
+                  className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold text-xs transition-colors flex items-center space-x-1 border border-zinc-700"
                   title="Start VIP Video Call"
                 >
                   <Video className="w-3.5 h-3.5" />
@@ -770,7 +807,7 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({
                 <button
                   type="button"
                   onClick={() => onStartCall(`vip-screen-${roomCode}`, `VIP Watch Stream #${roomCode}`, 'screen')}
-                  className="px-3 py-1.5 rounded-xl bg-purple-500/20 hover:bg-purple-500 hover:text-black text-purple-300 font-bold text-xs transition-all flex items-center space-x-1 border border-purple-500/30"
+                  className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold text-xs transition-colors flex items-center space-x-1 border border-zinc-700"
                   title="Share Screen with Room"
                 >
                   <Monitor className="w-3.5 h-3.5" />
@@ -781,7 +818,7 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({
 
             <button
               onClick={() => setIsJoinRoomOpen(true)}
-              className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs transition-all flex items-center space-x-2 shadow-lg shadow-amber-500/20"
+              className="px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-semibold text-xs transition-colors flex items-center space-x-2 border border-zinc-700"
             >
               <Users className="w-4 h-4" />
               <span>Join / Switch Room</span>
@@ -789,17 +826,17 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({
 
             <button
               onClick={handleCopyInvite}
-              className="px-4 py-2.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-amber-500/30 text-amber-300 font-mono text-xs font-bold transition-all flex items-center space-x-2 shadow-lg"
+              className="px-3.5 py-2 rounded-xl bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 font-mono text-xs font-semibold transition-colors flex items-center space-x-2"
               title="Click to copy room code"
             >
               {copiedLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
               <span>{copiedLink ? 'Code Copied!' : `Room Code: #${roomCode}`}</span>
             </button>
 
-            <div className="px-3.5 py-2.5 rounded-xl bg-zinc-900/80 border border-zinc-800 text-xs font-mono text-emerald-400 flex items-center space-x-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <div className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-xs font-mono text-emerald-400 flex items-center space-x-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
               <span>
-                {callState?.isActive ? 'Call & Watch Party Live' : `Connected to #${roomCode}`}
+                {callState?.isActive ? 'Call Active' : `Connected to #${roomCode}`}
               </span>
             </div>
           </div>
@@ -881,7 +918,7 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({
                     </button>
                     <button
                       type="submit"
-                      className="flex-1 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:brightness-110 text-black font-black text-xs rounded-2xl shadow-lg"
+                      className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs rounded-xl shadow-md transition-colors"
                     >
                       Join / Host Room
                     </button>
@@ -1057,19 +1094,24 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({
                 {/* Server selection */}
                 <div className="flex items-center space-x-2">
                   <span className="text-zinc-500">SERVER:</span>
-                  {(['vidfast', 'vidcore', 'streamrip', 'viduki', 'vidsrc'] as StreamSource[]).map((srv) => (
-                    <button
-                      key={srv}
-                      onClick={() => setSelectedSource(srv)}
-                      className={`px-2.5 py-1 rounded-lg uppercase text-[10px] font-bold transition-all ${
-                        selectedSource === srv
-                          ? 'bg-amber-500 text-black'
-                          : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'
-                      }`}
-                    >
-                      {srv}
-                    </button>
-                  ))}
+                  <select
+                    value={selectedSource}
+                    onChange={(e) => setSelectedSource(e.target.value as StreamSource)}
+                    className="bg-zinc-900 border border-zinc-700 text-amber-400 text-xs rounded-lg px-2.5 py-1 focus:outline-none cursor-pointer uppercase font-mono font-semibold"
+                  >
+                    {[
+                      { id: 'vidcore', label: 'VidCore' },
+                      { id: 'vidfast', label: 'VidFast' },
+                      { id: 'streamrip', label: 'StreamRip' },
+                      { id: 'viduki', label: 'VidUki' },
+                      { id: 'vidsrc', label: 'VidSrc' },
+                      { id: 'streamrip-anime', label: 'StreamRip Anime' },
+                    ].map((srv) => (
+                      <option key={srv.id} value={srv.id} className="bg-zinc-900 text-white">
+                        {srv.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Season & Episode selector if TV */}
@@ -1257,9 +1299,9 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({
                   <div className="flex items-center space-x-2">
                     <button
                       onClick={() => broadcastSyncStream(currentTimeSec, isPlaying)}
-                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:brightness-110 text-black font-extrabold text-xs shadow-lg flex items-center space-x-1.5 transition-all active:scale-95"
+                      className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs shadow-md flex items-center space-x-1.5 transition-colors"
                     >
-                      <RefreshCw className="w-4 h-4 text-black animate-spin" style={{ animationDuration: '3s' }} />
+                      <RefreshCw className="w-4 h-4 text-zinc-950 animate-spin" style={{ animationDuration: '3s' }} />
                       <span>Sync Stream</span>
                     </button>
                   </div>
@@ -1307,17 +1349,17 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({
           )}
         </div>
 
-        {/* ENCRYPTED PRIVATE CHATROOM (Right 5 Cols) */}
-        <div className="lg:col-span-5 flex flex-col h-[620px] rounded-3xl bg-zinc-950 border border-amber-500/20 overflow-hidden shadow-2xl">
+        {/* PRIVATE CHATROOM (Right 5 Cols) */}
+        <div className="lg:col-span-5 flex flex-col h-[620px] rounded-2xl bg-zinc-950 border border-zinc-800 overflow-hidden shadow-lg">
           {/* Chatroom Top Bar */}
-          <div className="p-4 bg-zinc-900/90 border-b border-zinc-800 flex items-center justify-between">
+          <div className="p-3.5 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between">
             <div className="flex items-center space-x-2">
-              <Lock className="w-4 h-4 text-amber-400" />
+              <Lock className="w-4 h-4 text-zinc-400" />
               <span className="text-xs font-bold text-white uppercase tracking-wider font-mono">
-                Encrypted Room Chat
+                Room #{roomCode} Chat
               </span>
             </div>
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-zinc-800 text-emerald-400 border border-zinc-700">
               P2P Active
             </span>
           </div>
@@ -1329,7 +1371,7 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({
                 return (
                   <div
                     key={msg.id}
-                    className="p-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] font-mono leading-relaxed"
+                    className="p-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 text-[11px] font-mono leading-relaxed"
                   >
                     {msg.content}
                   </div>
@@ -1343,35 +1385,25 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({
                   key={msg.id}
                   className={`flex items-start space-x-2.5 ${isMe ? 'flex-row-reverse space-x-reverse' : ''}`}
                 >
-                  {msg.avatar ? (
-                    <img
-                      src={msg.avatar}
-                      alt={msg.user}
-                      className="w-7 h-7 rounded-xl object-cover flex-shrink-0 ring-2 ring-amber-500/30"
-                    />
-                  ) : (
-                    <div className="w-7 h-7 rounded-xl bg-zinc-800 border border-amber-500/40 text-amber-400 flex items-center justify-center text-xs font-black flex-shrink-0">
-                      {msg.user[0]?.toUpperCase() || 'V'}
-                    </div>
-                  )}
+                  <UserAvatar username={msg.user} avatar={msg.avatar} size="xs" />
 
                   <div className={`space-y-1 max-w-[80%] ${isMe ? 'text-right' : ''}`}>
                     <div className={`flex items-center space-x-1.5 ${isMe ? 'justify-end' : ''}`}>
                       <span className="font-bold text-white text-[11px]">{msg.user}</span>
-                      <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
+                      <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-zinc-800 text-zinc-300 border border-zinc-700 font-semibold">
                         {msg.badge || 'VIP'}
                       </span>
                       <span className="text-[10px] text-zinc-500 font-mono">{msg.timestamp}</span>
                     </div>
 
                     <div
-                      className={`p-3 rounded-2xl text-xs leading-relaxed ${
+                      className={`p-2.5 rounded-xl text-xs leading-relaxed ${
                         isMe
-                          ? 'bg-amber-500 text-black font-medium shadow-md'
+                          ? 'bg-zinc-800 text-zinc-100 border border-zinc-700 shadow-sm'
                           : 'bg-zinc-900 border border-zinc-800 text-zinc-200'
                       }`}
                     >
-                      {msg.content}
+                      {renderPrivateMessageText(msg.content)}
                     </div>
                   </div>
                 </div>
@@ -1387,12 +1419,12 @@ export const PrivateChatView: React.FC<PrivateChatViewProps> = ({
                 type="text"
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
-                placeholder="Type a message in VIP watch party chat..."
-                className="flex-1 px-3.5 py-2.5 rounded-2xl bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400"
+                placeholder="Type a message in watch party chat..."
+                className="flex-1 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
               />
               <button
                 type="submit"
-                className="p-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 text-black font-black hover:brightness-110 transition-all shadow-md flex-shrink-0"
+                className="p-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold transition-colors shadow-sm flex-shrink-0"
               >
                 <Send className="w-4 h-4" />
               </button>

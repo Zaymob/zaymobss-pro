@@ -13,7 +13,7 @@ export const YunoLogo: React.FC<YunoLogoProps> = ({
 }) => {
   if (variant === 'badge') {
     return (
-      <div className={`relative overflow-hidden rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 p-0.5 shadow-lg border border-amber-300/40 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform ${className}`}>
+      <div className={`relative overflow-hidden rounded-xl bg-zinc-900 p-0.5 border border-zinc-700 flex items-center justify-center flex-shrink-0 group-hover:border-zinc-500 transition-colors ${className}`}>
         <img
           src={yunoLogoImg}
           alt="YUNØ Logo"

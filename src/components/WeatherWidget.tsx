@@ -229,11 +229,7 @@ export const WeatherWidget: React.FC = () => {
   const cond = weather ? getWeatherCondition(weather.weatherCode) : null;
 
   return (
-    <div className="relative overflow-hidden rounded-2xl bg-zinc-950/80 border border-zinc-800/80 p-2.5 sm:p-3 backdrop-blur-xl shadow-lg transition-all hover:border-zinc-700/80">
-      {/* Background Weather Tint */}
-      {cond && (
-        <div className={`absolute inset-0 bg-gradient-to-br ${cond.bgGradient} pointer-events-none opacity-60`} />
-      )}
+    <div className="relative overflow-hidden rounded-2xl bg-zinc-900 border border-zinc-800 p-2.5 sm:p-3 shadow-md transition-colors hover:border-zinc-700">
 
       {loading ? (
         <div className="relative z-10 flex items-center justify-between px-2 py-1 text-zinc-400 text-xs">

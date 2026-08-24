@@ -3,22 +3,22 @@ import { MusicTrack } from '../types';
 import {
   Play,
   Pause,
-  Volume2,
-  VolumeX,
+  SpeakerHigh as Volume2,
+  SpeakerSlash as VolumeX,
   SkipBack,
   SkipForward,
   Disc,
-  Mic2,
+  Microphone as Mic2,
   X,
-  Maximize2,
-  Minimize2,
-  Sparkles,
-  Music,
-  GripHorizontal,
-  ListMusic,
-  Trash2,
+  CornersOut as Maximize2,
+  CornersIn as Minimize2,
+  Sparkle as Sparkles,
+  MusicNotes as Music,
+  DotsSixVertical as GripHorizontal,
+  Queue as ListMusic,
+  Trash as Trash2,
   ListPlus,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface MusicPlayerBarProps {

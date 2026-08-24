@@ -1,964 +1,2028 @@
 import React, { useState, useEffect } from 'react';
-import { WALLPAPERS, DEFAULT_ANNOUNCEMENTS, DEFAULT_PARTNERS } from '../data/portalData';
-import { WallpaperOption, AnnouncementItem, PartnerItem } from '../types';
+import { DEFAULT_ANNOUNCEMENTS } from '../data/portalData';
 import {
-  Settings,
-  Image,
-  RotateCcw,
-  Palette,
-  Check,
+  AnnouncementItem,
+  TabCloakSettings,
+  TabMaskPreset,
+  UserProfile,
+  AiPersonalitySettings,
+  AiSpeakingStyle,
+  AiResponseSpeed,
+  AiEmojiMode,
+  ChatPreferences,
+} from '../types';
+import {
   Sparkles,
+  Shield,
+  Bell,
   Sliders,
-  Upload,
-  ShieldAlert,
-  Lock,
-  ToggleLeft,
-  ToggleRight,
-  Pipette,
-  RefreshCw,
-  Megaphone,
-  Handshake,
-  ExternalLink,
+  Image as ImageIcon,
+  User,
+  MessageSquare,
+  Palette,
+  Bot,
+  Check,
+  RotateCcw,
   Plus,
   Trash2,
-  Globe,
-  Link as LinkIcon,
-  X,
+  ExternalLink,
+  Volume2,
+  VolumeX,
   Zap,
-  Cpu,
+  Clock,
+  Key,
+  Flame,
+  CloudRain,
+  Snowflake,
+  CloudFog,
+  EyeOff,
+  Sun,
+  Lock,
+  Upload,
+  AlertTriangle,
+  FileText,
+  Activity,
+  Layers,
+  ChevronRight,
+  Brain,
+  Smile,
+  Hash,
+  Wand2,
 } from 'lucide-react';
-import { extractWallpaperColors, applyThemeToCSS, ExtractedTheme } from '../utils/colorExtractor';
+import {
+  TAB_MASK_PRESETS,
+  getSavedCloakSettings,
+  saveCloakSettings,
+  launchInAboutBlank,
+  launchInBlobCloak,
+} from '../utils/tabCloak';
+import { WallpaperEffectSettings, DEFAULT_EFFECT_SETTINGS } from './WallpaperCanvasEffects';
+import { WALLPAPERS } from '../data/portalData';
+import {
+  getSavedAiSettings,
+  saveAiSettings,
+  DEFAULT_AI_SETTINGS,
+  generateSystemInstruction,
+  JACKS_COUGH_CATCHPHRASES,
+  getRandomCatchphrase,
+} from '../utils/aiSettings';
+import {
+  getSavedChatPreferences,
+  saveChatPreferences,
+  DEFAULT_CHAT_PREFERENCES,
+} from '../utils/chatSettings';
+
+export type SettingsCategory =
+  | 'background'
+  | 'avatar'
+  | 'chat'
+  | 'updates'
+  | 'cloaking'
+  | 'theme'
+  | 'ai';
 
 interface SettingsViewProps {
   currentWallpaper: string;
   onSelectWallpaper: (url: string) => void;
+  effectSettings: WallpaperEffectSettings;
+  onChangeEffectSettings: (settings: WallpaperEffectSettings) => void;
   onReplayBoot: () => void;
-  onReplayTour?: () => void;
-  onOpenAdminPanel?: () => void;
-  isAdmin?: boolean;
-  onRevokeAdmin?: () => void;
+  userProfile?: UserProfile;
+  onSaveProfile?: (profile: UserProfile) => void;
+  onOpenAppealModal?: () => void;
+  isYunoLiteEnabled?: boolean;
+  onToggleYunoLite?: (enabled: boolean) => void;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
   currentWallpaper,
   onSelectWallpaper,
+  effectSettings,
+  onChangeEffectSettings,
   onReplayBoot,
-  onReplayTour,
-  onOpenAdminPanel,
-  isAdmin = false,
-  onRevokeAdmin,
+  userProfile,
+  onSaveProfile,
+  onOpenAppealModal,
+  isYunoLiteEnabled = false,
+  onToggleYunoLite,
 }) => {
-  const [customUrl, setCustomUrl] = useState('');
-  const [isExtractingColors, setIsExtractingColors] = useState(false);
-  const [extractedTheme, setExtractedTheme] = useState<ExtractedTheme | null>(() => {
+  const [activeCategory, setActiveCategory] = useState<SettingsCategory>('background');
+
+  // --- 1. Background Settings State ---
+  const [customWallpaperUrl, setCustomWallpaperUrl] = useState('');
+  const [wallpaperUrlError, setWallpaperUrlError] = useState(false);
+
+  const handleUpdateEffect = (partial: Partial<WallpaperEffectSettings>) => {
+    onChangeEffectSettings({ ...effectSettings, ...partial });
+  };
+
+  const handleApplyCustomWallpaper = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customWallpaperUrl.trim()) return;
     try {
-      const saved = localStorage.getItem('yuno_active_wallpaper_theme');
-      return saved ? JSON.parse(saved) : null;
-    } catch (e) {
-      return null;
-    }
-  });
-
-  const [isAdminPanelEnabled, setIsAdminPanelEnabled] = useState<boolean>(() => {
-    return localStorage.getItem('yuno_admin_panel_enabled') !== 'false';
-  });
-
-  const [isYunoLiteEnabled, setIsYunoLiteEnabled] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('yuno_lite_mode') === 'true';
-    } catch (e) {
-      return false;
-    }
-  });
-
-  const handleToggleYunoLite = (enabled: boolean) => {
-    setIsYunoLiteEnabled(enabled);
-    try {
-      localStorage.setItem('yuno_lite_mode', enabled ? 'true' : 'false');
-    } catch (e) {}
-
-    if (enabled) {
-      document.documentElement.classList.add('yuno-lite-active');
-    } else {
-      document.documentElement.classList.remove('yuno-lite-active');
+      new URL(customWallpaperUrl.trim());
+      onSelectWallpaper(customWallpaperUrl.trim());
+      setWallpaperUrlError(false);
+    } catch {
+      if (customWallpaperUrl.startsWith('data:') || customWallpaperUrl.startsWith('/')) {
+        onSelectWallpaper(customWallpaperUrl.trim());
+        setWallpaperUrlError(false);
+      } else {
+        setWallpaperUrlError(true);
+      }
     }
   };
 
-  useEffect(() => {
-    if (isYunoLiteEnabled) {
-      document.documentElement.classList.add('yuno-lite-active');
-    }
-  }, []);
+  // --- 2. Avatar Settings State (NO PRESETS) ---
+  const defaultProfile: UserProfile = {
+    username: 'Guest',
+    displayName: 'Guest',
+    avatar: '',
+    banner: '',
+    status: 'Online',
+    bio: 'Yunø workspace user',
+    badge: 'Member',
+    accentColor: '#f59e0b',
+  };
 
-  // Announcements State & Admin Creator
+  const [profileForm, setProfileForm] = useState<UserProfile>(() => {
+    if (userProfile) return userProfile;
+    try {
+      const saved = localStorage.getItem('yuno_user_profile');
+      if (saved) return { ...defaultProfile, ...JSON.parse(saved) };
+    } catch (e) {}
+    return defaultProfile;
+  });
+
+  const [profileSavedToast, setProfileSavedToast] = useState(false);
+
+  const handleAvatarFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          setProfileForm((prev) => ({ ...prev, avatar: event.target!.result as string }));
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleBannerFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          setProfileForm((prev) => ({ ...prev, banner: event.target!.result as string }));
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSaveProfileForm = (e: React.FormEvent) => {
+    e.preventDefault();
+    const updated: UserProfile = {
+      ...profileForm,
+      username: profileForm.username.trim() || 'Guest',
+      displayName: profileForm.displayName.trim() || profileForm.username.trim() || 'Guest',
+    };
+    try {
+      localStorage.setItem('yuno_user_profile', JSON.stringify(updated));
+    } catch (err) {}
+    if (onSaveProfile) onSaveProfile(updated);
+    setProfileSavedToast(true);
+    setTimeout(() => setProfileSavedToast(false), 2500);
+  };
+
+  // --- 3. Chat Settings State ---
+  const [chatPrefs, setChatPrefs] = useState<ChatPreferences>(getSavedChatPreferences);
+  const [newBlockedWord, setNewBlockedWord] = useState('');
+
+  const handleUpdateChatPrefs = (partial: Partial<ChatPreferences>) => {
+    const next = { ...chatPrefs, ...partial };
+    setChatPrefs(next);
+    saveChatPreferences(next);
+  };
+
+  const handleAddBlockedWord = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newBlockedWord.trim()) return;
+    const word = newBlockedWord.trim().toLowerCase();
+    if (!chatPrefs.blockedWords.includes(word)) {
+      handleUpdateChatPrefs({ blockedWords: [...chatPrefs.blockedWords, word] });
+    }
+    setNewBlockedWord('');
+  };
+
+  const handleRemoveBlockedWord = (word: string) => {
+    handleUpdateChatPrefs({
+      blockedWords: chatPrefs.blockedWords.filter((w) => w !== word),
+    });
+  };
+
+  // --- 4. Updates / Announcements State ---
   const [announcements, setAnnouncements] = useState<AnnouncementItem[]>(DEFAULT_ANNOUNCEMENTS);
   const [isAddingAnn, setIsAddingAnn] = useState(false);
-  const [newAnnEmoji, setNewAnnEmoji] = useState('🚀');
   const [newAnnTitle, setNewAnnTitle] = useState('');
   const [newAnnDesc, setNewAnnDesc] = useState('');
 
-  // Partners State & Admin Creator
-  const [partners, setPartners] = useState<PartnerItem[]>(DEFAULT_PARTNERS);
-  const [isAddingPartner, setIsAddingPartner] = useState(false);
-  const [partnerName, setPartnerName] = useState('');
-  const [partnerUrl, setPartnerUrl] = useState('');
-  const [partnerLogo, setPartnerLogo] = useState('');
-  const [partnerDesc, setPartnerDesc] = useState('');
-
-  // Fetch announcements & partners from global server with localStorage backup
-  const fetchGlobalData = async () => {
+  const fetchAnnouncements = async () => {
     try {
-      // First sync client local items with server
-      const localAnnRaw = localStorage.getItem('yuno_announcements');
-      const localPartRaw = localStorage.getItem('yuno_partners');
-      const clientAnnouncements = localAnnRaw ? JSON.parse(localAnnRaw) : [];
-      const clientPartners = (localPartRaw ? JSON.parse(localPartRaw) : []).filter(
-        (p: any) => p && p.id !== 'part-1' && p.id !== 'part-2' && !/gartic|vidsrc/i.test(p.name || '')
-      );
-
-      if (clientAnnouncements.length > 0 || clientPartners.length > 0) {
-        await fetch('/api/sync-persisted-data', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ clientAnnouncements, clientPartners }),
-        }).catch(() => {});
-      }
-
-      const [annRes, partRes] = await Promise.all([
-        fetch('/api/announcements'),
-        fetch('/api/partners'),
-      ]);
-      if (annRes.ok) {
-        const annData = await annRes.json();
-        if (Array.isArray(annData.announcements)) {
-          setAnnouncements(annData.announcements);
-          localStorage.setItem('yuno_announcements', JSON.stringify(annData.announcements));
-        }
-      }
-      if (partRes.ok) {
-        const partData = await partRes.json();
-        if (Array.isArray(partData.partners)) {
-          const cleanPartners = partData.partners.filter(
-            (p: any) => p && p.id !== 'part-1' && p.id !== 'part-2' && !/gartic|vidsrc/i.test(p.name || '')
-          );
-          setPartners(cleanPartners);
-          localStorage.setItem('yuno_partners', JSON.stringify(cleanPartners));
-        }
-      }
-    } catch (e) {
-      console.warn('Failed to fetch global announcements/partners:', e);
-    }
-  };
-
-  useEffect(() => {
-    fetchGlobalData();
-    const interval = setInterval(fetchGlobalData, 4000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const handleExtractTheme = async (urlToProcess?: string) => {
-    const target = urlToProcess || currentWallpaper;
-    if (!target) return;
-    setIsExtractingColors(true);
-    try {
-      const theme = await extractWallpaperColors(target);
-      setExtractedTheme(theme);
-      applyThemeToCSS(theme);
-      localStorage.setItem('yuno_active_wallpaper_theme', JSON.stringify(theme));
-    } catch (e) {
-      console.warn("Color extraction notice:", e);
-    } finally {
-      setIsExtractingColors(false);
-    }
-  };
-
-  useEffect(() => {
-    if (extractedTheme) {
-      applyThemeToCSS(extractedTheme);
-    }
-  }, []);
-
-  const getCurrentUsername = () => {
-    try {
-      const saved = localStorage.getItem('yuno_user_profile');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.username) return parsed.username;
-      }
-    } catch (e) {}
-    return 'Guest';
-  };
-
-  const currentUsername = getCurrentUsername();
-
-  const handleAddAnnouncement = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newAnnTitle.trim() || !newAnnDesc.trim()) return;
-
-    let formattedTitle = newAnnTitle.trim();
-    if (!formattedTitle.endsWith(':') && !formattedTitle.endsWith('!')) {
-      formattedTitle += ':';
-    }
-
-    try {
-      const res = await fetch('/api/announcements', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          iconEmoji: newAnnEmoji || '🚀',
-          title: formattedTitle,
-          description: newAnnDesc.trim(),
-          badge: 'ADMIN',
-          author: currentUsername || 'Admin',
-        }),
-      });
+      const res = await fetch('/api/announcements');
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.announcements)) {
           setAnnouncements(data.announcements);
         }
       }
-    } catch (err) {
-      console.error('Error posting announcement to server:', err);
-    }
+    } catch (e) {}
+  };
 
-    setNewAnnTitle('');
-    setNewAnnDesc('');
-    setIsAddingAnn(false);
+  useEffect(() => {
+    fetchAnnouncements();
+  }, []);
+
+  const handleAddAnnouncement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAnnTitle.trim() || !newAnnDesc.trim()) return;
+    try {
+      const res = await fetch('/api/announcements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newAnnTitle.trim(),
+          description: newAnnDesc.trim(),
+          author: profileForm.username || 'Admin',
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAnnouncements(data.announcements);
+        setNewAnnTitle('');
+        setNewAnnDesc('');
+        setIsAddingAnn(false);
+      }
+    } catch (e) {}
   };
 
   const handleDeleteAnnouncement = async (id: string) => {
     try {
       const res = await fetch(`/api/announcements/${id}`, {
         method: 'DELETE',
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data.announcements)) {
-          setAnnouncements(data.announcements);
-        }
-      }
-    } catch (err) {
-      console.error('Error deleting announcement from server:', err);
-    }
-  };
-
-  const handleAddPartner = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!partnerName.trim() || !partnerUrl.trim()) return;
-
-    let targetUrl = partnerUrl.trim();
-    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
-      targetUrl = `https://${targetUrl}`;
-    }
-
-    try {
-      const res = await fetch('/api/partners', {
-        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: partnerName.trim(),
-          logo: partnerLogo.trim() || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80',
-          url: targetUrl,
-          description: partnerDesc.trim() || 'Verified official partner of Yunø.',
-          addedAt: new Date().toLocaleDateString(),
-        }),
+        body: JSON.stringify({ author: profileForm.username || 'Admin' }),
       });
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data.partners)) {
-          setPartners(data.partners);
-        }
+        setAnnouncements(data.announcements);
       }
-    } catch (err) {
-      console.error('Error adding partner to server:', err);
-    }
-
-    setPartnerName('');
-    setPartnerUrl('');
-    setPartnerLogo('');
-    setPartnerDesc('');
-    setIsAddingPartner(false);
+    } catch (e) {}
   };
 
-  const handleDeletePartner = async (id: string) => {
-    try {
-      const res = await fetch(`/api/partners/${id}`, {
-        method: 'DELETE',
+  // --- 5. Tab Cloaking State ---
+  const [cloakSettings, setCloakSettings] = useState<TabCloakSettings>(getSavedCloakSettings);
+  const [selectedMaskCategory, setSelectedMaskCategory] = useState<string>('All');
+  const [launchStatus, setLaunchStatus] = useState<string | null>(null);
+  const [isRecordingPanicKey, setIsRecordingPanicKey] = useState(false);
+
+  useEffect(() => {
+    if (!isRecordingPanicKey) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const keyName = e.key;
+      setCloakSettings((prev) => {
+        const next = { ...prev, panicKey: keyName };
+        saveCloakSettings(next);
+        return next;
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data.partners)) {
-          setPartners(data.partners);
-        }
-      }
-    } catch (err) {
-      console.error('Error deleting partner from server:', err);
+      setIsRecordingPanicKey(false);
+    };
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
+    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
+  }, [isRecordingPanicKey]);
+
+  const handleSelectTabPreset = (preset: TabMaskPreset) => {
+    const updated: TabCloakSettings = { ...cloakSettings, activeMaskId: preset.id };
+    setCloakSettings(updated);
+    saveCloakSettings(updated);
+  };
+
+  const handleCustomTabMask = (title: string, icon: string) => {
+    const updated: TabCloakSettings = {
+      ...cloakSettings,
+      activeMaskId: 'custom',
+      customTitle: title,
+      customIcon: icon,
+    };
+    setCloakSettings(updated);
+    saveCloakSettings(updated);
+  };
+
+  const handleToggleAntiClose = () => {
+    const updated: TabCloakSettings = {
+      ...cloakSettings,
+      antiCloseEnabled: !cloakSettings.antiCloseEnabled,
+    };
+    setCloakSettings(updated);
+    saveCloakSettings(updated);
+  };
+
+  const handleLaunchAboutBlank = () => {
+    setLaunchStatus('launching');
+    const preset = TAB_MASK_PRESETS.find((p) => p.id === cloakSettings.activeMaskId);
+    const title = cloakSettings.activeMaskId === 'custom' ? cloakSettings.customTitle : preset?.title;
+    const icon = cloakSettings.activeMaskId === 'custom' ? cloakSettings.customIcon : preset?.icon;
+    const success = launchInAboutBlank(window.location.href, title, icon);
+    if (success) {
+      setLaunchStatus('success');
+      setTimeout(() => setLaunchStatus(null), 3000);
+    } else {
+      setLaunchStatus('blocked');
+      setTimeout(() => setLaunchStatus(null), 5000);
     }
   };
 
-  const handleCustomSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (customUrl.trim()) {
-      onSelectWallpaper(customUrl.trim());
+  const handleLaunchBlob = () => {
+    setLaunchStatus('launching');
+    const preset = TAB_MASK_PRESETS.find((p) => p.id === cloakSettings.activeMaskId);
+    const title = cloakSettings.activeMaskId === 'custom' ? cloakSettings.customTitle : preset?.title;
+    const icon = cloakSettings.activeMaskId === 'custom' ? cloakSettings.customIcon : preset?.icon;
+    const success = launchInBlobCloak(window.location.href, title, icon);
+    if (success) {
+      setLaunchStatus('success');
+      setTimeout(() => setLaunchStatus(null), 3000);
+    } else {
+      setLaunchStatus('blocked');
+      setTimeout(() => setLaunchStatus(null), 5000);
     }
   };
+
+  // --- 6. AI Settings State ---
+  const [aiSettings, setAiSettings] = useState<AiPersonalitySettings>(getSavedAiSettings);
+  const [aiSettingsToast, setAiSettingsToast] = useState(false);
+  const [newMemoryInput, setNewMemoryInput] = useState('');
+  const [previewCatchphraseIdx, setPreviewCatchphraseIdx] = useState(0);
+
+  const handleUpdateAiSettings = (partial: Partial<AiPersonalitySettings>) => {
+    const next = { ...aiSettings, ...partial };
+    setAiSettings(next);
+    saveAiSettings(next);
+    setAiSettingsToast(true);
+    setTimeout(() => setAiSettingsToast(false), 2000);
+  };
+
+  const handleAddMemory = () => {
+    if (!newMemoryInput.trim()) return;
+    const currentMemories = aiSettings.memories || [];
+    if (!currentMemories.includes(newMemoryInput.trim())) {
+      handleUpdateAiSettings({ memories: [...currentMemories, newMemoryInput.trim()] });
+      setNewMemoryInput('');
+    }
+  };
+
+  const handleRemoveMemory = (index: number) => {
+    const currentMemories = [...(aiSettings.memories || [])];
+    currentMemories.splice(index, 1);
+    handleUpdateAiSettings({ memories: currentMemories });
+  };
+
+  // Nav Items Configuration
+  const navCategories: Array<{
+    id: SettingsCategory;
+    label: string;
+    description: string;
+    icon: React.ComponentType<{ className?: string }>;
+    badge?: string;
+  }> = [
+    {
+      id: 'background',
+      label: 'Background Settings',
+      description: 'Particles, blur, brightness & wallpaper pictures',
+      icon: Sparkles,
+    },
+    {
+      id: 'avatar',
+      label: 'Avatar Settings',
+      description: 'Custom profile photo, banner, bio & tags (No presets)',
+      icon: User,
+    },
+    {
+      id: 'chat',
+      label: 'Chat Settings',
+      description: 'Profanity filter, blocked words & notifications',
+      icon: MessageSquare,
+    },
+    {
+      id: 'updates',
+      label: 'Updates',
+      description: 'Changelog announcements & official news',
+      icon: Bell,
+    },
+    {
+      id: 'cloaking',
+      label: 'Tab Cloaking',
+      description: 'Disguise tab title, favicon, panic hotkey & about:blank',
+      icon: Shield,
+    },
+    {
+      id: 'theme',
+      label: 'Theme Settings',
+      description: 'Coming Soon themes & Yunø Lite mode',
+      icon: Palette,
+      badge: 'Lite Mode',
+    },
+    {
+      id: 'ai',
+      label: 'AI Settings',
+      description: 'Persona, tone, speaking speed & custom user moniker',
+      icon: Bot,
+    },
+  ];
 
   return (
-    <div className="space-y-8 max-w-4xl mx-auto pb-12">
-      <div className="border-b border-zinc-800/80 pb-6">
-        <div className="flex items-center space-x-2 text-xs font-mono text-cyan-400">
-          <Settings className="w-4 h-4" />
-          <span>Yunø System Preferences</span>
-        </div>
-        <h1 className="text-3xl font-extrabold text-white mt-1">Customization & Admin Controls</h1>
-      </div>
-
-      {/* Admin Panel Access Section */}
-      {isAdmin ? (
-        <div className="p-6 rounded-3xl bg-zinc-900/90 border border-amber-500/30 shadow-[0_0_25px_rgba(245,158,11,0.1)] space-y-4">
-          <div className="flex items-start justify-between">
-            <div className="space-y-1">
-              <div className="flex items-center space-x-2">
-                <ShieldAlert className="w-5 h-5 text-amber-400" />
-                <h3 className="text-base font-bold text-white">Developer Admin Panel</h3>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500 text-black">
-                  CLEARANCE VERIFIED
-                </span>
-              </div>
-              <p className="text-xs text-zinc-400 max-w-xl">
-                System administration active: moderate users, view live telemetry, broadcast announcements, add partners, and control site features.
-              </p>
-            </div>
-
-            {onRevokeAdmin && (
-              <button
-                type="button"
-                onClick={onRevokeAdmin}
-                className="px-3 py-1.5 rounded-xl bg-red-950/80 hover:bg-red-900 border border-red-500/40 text-red-300 font-mono text-xs transition-colors flex items-center space-x-1"
-              >
-                <Lock className="w-3.5 h-3.5" />
-                <span>Lock Admin Mode</span>
-              </button>
-            )}
-          </div>
-
-          <div className="pt-3 border-t border-zinc-800 flex items-center justify-between">
-            <span className="text-xs font-mono text-emerald-400">
-              ● Admin Privileges Active
-            </span>
-
-            <button
-              onClick={() => {
-                if (onOpenAdminPanel) onOpenAdminPanel();
-              }}
-              className="px-5 py-2.5 bg-gradient-to-r from-amber-500 via-amber-600 to-orange-600 hover:brightness-110 text-black font-extrabold text-xs rounded-xl shadow-lg shadow-amber-500/20 transition-all flex items-center space-x-2"
-            >
-              <ShieldAlert className="w-4 h-4" />
-              <span>Open Developer Admin Panel</span>
-            </button>
-          </div>
-
-          {/* Admin-Only Yuno Lite Performance Toggle */}
-          <div className="mt-4 pt-4 border-t border-zinc-800/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-zinc-950/60 p-4 rounded-2xl border border-amber-500/20">
-            <div className="space-y-1">
-              <div className="flex items-center space-x-2">
-                <Cpu className="w-4 h-4 text-amber-400" />
-                <h4 className="text-sm font-extrabold text-white">Yunø Lite (Low-Power Optimization)</h4>
-                <span className="px-2 py-0.5 rounded-md text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  ADMIN ONLY
-                </span>
-              </div>
-              <p className="text-xs text-zinc-400 max-w-lg">
-                Optimized performance mode for slower laptops and Chromebooks. Disables heavy backdrop-filter blurs, video filters, and complex animations to save CPU and RAM.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => handleToggleYunoLite(!isYunoLiteEnabled)}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 flex-shrink-0 border ${
-                isYunoLiteEnabled
-                  ? 'bg-amber-500 text-black border-amber-400 shadow-lg shadow-amber-500/20'
-                  : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-700'
-              }`}
-            >
-              {isYunoLiteEnabled ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5 text-zinc-500" />}
-              <span>{isYunoLiteEnabled ? 'Yunø Lite Enabled' : 'Yunø Lite Disabled'}</span>
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="p-5 rounded-3xl bg-zinc-900/50 border border-zinc-800 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="p-2.5 rounded-2xl bg-zinc-800 text-zinc-500">
-              <Lock className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-white">Developer Admin Controls</h3>
-              <p className="text-xs text-zinc-400">Panel locked. Admin clearance required.</p>
-            </div>
-          </div>
-          <span className="px-3 py-1 rounded-full text-[10px] font-mono bg-zinc-800 text-zinc-500 border border-zinc-700">
-            LOCKED
-          </span>
-        </div>
-      )}
-
-      {/* UPDATE LOGS & ANNOUNCEMENTS SECTION (Matching attached design) */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-              <Megaphone className="w-5 h-5 text-cyan-400 fill-cyan-400/20" />
-            </div>
-            <div>
-              <h2 className="text-xl font-extrabold text-white flex items-center gap-2">
-                Update Logs & Announcements
-              </h2>
-            </div>
-          </div>
-
-          <div className="flex items-center space-x-3">
-            {/* Live Indicator Dot */}
-            <span className="w-3 h-3 rounded-full bg-red-500 shadow-[0_0_12px_#ef4444] animate-pulse" title="System Live Updates Active" />
-
-            {isAdmin && !isAddingAnn && (
-              <button
-                type="button"
-                onClick={() => setIsAddingAnn(true)}
-                className="px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500 hover:text-black text-cyan-300 font-bold text-xs transition-all flex items-center space-x-1.5 border border-cyan-500/30"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Create Announcement</span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Subheader Title Bar */}
-        <div className="px-1 text-[11px] font-mono font-bold text-zinc-500 uppercase tracking-widest">
-          WHAT'S NEW / UPDATE LOGS
-        </div>
-
-        {/* Admin Announcement Creator Form */}
-        {isAdmin && isAddingAnn && (
-          <form onSubmit={handleAddAnnouncement} className="p-5 rounded-3xl bg-zinc-900 border border-cyan-500/40 space-y-4 shadow-2xl animate-fadeIn">
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-              <span className="text-xs font-mono font-bold text-cyan-400 uppercase">
-                Publish Admin Announcement
-              </span>
-              <button
-                type="button"
-                onClick={() => setIsAddingAnn(false)}
-                className="text-zinc-500 hover:text-white"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center space-x-2">
-                <span className="text-xs font-mono text-zinc-400">Choose Icon Emoji:</span>
-                {['🚀', '⚡', '🎉', '📢', '🛡️', '🔥', '✨', '🎬'].map((emoji) => (
-                  <button
-                    key={emoji}
-                    type="button"
-                    onClick={() => setNewAnnEmoji(emoji)}
-                    className={`w-8 h-8 rounded-xl flex items-center justify-center text-base transition-all ${
-                      newAnnEmoji === emoji ? 'bg-cyan-500/20 border border-cyan-500 scale-110' : 'bg-zinc-800 hover:bg-zinc-700'
-                    }`}
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-
-              <div>
-                <label className="text-xs font-mono text-zinc-400 block mb-1">Announcement Title</label>
-                <input
-                  type="text"
-                  placeholder="e.g. v2.0 System Update:"
-                  value={newAnnTitle}
-                  onChange={(e) => setNewAnnTitle(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-mono text-zinc-400 block mb-1">Description Text</label>
-                <textarea
-                  placeholder="e.g. Upgraded desktop interface and smooth animations."
-                  value={newAnnDesc}
-                  onChange={(e) => setNewAnnDesc(e.target.value)}
-                  rows={2}
-                  className="w-full px-3.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500 resize-none"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end space-x-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setIsAddingAnn(false)}
-                className="px-4 py-2 rounded-xl bg-zinc-800 text-zinc-300 hover:text-white text-xs font-bold"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black text-xs font-extrabold shadow-lg shadow-cyan-500/20"
-              >
-                Publish Announcement
-              </button>
-            </div>
-          </form>
-        )}
-
-        {/* Announcement Box Styled Exactly as Screenshot */}
-        <div className="p-5 sm:p-6 rounded-3xl bg-zinc-950/90 border border-zinc-800/90 shadow-2xl space-y-4">
-          {announcements.length === 0 ? (
-            <div className="text-center py-6 text-zinc-500 text-xs font-mono">
-              No system logs or announcements posted yet.
-            </div>
-          ) : (
-            <div className="divide-y divide-zinc-800/60">
-              {announcements.map((ann) => (
-                <div key={ann.id} className="py-3.5 first:pt-0 last:pb-0 flex items-start justify-between gap-3 group">
-                  <div className="flex items-start space-x-3.5">
-                    <span className="text-xl sm:text-2xl leading-none pt-0.5 select-none">{ann.iconEmoji || '🚀'}</span>
-                    <div className="space-y-0.5">
-                      <div className="flex flex-wrap items-baseline gap-2">
-                        <span className="text-sm font-extrabold text-white tracking-wide">{ann.title}</span>
-                        <span className="text-xs sm:text-sm text-zinc-300 font-medium leading-relaxed">{ann.description}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {isAdmin && (
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteAnnouncement(ann.id)}
-                      className="p-1.5 rounded-lg bg-zinc-900 hover:bg-red-950 hover:text-red-400 text-zinc-500 transition-colors border border-zinc-800 flex-shrink-0"
-                      title="Delete Announcement (Admin)"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* CHECK OUT OUR PARTNERS SECTION */}
-      <div className="space-y-4 pt-4 border-t border-zinc-800/80">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="p-2 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
-              <Handshake className="w-5 h-5 text-purple-400" />
-            </div>
-            <div>
-              <h2 className="text-xl font-extrabold text-white">Check Out Our Partners</h2>
-              <p className="text-xs text-zinc-400">Verified official partners and media platform integrations.</p>
-            </div>
-          </div>
-
-          {isAdmin && !isAddingPartner && (
-            <button
-              type="button"
-              onClick={() => setIsAddingPartner(true)}
-              className="px-3.5 py-2 rounded-xl bg-purple-500/20 hover:bg-purple-500 hover:text-black text-purple-300 font-bold text-xs transition-all flex items-center space-x-1.5 border border-purple-500/30 shadow-md"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Add Partner</span>
-            </button>
-          )}
-        </div>
-
-        {/* Admin Partner Creator Form */}
-        {isAdmin && isAddingPartner && (
-          <form onSubmit={handleAddPartner} className="p-5 rounded-3xl bg-zinc-900 border border-purple-500/40 space-y-4 shadow-2xl animate-fadeIn">
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-              <span className="text-xs font-mono font-bold text-purple-400 uppercase">
-                Add Official Partner (Admin)
-              </span>
-              <button
-                type="button"
-                onClick={() => setIsAddingPartner(false)}
-                className="text-zinc-500 hover:text-white"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-mono text-zinc-400 block mb-1">Partner Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Gartic Phone"
-                  value={partnerName}
-                  onChange={(e) => setPartnerName(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-purple-500"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-mono text-zinc-400 block mb-1">Partner Link URL</label>
-                <input
-                  type="url"
-                  placeholder="https://garticphone.com"
-                  value={partnerUrl}
-                  onChange={(e) => setPartnerUrl(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-purple-500"
-                  required
-                />
-              </div>
-            </div>
-
-            {/* Partner Logo Upload or Link */}
-            <div className="space-y-2">
-              <label className="text-xs font-mono text-zinc-400 block">Partner Logo (Upload File or Paste Image URL)</label>
-              <div className="flex items-center space-x-3 p-3 rounded-2xl bg-zinc-950 border border-zinc-800">
-                {partnerLogo ? (
-                  <img src={partnerLogo} alt="Logo Preview" className="w-10 h-10 rounded-xl object-cover ring-2 ring-purple-500/40 flex-shrink-0" />
-                ) : (
-                  <div className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center text-purple-400 flex-shrink-0">
-                    <Globe className="w-5 h-5" />
-                  </div>
-                )}
-
-                <div className="flex-1 space-y-1.5 min-w-0">
-                  <label className="inline-flex items-center justify-center px-3 py-1 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-200 font-bold cursor-pointer transition-colors border border-zinc-700">
-                    <Upload className="w-3.5 h-3.5 mr-1.5 text-purple-400" />
-                    <span>Upload Logo Image...</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onload = (ev) => {
-                            if (ev.target?.result) {
-                              setPartnerLogo(ev.target.result as string);
-                            }
-                          };
-                          reader.readAsDataURL(file);
-                        }
-                      }}
-                    />
-                  </label>
-
-                  <input
-                    type="url"
-                    placeholder="or paste logo image URL..."
-                    value={partnerLogo}
-                    onChange={(e) => setPartnerLogo(e.target.value)}
-                    className="w-full px-2.5 py-1 bg-zinc-900 border border-zinc-800 rounded-lg text-[11px] text-white focus:outline-none focus:border-purple-500 truncate"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs font-mono text-zinc-400 block mb-1">Partner Description</label>
-              <input
-                type="text"
-                placeholder="e.g. The Telephone Game - draw & guess with friends live."
-                value={partnerDesc}
-                onChange={(e) => setPartnerDesc(e.target.value)}
-                className="w-full px-3.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-purple-500"
-              />
-            </div>
-
-            <div className="flex justify-end space-x-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setIsAddingPartner(false)}
-                className="px-4 py-2 rounded-xl bg-zinc-800 text-zinc-300 hover:text-white text-xs font-bold"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-2 rounded-xl bg-purple-500 hover:bg-purple-400 text-black text-xs font-extrabold shadow-lg shadow-purple-500/20"
-              >
-                Save Partner
-              </button>
-            </div>
-          </form>
-        )}
-
-        {/* Partner Cards Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {partners.length === 0 ? (
-            <div className="col-span-2 text-center py-8 text-zinc-500 text-xs font-mono bg-zinc-900/40 rounded-3xl border border-zinc-800">
-              No partners listed yet.
-            </div>
-          ) : (
-            partners.map((partner) => (
-              <div
-                key={partner.id}
-                className="p-5 rounded-3xl bg-zinc-900/90 border border-zinc-800 hover:border-purple-500/40 transition-all flex flex-col justify-between space-y-4 shadow-xl group"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center space-x-3.5">
-                    {partner.logo ? (
-                      <img
-                        src={partner.logo}
-                        alt={partner.name}
-                        className="w-12 h-12 rounded-2xl object-cover ring-2 ring-purple-500/30 bg-zinc-950 flex-shrink-0"
-                        onError={(e) => {
-                          (e.target as HTMLElement).style.display = 'none';
-                        }}
-                      />
-                    ) : (
-                      <div className="w-12 h-12 rounded-2xl bg-purple-950/60 border border-purple-500/30 flex items-center justify-center text-purple-400 flex-shrink-0">
-                        <Handshake className="w-6 h-6" />
-                      </div>
-                    )}
-
-                    <div>
-                      <h4 className="text-base font-bold text-white group-hover:text-purple-300 transition-colors flex items-center gap-1.5">
-                        <span>{partner.name}</span>
-                      </h4>
-                      <p className="text-xs text-zinc-400 line-clamp-2 mt-0.5">{partner.description}</p>
-                    </div>
-                  </div>
-
-                  {isAdmin && (
-                    <button
-                      type="button"
-                      onClick={() => handleDeletePartner(partner.id)}
-                      className="p-1.5 rounded-lg bg-zinc-950 hover:bg-red-950 hover:text-red-400 text-zinc-500 transition-colors border border-zinc-800 flex-shrink-0"
-                      title="Delete Partner (Admin)"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-
-                <div className="pt-3 border-t border-zinc-800/80 flex items-center justify-between">
-                  <span className="text-[10px] font-mono text-purple-400/80 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
-                    <span>Verified Partner</span>
-                  </span>
-
-                  <a
-                    href={partner.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-3.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-purple-500 hover:text-black text-zinc-200 text-xs font-bold transition-all flex items-center space-x-1.5 border border-zinc-700/60"
-                  >
-                    <span>Visit Partner</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* Boot Animation & Guided Tour Replay Card */}
-      <div className="p-6 rounded-3xl bg-zinc-900/90 border border-zinc-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl">
-        <div className="space-y-1">
-          <h3 className="text-base font-bold text-white flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-cyan-400" />
-            Yunø Onboarding & System Boot
-          </h3>
-          <p className="text-xs text-zinc-400">
-            Replay the site guided tour, re-customize profile defaults, or re-watch the startup sequence.
+    <div className="w-full max-w-7xl mx-auto pb-16 text-white px-2 sm:px-4">
+      {/* Top Header */}
+      <div className="mb-6 border-b border-zinc-800 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
+            <Sliders className="w-6 h-6 text-amber-400" />
+            <span>Settings</span>
+          </h1>
+          <p className="text-xs text-zinc-400 mt-1">
+            Configure your workspace environment, cloaking disguises, avatar, chat preferences, and AI behavior.
           </p>
         </div>
 
-        <div className="flex items-center space-x-2.5">
-          {onReplayTour && (
-            <button
-              onClick={onReplayTour}
-              className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs rounded-xl transition-all flex items-center space-x-2 border border-zinc-700"
-            >
-              <RotateCcw className="w-3.5 h-3.5 text-purple-400" />
-              <span>Guided Tour & Setup</span>
-            </button>
-          )}
-
-          <button
-            onClick={onReplayBoot}
-            className="px-4 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs rounded-xl shadow-lg transition-all flex items-center space-x-2"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Replay Boot Screen</span>
-          </button>
-        </div>
+        {isYunoLiteEnabled && (
+          <div className="px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs font-mono flex items-center gap-2 self-start sm:self-auto">
+            <Zap className="w-3.5 h-3.5 text-amber-400" />
+            <span>Yunø Lite Active</span>
+          </div>
+        )}
       </div>
 
-      {/* Wallpaper Picker */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-bold text-white flex items-center gap-2">
-            <Image className="w-5 h-5 text-cyan-400" />
-            Background Wallpapers
-          </h3>
-          <span className="text-xs font-mono text-zinc-500">Live Workspace Canvas</span>
+      {/* Main Settings 2-Column Layout with Categories on the Left */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* LEFT SIDEBAR NAVIGATION CATEGORIES */}
+        <div className="lg:col-span-4 xl:col-span-3.5 space-y-1.5 bg-zinc-950/80 p-2 sm:p-2.5 rounded-2xl border border-zinc-800/80 sticky top-20 shadow-xl">
+          <div className="px-3 py-2 text-[11px] font-mono uppercase tracking-wider text-zinc-500">
+            Categories
+          </div>
+
+          <div className="space-y-1">
+            {navCategories.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeCategory === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setActiveCategory(item.id)}
+                  className={`w-full p-3 rounded-xl text-left transition-all flex items-center justify-between group cursor-pointer border ${
+                    isActive
+                      ? 'bg-zinc-800/90 text-white border-zinc-700 shadow-md ring-1 ring-white/10'
+                      : 'bg-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60 border-transparent'
+                  }`}
+                >
+                  <div className="flex items-center space-x-3 min-w-0">
+                    <div
+                      className={`p-2 rounded-lg transition-colors ${
+                        isActive
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          : 'bg-zinc-900 text-zinc-400 group-hover:text-zinc-300'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold truncate flex items-center gap-1.5">
+                        <span className={isActive ? 'text-white' : 'text-zinc-300'}>{item.label}</span>
+                        {item.badge && (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-mono border border-amber-500/30">
+                            {item.badge}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-zinc-500 truncate mt-0.5">{item.description}</div>
+                    </div>
+                  </div>
+
+                  <ChevronRight
+                    className={`w-4 h-4 flex-shrink-0 transition-transform ${
+                      isActive ? 'text-amber-400 translate-x-0.5' : 'text-zinc-600 opacity-0 group-hover:opacity-100'
+                    }`}
+                  />
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Quick Action Reset Boot / Fast Cloak */}
+          <div className="pt-3 mt-2 border-t border-zinc-800/80 px-2 space-y-1.5">
+            <button
+              type="button"
+              onClick={onReplayBoot}
+              className="w-full py-2 px-3 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 text-xs font-medium border border-zinc-800 transition-colors flex items-center justify-center space-x-1.5 cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Replay Boot Sequence</span>
+            </button>
+          </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {WALLPAPERS.map((wp) => {
-            const isSelected = currentWallpaper === wp.url;
+        {/* RIGHT SIDE MAIN SETTINGS CONTENT PANEL */}
+        <div className="lg:col-span-8 xl:col-span-8.5 space-y-6">
+          {/* ========================================================
+              CATEGORY 1: BACKGROUND SETTINGS
+              ======================================================== */}
+          {activeCategory === 'background' && (
+            <div className="space-y-6">
+              {/* Particle Effects Section */}
+              <div className="p-5 rounded-2xl bg-zinc-900/90 border border-zinc-800 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                      <CloudRain className="w-4 h-4 text-zinc-300" />
+                      Live Screen Weather & Particle Overlays
+                    </h2>
+                    <p className="text-xs text-zinc-400 mt-0.5">
+                      Renders real-time ambient particle effects across all portal tabs.
+                    </p>
+                  </div>
 
-            return (
-              <div
-                key={wp.id}
-                onClick={() => onSelectWallpaper(wp.url)}
-                className={`group relative rounded-2xl overflow-hidden aspect-video cursor-pointer border transition-all ${
-                  isSelected
-                    ? 'border-cyan-400 ring-2 ring-cyan-500/40 shadow-xl'
-                    : 'border-zinc-800 hover:border-zinc-700 hover:scale-105'
-                }`}
-              >
-                <img src={wp.thumbnail} alt={wp.name} className="w-full h-full object-cover" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                  <button
+                    type="button"
+                    onClick={() => onChangeEffectSettings(DEFAULT_EFFECT_SETTINGS)}
+                    className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium border border-zinc-700 transition-colors cursor-pointer"
+                  >
+                    Reset Weather
+                  </button>
+                </div>
 
-                {isSelected && (
-                  <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-cyan-500 text-black flex items-center justify-center shadow-lg">
-                    <Check className="w-4 h-4 stroke-[3]" />
+                {/* Particle Preset Buttons */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                  {[
+                    { id: 'none', label: 'None', desc: 'Clean background with zero particles', icon: EyeOff },
+                    { id: 'rain', label: 'Rain Drops', desc: 'Falling drizzle to storm rain', icon: CloudRain },
+                    { id: 'snow', label: 'Snowfall', desc: 'Drifting calm winter flakes', icon: Snowflake },
+                    { id: 'stars', label: 'Starfield', desc: 'Twinkling starry night sky', icon: Sparkles },
+                    { id: 'fireflies', label: 'Fireflies', desc: 'Floating embers & glowing lights', icon: Flame },
+                    { id: 'fog', label: 'Misty Fog', desc: 'Atmospheric drifting cloud mist', icon: CloudFog },
+                  ].map((opt) => {
+                    const Icon = opt.icon;
+                    const isSelected = effectSettings.effect === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => handleUpdateEffect({ effect: opt.id as any })}
+                        className={`p-3.5 rounded-xl border text-left transition-all flex flex-col justify-between cursor-pointer ${
+                          isSelected
+                            ? 'bg-zinc-800 border-amber-400 text-white ring-1 ring-amber-400/40 shadow-lg'
+                            : 'bg-zinc-950/60 border-zinc-800 text-zinc-300 hover:bg-zinc-800/80 hover:border-zinc-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div
+                            className={`p-1.5 rounded-md ${
+                              isSelected ? 'bg-amber-500/20 text-amber-300' : 'bg-zinc-900 text-zinc-400'
+                            }`}
+                          >
+                            <Icon className="w-4 h-4" />
+                          </div>
+                          {isSelected && <Check className="w-4 h-4 text-amber-400" />}
+                        </div>
+                        <div>
+                          <div className="text-xs font-semibold">{opt.label}</div>
+                          <div className="text-[11px] text-zinc-400 mt-0.5 line-clamp-2">{opt.desc}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Effect Intensity & Fall Speed Sliders */}
+                {effectSettings.effect !== 'none' && (
+                  <div className="pt-4 border-t border-zinc-800 grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-zinc-300 font-medium">Particle Intensity / Density</span>
+                        <span className="font-mono text-amber-400">{effectSettings.intensity}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="5"
+                        max="100"
+                        value={effectSettings.intensity}
+                        onChange={(e) => handleUpdateEffect({ intensity: Number(e.target.value) })}
+                        className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                      />
+                      <div className="flex justify-between text-[10px] text-zinc-500 font-mono">
+                        <span>Light</span>
+                        <span>Heavy Storm</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-zinc-300 font-medium">Particle Fall Speed</span>
+                        <span className="font-mono text-amber-400">{effectSettings.speed}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="5"
+                        max="100"
+                        value={effectSettings.speed}
+                        onChange={(e) => handleUpdateEffect({ speed: Number(e.target.value) })}
+                        className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                      />
+                      <div className="flex justify-between text-[10px] text-zinc-500 font-mono">
+                        <span>Slow</span>
+                        <span>Rapid</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Background Visual Adjustments (Blur, Brightness, Vignette) */}
+              <div className="p-5 rounded-2xl bg-zinc-900/90 border border-zinc-800 space-y-4">
+                <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Sun className="w-4 h-4 text-amber-400" />
+                  Background Lighting & Blur Adjustments
+                </h2>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-zinc-300 font-medium">Background Blur</span>
+                      <span className="font-mono text-amber-400">{effectSettings.blur}px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="20"
+                      step="1"
+                      value={effectSettings.blur}
+                      onChange={(e) => handleUpdateEffect({ blur: Number(e.target.value) })}
+                      className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                    />
+                    <div className="flex justify-between text-[10px] text-zinc-500 font-mono">
+                      <span>Sharp (0px)</span>
+                      <span>Heavy Blur (20px)</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-zinc-300 font-medium">Background Brightness / Dim</span>
+                      <span className="font-mono text-amber-400">{effectSettings.brightness}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="20"
+                      max="120"
+                      step="5"
+                      value={effectSettings.brightness}
+                      onChange={(e) => handleUpdateEffect({ brightness: Number(e.target.value) })}
+                      className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                    />
+                    <div className="flex justify-between text-[10px] text-zinc-500 font-mono">
+                      <span>Dim (20%)</span>
+                      <span>Bright (120%)</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-zinc-800 flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-medium text-zinc-300">Vignette Edge Shadow</div>
+                    <div className="text-[11px] text-zinc-500">Darkens window edges for cinematic contrast</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateEffect({ vignette: !effectSettings.vignette })}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
+                      effectSettings.vignette
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                        : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-white'
+                    }`}
+                  >
+                    {effectSettings.vignette ? 'Enabled' : 'Disabled'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Wallpaper Pictures Gallery & Custom URL */}
+              <div className="p-5 rounded-2xl bg-zinc-900/90 border border-zinc-800 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                      <ImageIcon className="w-4 h-4 text-emerald-400" />
+                      Wallpaper Pictures
+                    </h2>
+                    <p className="text-xs text-zinc-400 mt-0.5">Select from wallpapers or apply a custom URL.</p>
+                  </div>
+                  <span className="text-xs font-mono text-zinc-500">{WALLPAPERS.length} Wallpapers</span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                  {WALLPAPERS.map((wp) => {
+                    const isSelected = currentWallpaper === wp.url;
+                    return (
+                      <div
+                        key={wp.id}
+                        onClick={() => onSelectWallpaper(wp.url)}
+                        className={`group relative rounded-xl overflow-hidden aspect-video cursor-pointer border transition-all ${
+                          isSelected
+                            ? 'border-amber-400 ring-2 ring-amber-400 shadow-lg scale-[1.02]'
+                            : 'border-zinc-800 hover:border-zinc-600'
+                        }`}
+                      >
+                        <img
+                          src={wp.thumbnail}
+                          alt={wp.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                        <div className="absolute inset-0 bg-black/60" />
+                        <div className="absolute bottom-1.5 left-2 right-2">
+                          <span className="text-[10px] font-medium text-white truncate block">{wp.name}</span>
+                        </div>
+                        {isSelected && (
+                          <div className="absolute top-1.5 right-1.5 p-1 rounded-full bg-amber-500 text-zinc-950 font-bold">
+                            <Check className="w-3 h-3" />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Custom Wallpaper Input Form */}
+                <div className="pt-3 border-t border-zinc-800 space-y-2">
+                  <div className="text-xs font-medium text-zinc-300">Custom Image or MP4 Video Wallpaper URL</div>
+                  <form onSubmit={handleApplyCustomWallpaper} className="flex items-center space-x-2">
+                    <input
+                      type="text"
+                      value={customWallpaperUrl}
+                      onChange={(e) => {
+                        setCustomWallpaperUrl(e.target.value);
+                        setWallpaperUrlError(false);
+                      }}
+                      placeholder="Paste direct wallpaper URL (https://... or data:...)"
+                      className="flex-1 px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400"
+                    />
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white font-medium text-xs rounded-xl transition-colors border border-zinc-700 cursor-pointer"
+                    >
+                      Apply Wallpaper
+                    </button>
+                  </form>
+                  {wallpaperUrlError && (
+                    <p className="text-[11px] text-red-400">Please enter a valid image or video URL.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================
+              CATEGORY 2: AVATAR SETTINGS (STRICTLY NO PRESETS)
+              ======================================================== */}
+          {activeCategory === 'avatar' && (
+            <div className="space-y-6">
+              <form onSubmit={handleSaveProfileForm} className="space-y-6">
+                {/* Profile Banner & Avatar Preview Card */}
+                <div className="rounded-2xl bg-zinc-900 border border-zinc-800 overflow-hidden relative shadow-xl">
+                  {/* Banner */}
+                  <div className="h-32 w-full bg-zinc-950 relative overflow-hidden border-b border-zinc-800">
+                    {profileForm.banner ? (
+                      <img src={profileForm.banner} alt="Banner" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full bg-zinc-900 flex items-center justify-center text-zinc-500 text-xs font-mono">
+                        No custom banner uploaded
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Profile Details Container */}
+                  <div className="p-5 pt-0 relative">
+                    <div className="flex flex-col sm:flex-row sm:items-end justify-between -mt-12 mb-4 gap-3">
+                      {/* Custom Avatar Preview */}
+                      <div className="relative group">
+                        <div className="w-20 h-20 rounded-2xl bg-zinc-950 border-2 border-zinc-800 overflow-hidden shadow-2xl flex items-center justify-center">
+                          {profileForm.avatar ? (
+                            <img
+                              src={profileForm.avatar}
+                              alt="Avatar"
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = '';
+                              }}
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-zinc-900 text-zinc-400 text-xl font-bold font-mono">
+                              {profileForm.displayName ? profileForm.displayName.charAt(0).toUpperCase() : 'G'}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xs px-2.5 py-1 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700 font-medium">
+                          {profileForm.status || 'Online'}
+                        </span>
+                        {profileForm.badge && (
+                          <span className="text-xs px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-medium">
+                            {profileForm.badge}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <h2 className="text-base font-bold text-white">
+                        {profileForm.displayName || profileForm.username || 'Guest'}
+                      </h2>
+                      <div className="text-xs text-zinc-400 font-mono">@{profileForm.username || 'guest'}</div>
+                      <p className="text-xs text-zinc-300 mt-2">{profileForm.bio || 'No bio provided.'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Avatar & Banner Upload Controls (No presets) */}
+                <div className="p-5 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-4">
+                  <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Upload className="w-4 h-4 text-amber-400" />
+                    Custom Avatar & Profile Photos (No Presets)
+                  </h2>
+                  <p className="text-xs text-zinc-400">
+                    Upload your own personal custom avatar and banner files directly, or link your image URLs.
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Avatar Upload */}
+                    <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 space-y-3">
+                      <div className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                        <User className="w-3.5 h-3.5 text-amber-400" />
+                        Custom Avatar Image
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <label className="flex-1 py-2 px-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700 rounded-xl text-xs font-medium text-center cursor-pointer transition-colors flex items-center justify-center space-x-1.5">
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>Upload Avatar File</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleAvatarFileUpload}
+                            className="hidden"
+                          />
+                        </label>
+                        {profileForm.avatar && (
+                          <button
+                            type="button"
+                            onClick={() => setProfileForm((p) => ({ ...p, avatar: '' }))}
+                            className="p-2 rounded-xl bg-zinc-900 text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 border border-zinc-800"
+                            title="Remove avatar"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+
+                      <div>
+                        <input
+                          type="text"
+                          value={profileForm.avatar}
+                          onChange={(e) => setProfileForm((p) => ({ ...p, avatar: e.target.value }))}
+                          placeholder="Or paste direct image URL (https://...)"
+                          className="w-full px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Banner Upload */}
+                    <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 space-y-3">
+                      <div className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                        <ImageIcon className="w-3.5 h-3.5 text-zinc-400" />
+                        Custom Profile Banner
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <label className="flex-1 py-2 px-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700 rounded-xl text-xs font-medium text-center cursor-pointer transition-colors flex items-center justify-center space-x-1.5">
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>Upload Banner File</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleBannerFileUpload}
+                            className="hidden"
+                          />
+                        </label>
+                        {profileForm.banner && (
+                          <button
+                            type="button"
+                            onClick={() => setProfileForm((p) => ({ ...p, banner: '' }))}
+                            className="p-2 rounded-xl bg-zinc-900 text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 border border-zinc-800"
+                            title="Remove banner"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+
+                      <div>
+                        <input
+                          type="text"
+                          value={profileForm.banner}
+                          onChange={(e) => setProfileForm((p) => ({ ...p, banner: e.target.value }))}
+                          placeholder="Or paste direct banner URL (https://...)"
+                          className="w-full px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Identity & Bio Form */}
+                <div className="p-5 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-4">
+                  <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-amber-400" />
+                    Identity, Status & Bio
+                  </h2>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs text-zinc-400 block mb-1">Display Name</label>
+                      <input
+                        type="text"
+                        value={profileForm.displayName}
+                        onChange={(e) => setProfileForm((p) => ({ ...p, displayName: e.target.value }))}
+                        placeholder="Your display name"
+                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-zinc-400 block mb-1">Username (Handle)</label>
+                      <input
+                        type="text"
+                        value={profileForm.username}
+                        onChange={(e) => setProfileForm((p) => ({ ...p, username: e.target.value }))}
+                        placeholder="username"
+                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-zinc-400 block mb-1">Status Message</label>
+                      <input
+                        type="text"
+                        value={profileForm.status}
+                        onChange={(e) => setProfileForm((p) => ({ ...p, status: e.target.value }))}
+                        placeholder="Online, Coding, Gaming..."
+                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-zinc-400 block mb-1">Badge Tag</label>
+                      <input
+                        type="text"
+                        value={profileForm.badge}
+                        onChange={(e) => setProfileForm((p) => ({ ...p, badge: e.target.value }))}
+                        placeholder="e.g. Pro, VIP, Builder"
+                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-zinc-400 block mb-1">Custom Bio</label>
+                    <textarea
+                      value={profileForm.bio}
+                      onChange={(e) => setProfileForm((p) => ({ ...p, bio: e.target.value }))}
+                      placeholder="Write a brief bio about yourself..."
+                      rows={3}
+                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400 resize-none"
+                    />
+                  </div>
+
+                  <div className="pt-3 border-t border-zinc-800 flex items-center justify-between">
+                    <span className="text-xs text-zinc-500">
+                      Changes are saved locally and synced with community & chat.
+                    </span>
+                    <button
+                      type="submit"
+                      className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs transition-colors flex items-center space-x-1.5 shadow-lg cursor-pointer"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>Save Avatar & Profile</span>
+                    </button>
+                  </div>
+
+                  {profileSavedToast && (
+                    <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-300 text-xs border border-emerald-500/30 flex items-center gap-2">
+                      <Check className="w-4 h-4 text-emerald-400" />
+                      <span>Avatar profile updated successfully!</span>
+                    </div>
+                  )}
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* ========================================================
+              CATEGORY 3: CHAT SETTINGS (PROFANITY FILTER & MORE)
+              ======================================================== */}
+          {activeCategory === 'chat' && (
+            <div className="space-y-6">
+              {/* Profanity Filter Section */}
+              <div className="p-5 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                      <Shield className="w-4 h-4 text-amber-400" />
+                      Profanity Filter & Content Guard
+                    </h2>
+                    <p className="text-xs text-zinc-400 mt-0.5">
+                      Automatically mask swear words and offensive language in community chat.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleUpdateChatPrefs({
+                        enableProfanityFilter: !chatPrefs.enableProfanityFilter,
+                      })
+                    }
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
+                      chatPrefs.enableProfanityFilter
+                        ? 'bg-amber-500 text-zinc-950 border-amber-400'
+                        : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-white'
+                    }`}
+                  >
+                    {chatPrefs.enableProfanityFilter ? 'Enabled' : 'Disabled'}
+                  </button>
+                </div>
+
+                <div className="space-y-3 pt-3 border-t border-zinc-800">
+                  {/* Direct Blur Profanity Toggle */}
+                  <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-semibold text-white flex items-center gap-1.5">
+                        <EyeOff className="w-3.5 h-3.5 text-amber-400" />
+                        Blur Profane & Sensitive Words
+                      </div>
+                      <div className="text-[11px] text-zinc-400">
+                        Visually blur sensitive words with an interactive spoiler effect across all chats.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleUpdateChatPrefs({
+                          blurProfanity: !chatPrefs.blurProfanity,
+                        })
+                      }
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
+                        chatPrefs.blurProfanity
+                          ? 'bg-amber-500 text-zinc-950 border-amber-400 font-bold'
+                          : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-white'
+                      }`}
+                    >
+                      {chatPrefs.blurProfanity ? 'Blur ON' : 'Blur OFF'}
+                    </button>
+                  </div>
+
+                  {chatPrefs.enableProfanityFilter && (
+                    <div className="space-y-3 pt-2">
+                      <div className="text-xs font-medium text-zinc-300">Filter Strictness</div>
+                      <div className="grid grid-cols-3 gap-2.5">
+                        {[
+                          { id: 'standard', label: 'Standard', desc: 'Masks severe profanity' },
+                          { id: 'strict', label: 'Strict / School', desc: 'Masks mild & heavy slurs' },
+                          { id: 'off', label: 'Off', desc: 'Disable censorship' },
+                        ].map((lvl) => {
+                          const isSel = chatPrefs.profanityStrictness === lvl.id;
+                          return (
+                            <button
+                              key={lvl.id}
+                              type="button"
+                              onClick={() => handleUpdateChatPrefs({ profanityStrictness: lvl.id as any })}
+                              className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                                isSel
+                                  ? 'bg-zinc-800 border-amber-400 text-white ring-1 ring-amber-400/30'
+                                  : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                              }`}
+                            >
+                              <div className="text-xs font-semibold text-white">{lvl.label}</div>
+                              <div className="text-[10px] text-zinc-500 mt-0.5">{lvl.desc}</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Custom Blocked Words Manager */}
+              <div className="p-5 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-4">
+                <div>
+                  <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Lock className="w-4 h-4 text-rose-400" />
+                    Custom Blocked Words & Phrases
+                  </h2>
+                  <p className="text-xs text-zinc-400 mt-0.5">
+                    Add custom words or phrases to be blurred or filtered automatically in your chats.
+                  </p>
+                </div>
+
+                <form onSubmit={handleAddBlockedWord} className="flex items-center space-x-2">
+                  <input
+                    type="text"
+                    value={newBlockedWord}
+                    onChange={(e) => setNewBlockedWord(e.target.value)}
+                    placeholder="Enter word or phrase to block..."
+                    className="flex-1 px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-rose-400"
+                  />
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white font-medium text-xs rounded-xl transition-colors border border-zinc-700 flex items-center space-x-1 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Word</span>
+                  </button>
+                </form>
+
+                <div className="flex flex-wrap gap-2">
+                  {chatPrefs.blockedWords.length === 0 ? (
+                    <span className="text-xs text-zinc-500 italic">No custom blocked words added yet.</span>
+                  ) : (
+                    chatPrefs.blockedWords.map((word) => (
+                      <span
+                        key={word}
+                        className="px-2.5 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-300 flex items-center space-x-1.5"
+                      >
+                        <span>{word}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveBlockedWord(word)}
+                          className="text-zinc-500 hover:text-rose-400 transition-colors"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Chat Experience & Display Preferences */}
+              <div className="p-5 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-4">
+                <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Sliders className="w-4 h-4 text-zinc-300" />
+                  Chat Behavior & Audio
+                </h2>
+
+                <div className="space-y-3">
+                  <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800/80 flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-medium text-zinc-300">Message Notification Sounds</div>
+                      <div className="text-[11px] text-zinc-500">Play a subtle chime sound when receiving new chat messages</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateChatPrefs({ soundEffects: !chatPrefs.soundEffects })}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
+                        chatPrefs.soundEffects
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                          : 'bg-zinc-900 text-zinc-400 border-zinc-800'
+                      }`}
+                    >
+                      {chatPrefs.soundEffects ? 'Sound On' : 'Muted'}
+                    </button>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800/80 flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-medium text-zinc-300">Compact Message Layout</div>
+                      <div className="text-[11px] text-zinc-500">Reduce spacing between messages for high-density reading</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateChatPrefs({ compactMode: !chatPrefs.compactMode })}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
+                        chatPrefs.compactMode
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                          : 'bg-zinc-900 text-zinc-400 border-zinc-800'
+                      }`}
+                    >
+                      {chatPrefs.compactMode ? 'Compact' : 'Normal'}
+                    </button>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800/80 flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-medium text-zinc-300">Display Message Timestamps</div>
+                      <div className="text-[11px] text-zinc-500">Show exact time next to each message bubble</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateChatPrefs({ showTimestamps: !chatPrefs.showTimestamps })}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
+                        chatPrefs.showTimestamps
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                          : 'bg-zinc-900 text-zinc-400 border-zinc-800'
+                      }`}
+                    >
+                      {chatPrefs.showTimestamps ? 'Shown' : 'Hidden'}
+                    </button>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800/80 flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-medium text-zinc-300">Auto-Scroll on New Messages</div>
+                      <div className="text-[11px] text-zinc-500">Automatically jump to bottom when messages arrive</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateChatPrefs({ autoScroll: !chatPrefs.autoScroll })}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
+                        chatPrefs.autoScroll
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                          : 'bg-zinc-900 text-zinc-400 border-zinc-800'
+                      }`}
+                    >
+                      {chatPrefs.autoScroll ? 'Enabled' : 'Disabled'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================
+              CATEGORY 4: UPDATES & CHANGELOG
+              ======================================================== */}
+          {activeCategory === 'updates' && (
+            <div className="space-y-6">
+              <div className="p-5 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                      <Bell className="w-4 h-4 text-amber-400" />
+                      Official Portal Updates & Changelog
+                    </h2>
+                    <p className="text-xs text-zinc-400 mt-0.5">
+                      Check out the latest features, releases, and fixes deployed to Yunø.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {announcements.map((item) => (
+                    <div
+                      key={item.id}
+                      className="p-4 rounded-xl bg-zinc-950/80 border border-zinc-800/80 flex items-start justify-between space-x-4 shadow-sm"
+                    >
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-xs font-bold text-white">{item.title}</span>
+                          {item.badge && (
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono border border-amber-500/30">
+                              {item.badge}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-zinc-400 leading-relaxed">{item.description}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================
+              CATEGORY 5: TAB CLOAKING
+              ======================================================== */}
+          {activeCategory === 'cloaking' && (
+            <div className="space-y-6">
+              <div className="p-5 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-zinc-800 pb-3">
+                  <div>
+                    <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                      <Shield className="w-4 h-4 text-emerald-400" />
+                      Tab Disguise & Cloaker
+                    </h2>
+                    <p className="text-xs text-zinc-400 mt-0.5">
+                      Mask your browser tab title and favicon or open in stealth unblocked window.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <button
+                      type="button"
+                      onClick={handleLaunchAboutBlank}
+                      className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-medium border border-zinc-700 transition-colors cursor-pointer"
+                    >
+                      Open about:blank
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleLaunchBlob}
+                      className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-medium border border-zinc-700 transition-colors cursor-pointer"
+                    >
+                      Open Blob Cloak
+                    </button>
+                  </div>
+                </div>
+
+                {/* Live Disguise Bar */}
+                <div className="p-3.5 bg-zinc-950 rounded-xl border border-zinc-800 flex items-center justify-between">
+                  <div className="flex items-center space-x-2.5 text-xs text-zinc-300">
+                    <img
+                      src={
+                        cloakSettings.activeMaskId === 'custom'
+                          ? cloakSettings.customIcon || 'https://www.google.com/favicon.ico'
+                          : TAB_MASK_PRESETS.find((p) => p.id === cloakSettings.activeMaskId)?.icon || '/favicon.ico'
+                      }
+                      alt="Favicon"
+                      className="w-4 h-4 rounded-sm object-contain"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = 'https://www.google.com/favicon.ico';
+                      }}
+                    />
+                    <span className="font-semibold text-white truncate">
+                      {cloakSettings.activeMaskId === 'custom'
+                        ? cloakSettings.customTitle || 'Custom Mask'
+                        : TAB_MASK_PRESETS.find((p) => p.id === cloakSettings.activeMaskId)?.title || 'Yunø Workspace'}
+                    </span>
+                  </div>
+
+                  <span className="text-xs text-amber-400 font-mono px-2 py-0.5 bg-amber-500/10 rounded-md border border-amber-500/20">
+                    Active Mask: {cloakSettings.activeMaskId}
+                  </span>
+                </div>
+
+                {launchStatus === 'success' && (
+                  <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-300 text-xs border border-emerald-500/30">
+                    Stealth window opened in about:blank tab.
                   </div>
                 )}
 
-                <div className="absolute bottom-2 left-2 right-2">
-                  <span className="text-[10px] font-bold text-white truncate block">{wp.name}</span>
+                {launchStatus === 'blocked' && (
+                  <div className="p-2.5 rounded-xl bg-rose-500/20 text-rose-300 text-xs border border-rose-500/30">
+                    Pop-up was blocked by browser. Please allow popups for this site.
+                  </div>
+                )}
+
+                {/* Preset Masks Grid */}
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-zinc-400">Presets</span>
+                    <div className="flex items-center space-x-1">
+                      {['All', 'Google', 'School', 'Tools', 'Reference'].map((cat) => (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => setSelectedMaskCategory(cat)}
+                          className={`px-2.5 py-1 rounded-lg text-xs transition-colors cursor-pointer ${
+                            selectedMaskCategory === cat
+                              ? 'bg-zinc-700 text-white font-semibold'
+                              : 'text-zinc-400 hover:text-zinc-200'
+                          }`}
+                        >
+                          {cat}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    {(selectedMaskCategory === 'All'
+                      ? TAB_MASK_PRESETS
+                      : TAB_MASK_PRESETS.filter((p) => p.category === selectedMaskCategory || p.id === 'default')
+                    ).map((preset) => {
+                      const isSelected = cloakSettings.activeMaskId === preset.id;
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => handleSelectTabPreset(preset)}
+                          className={`p-2.5 rounded-xl border text-left transition-all flex items-center space-x-2.5 cursor-pointer ${
+                            isSelected
+                              ? 'bg-zinc-800 border-amber-400 text-white ring-1 ring-amber-400/30 shadow-md'
+                              : 'bg-zinc-950/70 border-zinc-800 text-zinc-300 hover:bg-zinc-800 hover:border-zinc-700'
+                          }`}
+                        >
+                          <img
+                            src={preset.icon}
+                            alt={preset.name}
+                            className="w-4 h-4 object-contain flex-shrink-0"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = 'https://www.google.com/favicon.ico';
+                            }}
+                          />
+                          <span className="text-xs font-medium truncate flex-1">{preset.name}</span>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Custom Tab Mask Form */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-zinc-800">
+                  <div>
+                    <label className="text-xs text-zinc-400 block mb-1">Custom Tab Title</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Google Docs"
+                      value={cloakSettings.customTitle}
+                      onChange={(e) => handleCustomTabMask(e.target.value, cloakSettings.customIcon)}
+                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-zinc-400 block mb-1">Custom Favicon URL</label>
+                    <input
+                      type="url"
+                      placeholder="https://example.com/favicon.ico"
+                      value={cloakSettings.customIcon}
+                      onChange={(e) => handleCustomTabMask(cloakSettings.customTitle, e.target.value)}
+                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+                </div>
+
+                {/* Panic Key & Anti-Close Guard */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-zinc-800">
+                  <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-zinc-300">Panic Emergency Hotkey</span>
+                      <button
+                        type="button"
+                        onClick={() => setIsRecordingPanicKey(true)}
+                        className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-mono text-amber-300 border border-zinc-700 cursor-pointer"
+                      >
+                        {isRecordingPanicKey ? 'Press any key...' : `Key: [ ${cloakSettings.panicKey || ']'} ]`}
+                      </button>
+                    </div>
+
+                    <div>
+                      <input
+                        type="url"
+                        value={cloakSettings.panicUrl}
+                        onChange={(e) => {
+                          const updated = { ...cloakSettings, panicUrl: e.target.value };
+                          setCloakSettings(updated);
+                          saveCloakSettings(updated);
+                        }}
+                        placeholder="Panic redirect URL (e.g. https://classroom.google.com)"
+                        className="w-full px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-xs text-zinc-300 placeholder-zinc-500 focus:outline-none focus:border-amber-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-semibold text-zinc-300 block">Anti-Close Guard</span>
+                      <span className="text-[11px] text-zinc-500">Prompts confirmation before tab closes</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleToggleAntiClose}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors cursor-pointer ${
+                        cloakSettings.antiCloseEnabled
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                          : 'bg-zinc-900 text-zinc-400 border-zinc-800'
+                      }`}
+                    >
+                      {cloakSettings.antiCloseEnabled ? 'Enabled' : 'Disabled'}
+                    </button>
+                  </div>
                 </div>
               </div>
-            );
-          })}
-        </div>
-
-        {/* Custom Image / Video Upload & URL */}
-        <div className="pt-2 space-y-4">
-          <div>
-            <label className="text-xs font-mono text-zinc-400 block mb-1.5 flex items-center space-x-2">
-              <Upload className="w-3.5 h-3.5 text-cyan-400" />
-              <span>UPLOAD LOCAL WALLPAPER (IMAGE, GIF, MP4/MOV VIDEO)</span>
-            </label>
-            <div className="relative border-2 border-dashed border-zinc-800 hover:border-cyan-500/50 rounded-2xl p-6 text-center transition-all bg-zinc-900/50 hover:bg-zinc-900/80 cursor-pointer">
-              <input
-                type="file"
-                accept="image/*,video/mp4,video/quicktime,.gif"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                      if (event.target?.result) {
-                        const dataUrl = event.target.result as string;
-                        onSelectWallpaper(dataUrl);
-                        handleExtractTheme(dataUrl);
-                      }
-                    };
-                    reader.readAsDataURL(file);
-                  }
-                }}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-              />
-              <div className="flex flex-col items-center justify-center space-y-2">
-                <div className="w-10 h-10 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center border border-cyan-500/20">
-                  <Upload className="w-5 h-5" />
-                </div>
-                <p className="text-xs text-zinc-300 font-medium">
-                  Click or drag file here to set as workspace wallpaper
-                </p>
-                <p className="text-[10px] text-zinc-500 font-mono">
-                  Supports PNG, JPG, animated GIF, MP4, MOV
-                </p>
-              </div>
             </div>
-          </div>
+          )}
 
-          <form onSubmit={handleCustomSubmit}>
-            <label className="text-xs font-mono text-zinc-400 block mb-1.5">
-              OR ENTER IMAGE / GIF DIRECT URL
-            </label>
-            <div className="flex items-center space-x-2">
-              <input
-                type="text"
-                value={customUrl}
-                onChange={(e) => setCustomUrl(e.target.value)}
-                placeholder="https://images.unsplash.com/your-image.jpg"
-                className="flex-1 px-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500"
-              />
-              <button
-                type="submit"
-                className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs rounded-xl transition-colors"
-              >
-                Apply URL
-              </button>
-            </div>
-          </form>
-
-          {/* Wallpaper Dynamic Color Theme Extractor */}
-          <div className="mt-6 p-6 rounded-3xl bg-zinc-900/90 border border-zinc-800 space-y-4 shadow-xl">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <div className="space-y-1">
-                <div className="flex items-center space-x-2">
-                  <Pipette className="w-5 h-5 text-cyan-400" />
-                  <h3 className="text-base font-bold text-white">Wallpaper Color Theme Extractor</h3>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                    AUTOMATIC CANVAS ANALYSIS
+          {/* ========================================================
+              CATEGORY 6: THEME SETTINGS (COMING SOON + YUNO LITE)
+              ======================================================== */}
+          {activeCategory === 'theme' && (
+            <div className="space-y-6">
+              {/* Coming Soon Themes Banner */}
+              <div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800 relative overflow-hidden space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2.5">
+                    <Palette className="w-5 h-5 text-amber-400" />
+                    <h2 className="text-base font-bold text-white">Custom Theme Engine</h2>
+                  </div>
+                  <span className="text-xs font-mono uppercase tracking-wider px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
+                    Coming Soon
                   </span>
                 </div>
-                <p className="text-xs text-zinc-400 max-w-xl">
-                  Extract vibrant primary, accent, and glow colors directly from your active or custom uploaded wallpaper to dynamically theme buttons, borders, and accents across the site.
+
+                <p className="text-xs text-zinc-400 max-w-xl leading-relaxed">
+                  Full custom theme engine & color paletting (Midnight Neon, Cyber Amber, Sakura Blossom, Velvet Obsidian)
+                  is currently under active engineering for the next major release.
                 </p>
+
+                {/* Coming Soon Preview Mockup Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 opacity-60 pointer-events-none">
+                  {[
+                    { name: 'Midnight Neon', color: 'bg-indigo-950 border-indigo-700' },
+                    { name: 'Cyber Amber', color: 'bg-amber-950 border-amber-700' },
+                    { name: 'Sakura Rose', color: 'bg-pink-950 border-pink-700' },
+                    { name: 'Velvet Obsidian', color: 'bg-zinc-950 border-zinc-800' },
+                  ].map((thm) => (
+                    <div
+                      key={thm.name}
+                      className={`p-3 rounded-xl border ${thm.color} text-left flex flex-col justify-between h-20`}
+                    >
+                      <span className="text-[11px] font-bold text-white">{thm.name}</span>
+                      <span className="text-[10px] text-zinc-400 font-mono">Coming Soon</span>
+                    </div>
+                  ))}
+                </div>
               </div>
 
+              {/* CORE FUNCTIONAL THEME FEATURE: YUNO LITE */}
+              <div className="p-5 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-amber-400" />
+                      Yunø Lite Mode
+                    </h2>
+                    <p className="text-xs text-zinc-400 mt-0.5">
+                      Ultra-clean minimalist performance mode. Removes decorative icons, disables particle weather FX,
+                      clears background pictures, and shows games with only clean image thumbnails (no text titles or descriptions).
+                    </p>
+                  </div>
+
+                  {onToggleYunoLite && (
+                    <button
+                      type="button"
+                      onClick={() => onToggleYunoLite(!isYunoLiteEnabled)}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
+                        isYunoLiteEnabled
+                          ? 'bg-amber-500 text-zinc-950 border-amber-400 shadow-lg'
+                          : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-white'
+                      }`}
+                    >
+                      {isYunoLiteEnabled ? 'Yunø Lite: ON' : 'Yunø Lite: OFF'}
+                    </button>
+                  )}
+                </div>
+
+                <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800/80 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div className="flex items-center space-x-2 text-zinc-300">
+                    <Check className={`w-4 h-4 ${isYunoLiteEnabled ? 'text-emerald-400' : 'text-zinc-600'}`} />
+                    <span>Hides background wallpapers & canvas weather FX</span>
+                  </div>
+                  <div className="flex items-center space-x-2 text-zinc-300">
+                    <Check className={`w-4 h-4 ${isYunoLiteEnabled ? 'text-emerald-400' : 'text-zinc-600'}`} />
+                    <span>Displays games with pictures only (hides titles & descriptions)</span>
+                  </div>
+                  <div className="flex items-center space-x-2 text-zinc-300">
+                    <Check className={`w-4 h-4 ${isYunoLiteEnabled ? 'text-emerald-400' : 'text-zinc-600'}`} />
+                    <span>Disables heavy blur & backdrop-filters for maximum FPS</span>
+                  </div>
+                  <div className="flex items-center space-x-2 text-zinc-300">
+                    <Check className={`w-4 h-4 ${isYunoLiteEnabled ? 'text-emerald-400' : 'text-zinc-600'}`} />
+                    <span>Removes extra decorative icons and UI badges</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================
+              CATEGORY 7: AI SETTINGS (JACK'S COUGH, EMOJIS, MEMORY, SPEED, TONES, SYMBOLS)
+              ======================================================== */}
+          {activeCategory === 'ai' && (
+            <div className="space-y-6">
+              {/* Jack's Cough Header & Catchphrases Showcase */}
+              <div className="p-5 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                      <Bot className="w-4 h-4 text-amber-400" />
+                      <span>Jack's cough Persona & Greeting Catchphrases</span>
+                    </h2>
+                    <p className="text-xs text-zinc-400 mt-0.5">
+                      Configure your AI assistant's personality, greetings, cross-chat memory, and custom instructions.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewCatchphraseIdx((prev) => (prev + 1) % JACKS_COUGH_CATCHPHRASES.length)}
+                    className="self-start sm:self-auto px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-750 text-amber-400 text-xs font-semibold border border-zinc-700 flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Shuffle Catchphrase</span>
+                  </button>
+                </div>
+
+                {/* Catchphrase Card */}
+                <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-between">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-amber-400 font-bold">
+                      Active Greeting Preview
+                    </span>
+                    <p className="text-xs text-white font-mono font-medium">
+                      "{JACKS_COUGH_CATCHPHRASES[previewCatchphraseIdx].replace('{user}', aiSettings.userCallSign?.trim() || profileForm.displayName || 'user')}"
+                    </p>
+                  </div>
+                  <span className="text-[11px] text-zinc-500 font-mono">
+                    {previewCatchphraseIdx + 1} / {JACKS_COUGH_CATCHPHRASES.length}
+                  </span>
+                </div>
+
+                {/* Catchphrases List Pills */}
+                <div className="space-y-1.5">
+                  <span className="text-xs font-semibold text-zinc-300 block">Available Catchphrases:</span>
+                  <div className="flex flex-wrap gap-2">
+                    {JACKS_COUGH_CATCHPHRASES.map((phrase, idx) => (
+                      <span
+                        key={idx}
+                        onClick={() => setPreviewCatchphraseIdx(idx)}
+                        className={`text-xs px-2.5 py-1 rounded-lg border transition-colors cursor-pointer ${
+                          previewCatchphraseIdx === idx
+                            ? 'bg-amber-400/10 text-amber-300 border-amber-400/40 font-medium'
+                            : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+                        }`}
+                      >
+                        {phrase.replace('{user}', aiSettings.userCallSign?.trim() || profileForm.displayName || 'user')}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Characteristics & Tones */}
+              <div className="p-5 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-4">
+                <div>
+                  <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Sliders className="w-4 h-4 text-amber-400" />
+                    <span>AI Characteristics & Tone</span>
+                  </h2>
+                  <p className="text-xs text-zinc-400 mt-0.5">
+                    Select how Jack's cough behaves and responds to your questions.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                  {[
+                    {
+                      id: 'jacks_cough',
+                      label: "Jack's Cough (Original)",
+                      desc: "Witty, roasty, chaotic slang, hilarious banter ('bruh use claude atp 😭🙏', '0.4 gpa'), but razor-sharp & accurate.",
+                    },
+                    {
+                      id: 'sarcastic',
+                      label: 'Witty & Sarcastic',
+                      desc: 'Dry humor, clever playful roasts, and lighthearted sarcasm.',
+                    },
+                    {
+                      id: 'chill',
+                      label: 'Chill & Casual',
+                      desc: "Laid-back, relaxed homie vibes ('duuuuuuude', no stress).",
+                    },
+                    {
+                      id: 'concise',
+                      label: 'Ultra-Concise',
+                      desc: 'Direct, zero fluff, straight to code/answers with bullet points.',
+                    },
+                    {
+                      id: 'academic',
+                      label: 'Academic Scholar',
+                      desc: 'Deeply structured, formal, thorough research breakdowns.',
+                    },
+                    {
+                      id: 'tutor',
+                      label: 'Socratic Tutor',
+                      desc: 'Step-by-step patient learning guide with questions.',
+                    },
+                    {
+                      id: 'custom',
+                      label: 'Custom Persona',
+                      desc: 'Specify your own custom tone and behavioral instructions.',
+                    },
+                  ].map((style) => {
+                    const isSel = aiSettings.style === style.id;
+                    return (
+                      <button
+                        key={style.id}
+                        type="button"
+                        onClick={() => handleUpdateAiSettings({ style: style.id as AiSpeakingStyle })}
+                        className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                          isSel
+                            ? 'bg-zinc-800 border-amber-400 text-white ring-1 ring-amber-400/30'
+                            : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold text-white">{style.label}</span>
+                          {isSel && <Check className="w-3.5 h-3.5 text-amber-400" />}
+                        </div>
+                        <div className="text-[11px] text-zinc-500 leading-relaxed">{style.desc}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Custom Tone Input if Custom Selected */}
+                {aiSettings.style === 'custom' && (
+                  <div className="pt-2">
+                    <label className="text-xs font-semibold text-zinc-300 block mb-1.5">
+                      Describe Your Custom AI Tone & Style
+                    </label>
+                    <textarea
+                      value={aiSettings.customToneText || ''}
+                      onChange={(e) => handleUpdateAiSettings({ customToneText: e.target.value })}
+                      placeholder="e.g. Sassy British professor who talks about astronomy and uses tea emojis..."
+                      rows={2}
+                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400 resize-none"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* What AI Calls You, Emojis & Thinking Speed */}
+              <div className="p-5 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-5">
+                <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                  <User className="w-4 h-4 text-zinc-300" />
+                  <span>Callsign, Emojis & Thinking Speed</span>
+                </h2>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* 1. What AI Calls You */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-zinc-300 block">
+                      What Should AI Call You?
+                    </label>
+                    <input
+                      type="text"
+                      value={aiSettings.userCallSign}
+                      onChange={(e) => handleUpdateAiSettings({ userCallSign: e.target.value })}
+                      placeholder="e.g. user, bruh, Chief, Boss, or your name"
+                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400"
+                    />
+                    <p className="text-[11px] text-zinc-500">
+                      Defaults to "{aiSettings.userCallSign?.trim() || profileForm.displayName || 'user'}".
+                    </p>
+                  </div>
+
+                  {/* 2. Emoji Mode */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-zinc-300 block flex items-center gap-1.5">
+                      <Smile className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Use Emojis in Responses</span>
+                    </label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {[
+                        { id: 'heavily', label: 'Heavy (😭🙏🙌)', desc: 'High emoji' },
+                        { id: 'standard', label: 'Balanced', desc: 'Standard' },
+                        { id: 'minimal', label: 'Minimal', desc: 'Max 1 emoji' },
+                        { id: 'none', label: 'No Emojis', desc: 'Pure text' },
+                      ].map((em) => {
+                        const isSel = (aiSettings.emojiMode || 'standard') === em.id;
+                        return (
+                          <button
+                            key={em.id}
+                            type="button"
+                            onClick={() => handleUpdateAiSettings({ emojiMode: em.id as AiEmojiMode })}
+                            className={`p-2 rounded-xl border text-left transition-colors cursor-pointer ${
+                              isSel
+                                ? 'bg-zinc-800 border-amber-400 text-white'
+                                : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                            }`}
+                          >
+                            <div className="text-[11px] font-bold text-white">{em.label}</div>
+                            <div className="text-[10px] text-zinc-500">{em.desc}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* 3. Thinking / Speed Mode */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-zinc-300 block flex items-center gap-1.5">
+                      <Zap className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Response & Thinking Mode</span>
+                    </label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {[
+                        { id: 'fast', label: 'Fast Answers', desc: 'Instant & snappy' },
+                        { id: 'smooth', label: 'Smooth Thinking', desc: 'In-depth logic' },
+                      ].map((spd) => {
+                        const isSel = (aiSettings.speed === spd.id) || (spd.id === 'fast' && (aiSettings.speed === 'instant' || aiSettings.speed === 'balanced'));
+                        return (
+                          <button
+                            key={spd.id}
+                            type="button"
+                            onClick={() => handleUpdateAiSettings({ speed: spd.id as AiResponseSpeed })}
+                            className={`p-2.5 rounded-xl border text-left transition-colors cursor-pointer ${
+                              isSel
+                                ? 'bg-zinc-800 border-amber-400 text-white'
+                                : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                            }`}
+                          >
+                            <div className="text-xs font-bold text-white">{spd.label}</div>
+                            <div className="text-[10px] text-zinc-500">{spd.desc}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Cross-Chat Memory */}
+              <div className="p-5 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                      <Brain className="w-4 h-4 text-zinc-300" />
+                      <span>Memory From Other Chats</span>
+                    </h2>
+                    <p className="text-xs text-zinc-400 mt-0.5">
+                      Allow Jack's cough to remember facts, goals, and context across all your chat sessions.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateAiSettings({ memoryEnabled: !aiSettings.memoryEnabled })}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
+                      aiSettings.memoryEnabled !== false
+                        ? 'bg-zinc-800 text-zinc-100 border-zinc-700'
+                        : 'bg-zinc-950 text-zinc-500 border-zinc-800'
+                    }`}
+                  >
+                    {aiSettings.memoryEnabled !== false ? 'Memory Enabled' : 'Memory Disabled'}
+                  </button>
+                </div>
+
+                {aiSettings.memoryEnabled !== false && (
+                  <div className="space-y-3 pt-2">
+                    {/* Add Memory Input */}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={newMemoryInput}
+                        onChange={(e) => setNewMemoryInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddMemory();
+                          }
+                        }}
+                        placeholder="Add a fact for AI to remember (e.g. 'I am studying for AP Calculus', 'I code in TypeScript')..."
+                        className="flex-1 px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddMemory}
+                        disabled={!newMemoryInput.trim()}
+                        className="px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-750 text-white text-xs font-semibold border border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add Fact</span>
+                      </button>
+                    </div>
+
+                    {/* Memories List */}
+                    <div className="space-y-1.5">
+                      {(!aiSettings.memories || aiSettings.memories.length === 0) ? (
+                        <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800/80 text-xs text-zinc-500 text-center">
+                          No cross-chat memories stored yet. Add one above!
+                        </div>
+                      ) : (
+                        aiSettings.memories.map((mem, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-zinc-300 group"
+                          >
+                            <span className="flex items-center gap-2">
+                              <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 flex-shrink-0" />
+                              <span>{mem}</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveMemory(idx)}
+                              className="opacity-0 group-hover:opacity-100 p-1 text-zinc-500 hover:text-red-400 rounded transition-opacity"
+                              title="Delete memory"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Symbol Rules & Custom Instructions */}
+              <div className="p-5 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-4">
+                <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Hash className="w-4 h-4 text-emerald-400" />
+                  <span>Custom Instructions & Symbol Formatting Rules</span>
+                </h2>
+
+                <div className="space-y-4">
+                  {/* Symbol Formatting Rules */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-zinc-300 block">
+                      Custom Symbol Rules (e.g. "Use symbols for these types of prompts")
+                    </label>
+                    <textarea
+                      value={aiSettings.customSymbolRules || ''}
+                      onChange={(e) => handleUpdateAiSettings({ customSymbolRules: e.target.value })}
+                      placeholder="e.g. Always use bullet symbols (➔, ★, ◆, ⚡) for key takeaways, use ASCII box diagrams for systems, or use [NOTE] / [WARN] tags..."
+                      rows={2}
+                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400 resize-none"
+                    />
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      <span className="text-[11px] text-zinc-500">Quick insert:</span>
+                      {['➔ Arrow headers', '★ Star rankings', '◆ Diamond bullets', '⚡ Lightning speed notes', '⚙ System tags'].map((sym, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => {
+                            const cur = aiSettings.customSymbolRules || '';
+                            handleUpdateAiSettings({
+                              customSymbolRules: cur ? `${cur}\n- ${sym}` : `- ${sym}`,
+                            });
+                          }}
+                          className="text-[10px] px-2 py-0.5 rounded bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors"
+                        >
+                          + {sym}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* General Custom Instructions Prompt */}
+                  <div className="space-y-1.5 pt-2 border-t border-zinc-800">
+                    <label className="text-xs font-semibold text-zinc-300 block">
+                      General Custom AI Instructions
+                    </label>
+                    <textarea
+                      value={aiSettings.customPrompt}
+                      onChange={(e) => handleUpdateAiSettings({ customPrompt: e.target.value })}
+                      placeholder="Enter any additional rules or background context for Jack's cough (e.g. Always format code in TypeScript, solve math step-by-step, roast my homework, etc.)..."
+                      rows={3}
+                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400 resize-none"
+                    />
+                  </div>
+                </div>
+
+                {aiSettingsToast && (
+                  <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-300 text-xs border border-emerald-500/30 flex items-center gap-2">
+                    <Check className="w-4 h-4 text-emerald-400" />
+                    <span>Jack's cough settings updated and active!</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Ban Appeal Box */}
+          {onOpenAppealModal && (
+            <div className="p-4 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-white">Account Restrictions & Appeals</h2>
+                <p className="text-xs text-zinc-400">Submit a formal appeal if your account was muted or restricted.</p>
+              </div>
               <button
-                onClick={() => handleExtractTheme()}
-                disabled={isExtractingColors}
-                className="px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-emerald-500 hover:brightness-110 text-black font-extrabold text-xs rounded-xl shadow-lg shadow-cyan-500/20 transition-all flex items-center space-x-2 disabled:opacity-50 whitespace-nowrap"
+                type="button"
+                onClick={onOpenAppealModal}
+                className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-medium border border-zinc-700 transition-colors cursor-pointer"
               >
-                <RefreshCw className={`w-4 h-4 ${isExtractingColors ? 'animate-spin' : ''}`} />
-                <span>{isExtractingColors ? 'Extracting Theme...' : 'Detect & Apply Wallpaper Theme'}</span>
+                Submit Appeal
               </button>
             </div>
-
-            {/* Extracted Color Swatches Preview */}
-            {extractedTheme && (
-              <div className="pt-3 border-t border-zinc-800/80 flex flex-wrap items-center gap-4">
-                <span className="text-xs font-mono text-zinc-400">Active Theme Palette:</span>
-
-                <div className="flex items-center space-x-2 bg-zinc-950 px-3 py-1.5 rounded-xl border border-zinc-800 text-xs font-mono">
-                  <span className="w-3.5 h-3.5 rounded-full border border-white/20" style={{ backgroundColor: extractedTheme.primary }} />
-                  <span className="text-zinc-300">Primary: {extractedTheme.primary}</span>
-                </div>
-
-                <div className="flex items-center space-x-2 bg-zinc-950 px-3 py-1.5 rounded-xl border border-zinc-800 text-xs font-mono">
-                  <span className="w-3.5 h-3.5 rounded-full border border-white/20" style={{ backgroundColor: extractedTheme.accent }} />
-                  <span className="text-zinc-300">Accent: {extractedTheme.accent}</span>
-                </div>
-
-                <div className="flex items-center space-x-2 bg-zinc-950 px-3 py-1.5 rounded-xl border border-zinc-800 text-xs font-mono">
-                  <span className="w-3.5 h-3.5 rounded-full border border-white/20" style={{ backgroundColor: extractedTheme.highlight }} />
-                  <span className="text-zinc-300">Highlight: {extractedTheme.highlight}</span>
-                </div>
-
-                <div className="flex items-center space-x-2 bg-zinc-950 px-3 py-1.5 rounded-xl border border-zinc-800 text-xs font-mono">
-                  <span className="w-3.5 h-3.5 rounded-full border border-white/20" style={{ backgroundColor: extractedTheme.glow }} />
-                  <span className="text-zinc-300">Glow Aura</span>
-                </div>
-              </div>
-            )}
-          </div>
+          )}
         </div>
       </div>
     </div>
   );
 };
-

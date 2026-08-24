@@ -1,18 +1,20 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { AI_MODELS } from '../data/portalData';
-import { AiModelOption } from '../types';
 import {
-  Bot,
-  Send,
+  AiModelOption,
+  AiPersonalitySettings,
+  AiSpeakingStyle,
+  AiResponseSpeed,
+  AiEmojiMode,
+} from '../types';
+import {
   Sparkles,
   ChevronDown,
   Copy,
   Check,
   Code,
   BookOpen,
-  Calculator,
-  PenTool,
-  RotateCcw,
+  Send,
   User,
   Zap,
   Search,
@@ -23,25 +25,43 @@ import {
   Download,
   FileCode,
   Eye,
-  Play,
   Maximize2,
-  Minimize2,
   RefreshCw,
   Monitor,
   Smartphone,
   Tablet,
   Terminal,
   Code2,
-  ExternalLink,
   Paperclip,
   Image as ImageIcon,
   Camera,
   FileText,
-  File,
   Trash2,
-  UploadCloud,
+  Plus,
+  MessageSquare,
+  PanelLeftClose,
+  PanelLeft,
+  ArrowUp,
+  ThumbsUp,
+  ThumbsDown,
+  RotateCcw,
+  Compass,
+  Lightbulb,
+  Sliders,
+  Brain,
+  Smile,
+  Hash,
+  Settings,
+  Bot,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import {
+  getSavedAiSettings,
+  saveAiSettings,
+  generateSystemInstruction,
+  JACKS_COUGH_CATCHPHRASES,
+  getRandomCatchphrase,
+} from '../utils/aiSettings';
 
 export interface AttachedFile {
   id: string;
@@ -61,6 +81,14 @@ interface ChatTurn {
   modelUsed?: string;
   timestamp: string;
   attachments?: AttachedFile[];
+}
+
+export interface ChatSession {
+  id: string;
+  title: string;
+  updatedAt: number;
+  modelId: string;
+  messages: ChatTurn[];
 }
 
 const CATEGORIES = [
@@ -172,9 +200,8 @@ const CodeBlockPreviewItem: React.FC<{ codeText: string; lang: string }> = ({ co
         if (typeof App !== 'undefined') {
           ReactDOM.createRoot(document.getElementById('root')).render(<App />);
         } else {
-          // Render any available component or function
           const rootEl = document.getElementById('root');
-          rootEl.innerHTML = '<div class="p-4 bg-amber-500/10 border border-amber-500/30 text-amber-300 rounded-xl font-mono text-xs">✓ Script Loaded & Executed. Defined components ready.</div>';
+          rootEl.innerHTML = '<div class="p-4 bg-zinc-900 border border-zinc-700 text-zinc-300 rounded-xl font-mono text-xs">✓ Script executed successfully.</div>';
         }
       } catch (err) {
         document.getElementById('root').innerHTML = '<div class="p-4 bg-red-950/80 border border-red-800 text-red-200 font-mono text-xs rounded-xl"><strong>Preview Error:</strong> ' + err.message + '</div>';
@@ -185,21 +212,7 @@ const CodeBlockPreviewItem: React.FC<{ codeText: string; lang: string }> = ({ co
       }
     }
 
-    // HTML / standard code
     if (codeText.includes('<html') || codeText.includes('<body') || codeText.includes('<div') || isHtmlSvg) {
-      if (!codeText.includes('tailwindcss.com')) {
-        return `<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>body { background-color: #09090b; color: #f4f4f5; font-family: system-ui, -apple-system, sans-serif; padding: 1.25rem; }</style>
-  </head>
-  <body>
-    ${codeText}
-  </body>
-</html>`;
-      }
       return codeText;
     }
 
@@ -222,79 +235,59 @@ const CodeBlockPreviewItem: React.FC<{ codeText: string; lang: string }> = ({ co
     viewport === 'mobile' ? 'max-w-[375px]' : viewport === 'tablet' ? 'max-w-[768px]' : 'w-full';
 
   return (
-    <div className="my-3 rounded-2xl overflow-hidden border border-zinc-800 bg-zinc-950 shadow-2xl transition-all">
-      {/* Code Header with Mode Tabs & Action Tools */}
+    <div className="my-3 rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950 shadow-md">
+      {/* Code Header in ChatGPT style */}
       <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 bg-zinc-900 border-b border-zinc-800 text-xs font-mono">
         <div className="flex items-center space-x-3">
-          {/* Lang badge */}
-          <div className="flex items-center space-x-1.5 text-amber-400 font-bold">
-            <FileCode className="w-3.5 h-3.5" />
-            <span className="uppercase tracking-wider text-[11px]">{lang}</span>
-          </div>
-
-          {/* Toggle Code / Live Preview */}
+          <span className="text-zinc-400 uppercase font-semibold text-[11px]">{lang}</span>
           {canPreview && (
             <div className="flex items-center p-0.5 rounded-lg bg-zinc-950 border border-zinc-800 text-[11px]">
               <button
                 type="button"
                 onClick={() => setActiveTab('code')}
-                className={`flex items-center space-x-1 px-2.5 py-1 rounded-md transition-all font-sans font-semibold ${
-                  activeTab === 'code'
-                    ? 'bg-zinc-800 text-amber-300 shadow'
-                    : 'text-zinc-400 hover:text-zinc-200'
+                className={`px-2 py-0.5 rounded-md font-sans text-xs transition-colors ${
+                  activeTab === 'code' ? 'bg-zinc-800 text-white font-medium' : 'text-zinc-400 hover:text-zinc-200'
                 }`}
               >
-                <Code2 className="w-3 h-3" />
-                <span>Code</span>
+                Code
               </button>
               <button
                 type="button"
                 onClick={() => setActiveTab('preview')}
-                className={`flex items-center space-x-1 px-2.5 py-1 rounded-md transition-all font-sans font-semibold ${
-                  activeTab === 'preview'
-                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow'
-                    : 'text-zinc-400 hover:text-zinc-200'
+                className={`px-2 py-0.5 rounded-md font-sans text-xs transition-colors ${
+                  activeTab === 'preview' ? 'bg-zinc-800 text-white font-medium' : 'text-zinc-400 hover:text-zinc-200'
                 }`}
               >
-                {isTerminalLang ? <Terminal className="w-3 h-3 text-emerald-400" /> : <Eye className="w-3 h-3 text-amber-400" />}
-                <span>{isTerminalLang ? 'Run Output' : 'Live Preview'}</span>
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse ml-0.5" />
+                {isTerminalLang ? 'Output' : 'Preview'}
               </button>
             </div>
           )}
         </div>
 
-        {/* Toolbar Controls */}
         <div className="flex items-center space-x-1.5">
           {activeTab === 'preview' && !isTerminalLang && (
-            <div className="hidden sm:flex items-center space-x-1 mr-2 px-1 py-0.5 rounded-lg bg-zinc-950 border border-zinc-800">
+            <div className="hidden sm:flex items-center space-x-1 mr-2 px-1 py-0.5 rounded bg-zinc-950 border border-zinc-800">
               <button
                 type="button"
                 onClick={() => setViewport('responsive')}
-                className={`p-1 rounded transition-colors ${
-                  viewport === 'responsive' ? 'text-amber-400 bg-zinc-800' : 'text-zinc-500 hover:text-zinc-300'
-                }`}
-                title="Full Responsive"
+                className={`p-1 rounded ${viewport === 'responsive' ? 'text-white bg-zinc-800' : 'text-zinc-500 hover:text-zinc-300'}`}
+                title="Responsive"
               >
                 <Monitor className="w-3 h-3" />
               </button>
               <button
                 type="button"
                 onClick={() => setViewport('tablet')}
-                className={`p-1 rounded transition-colors ${
-                  viewport === 'tablet' ? 'text-amber-400 bg-zinc-800' : 'text-zinc-500 hover:text-zinc-300'
-                }`}
-                title="Tablet View (768px)"
+                className={`p-1 rounded ${viewport === 'tablet' ? 'text-white bg-zinc-800' : 'text-zinc-500 hover:text-zinc-300'}`}
+                title="Tablet"
               >
                 <Tablet className="w-3 h-3" />
               </button>
               <button
                 type="button"
                 onClick={() => setViewport('mobile')}
-                className={`p-1 rounded transition-colors ${
-                  viewport === 'mobile' ? 'text-amber-400 bg-zinc-800' : 'text-zinc-500 hover:text-zinc-300'
-                }`}
-                title="Mobile View (375px)"
+                className={`p-1 rounded ${viewport === 'mobile' ? 'text-white bg-zinc-800' : 'text-zinc-500 hover:text-zinc-300'}`}
+                title="Mobile"
               >
                 <Smartphone className="w-3 h-3" />
               </button>
@@ -305,8 +298,8 @@ const CodeBlockPreviewItem: React.FC<{ codeText: string; lang: string }> = ({ co
             <button
               type="button"
               onClick={() => setRefreshKey((k) => k + 1)}
-              className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-all text-[11px]"
-              title="Refresh Preview"
+              className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white"
+              title="Refresh"
             >
               <RefreshCw className="w-3 h-3" />
             </button>
@@ -316,8 +309,8 @@ const CodeBlockPreviewItem: React.FC<{ codeText: string; lang: string }> = ({ co
             <button
               type="button"
               onClick={() => setIsFullscreen(!isFullscreen)}
-              className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-amber-400 hover:text-amber-300 transition-all text-[11px]"
-              title="Fullscreen Preview"
+              className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white"
+              title="Fullscreen"
             >
               <Maximize2 className="w-3 h-3" />
             </button>
@@ -326,17 +319,17 @@ const CodeBlockPreviewItem: React.FC<{ codeText: string; lang: string }> = ({ co
           <button
             type="button"
             onClick={handleCopy}
-            className="flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-all text-[11px]"
+            className="flex items-center space-x-1 px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-[11px]"
           >
             {copied ? (
               <>
                 <Check className="w-3 h-3 text-emerald-400" />
-                <span className="text-emerald-400 font-semibold">Copied</span>
+                <span className="text-emerald-400">Copied</span>
               </>
             ) : (
               <>
                 <Copy className="w-3 h-3" />
-                <span>Copy</span>
+                <span>Copy code</span>
               </>
             )}
           </button>
@@ -344,48 +337,33 @@ const CodeBlockPreviewItem: React.FC<{ codeText: string; lang: string }> = ({ co
           <button
             type="button"
             onClick={() => downloadCodeFile(codeText, lang)}
-            className="flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 transition-all text-[11px] font-medium"
-            title="Download Code File"
+            className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-[11px]"
+            title="Download file"
           >
             <Download className="w-3 h-3" />
-            <span className="hidden sm:inline">Download</span>
           </button>
         </div>
       </div>
 
-      {/* Main Body */}
       {activeTab === 'code' ? (
-        <pre className="p-4 overflow-x-auto text-xs font-mono text-zinc-200 leading-relaxed whitespace-pre bg-black/80 selection:bg-amber-500/30 max-h-[450px]">
+        <pre className="p-4 overflow-x-auto text-xs font-mono text-zinc-200 leading-relaxed whitespace-pre bg-zinc-950 max-h-[450px]">
           <code>{codeText}</code>
         </pre>
       ) : isTerminalLang ? (
-        /* Terminal Execution Runner Preview */
-        <div className="p-4 bg-black/90 font-mono text-xs text-zinc-300 space-y-3">
-          <div className="flex items-center justify-between text-[11px] text-zinc-500 pb-2 border-b border-zinc-800">
-            <span className="text-emerald-400 font-bold flex items-center space-x-1">
-              <Terminal className="w-3 h-3" />
-              <span>yunø-sandbox@ai-runner:~$ {normalizedLang} script.{getFileExtension(lang)}</span>
-            </span>
-            <span className="text-zinc-500">Exit: 0 (12ms)</span>
-          </div>
-          <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800/80 text-zinc-200 overflow-x-auto space-y-1">
-            <div className="text-zinc-500 text-[10px] uppercase font-bold tracking-wider mb-1">
-              --- Terminal Output ---
-            </div>
-            <pre className="text-xs text-emerald-300 font-mono leading-relaxed whitespace-pre-wrap">
-              {codeText.length > 500 ? codeText.slice(0, 500) + '\n... [Process completed successfully]' : codeText}
-            </pre>
-          </div>
+        <div className="p-4 bg-zinc-950 font-mono text-xs text-zinc-300 space-y-2">
+          <div className="text-zinc-500 text-[11px]">Output:</div>
+          <pre className="text-xs text-zinc-200 leading-relaxed whitespace-pre-wrap">
+            {codeText.length > 500 ? codeText.slice(0, 500) + '\n... [Done]' : codeText}
+          </pre>
         </div>
       ) : (
-        /* Web Live Preview Canvas */
-        <div className="p-3 bg-zinc-950 flex flex-col items-center justify-center min-h-[320px] transition-all">
-          <div className={`transition-all duration-300 mx-auto bg-black rounded-xl border border-zinc-800 overflow-hidden shadow-2xl ${viewportWidthClass}`}>
+        <div className="p-3 bg-zinc-950 flex flex-col items-center justify-center min-h-[300px]">
+          <div className={`transition-all duration-300 mx-auto bg-black rounded-lg border border-zinc-800 overflow-hidden ${viewportWidthClass}`}>
             <iframe
               key={refreshKey}
               srcDoc={generateSrcDoc()}
-              title="Live Code Preview"
-              className="w-full h-[360px] border-none bg-zinc-950"
+              title="Code Preview"
+              className="w-full h-[320px] border-none bg-zinc-950"
               sandbox="allow-scripts allow-modals"
             />
           </div>
@@ -395,61 +373,38 @@ const CodeBlockPreviewItem: React.FC<{ codeText: string; lang: string }> = ({ co
       {/* Fullscreen Preview Modal */}
       <AnimatePresence>
         {isFullscreen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/95 backdrop-blur-2xl flex flex-col"
-          >
-            {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-950">
-              <div className="flex items-center space-x-3">
-                <span className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                  <Eye className="w-5 h-5" />
-                </span>
-                <div>
-                  <h3 className="text-sm font-bold text-white flex items-center space-x-2">
-                    <span>Live Code Preview</span>
-                    <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-mono border border-amber-500/30 uppercase">
-                      {lang}
-                    </span>
-                  </h3>
-                  <p className="text-xs text-zinc-400">Interactive live output sandbox preview</p>
-                </div>
-              </div>
-
+          <div className="fixed inset-0 z-50 bg-black/95 flex flex-col">
+            <div className="flex items-center justify-between px-6 py-3 border-b border-zinc-800 bg-zinc-950">
+              <span className="text-sm font-semibold text-white">Live Code Preview ({lang})</span>
               <div className="flex items-center space-x-2">
                 <button
                   type="button"
                   onClick={() => setRefreshKey((k) => k + 1)}
-                  className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white text-xs font-semibold"
+                  className="px-3 py-1.5 rounded-lg bg-zinc-900 text-zinc-300 hover:text-white text-xs border border-zinc-800"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Refresh</span>
+                  Refresh
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsFullscreen(false)}
-                  className="p-2 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white transition-colors"
+                  className="p-1.5 rounded-lg bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
             </div>
-
-            {/* Modal Body */}
             <div className="flex-1 p-6 flex items-center justify-center overflow-auto bg-zinc-900/50">
-              <div className={`w-full h-full max-w-6xl max-h-[85vh] bg-black rounded-2xl border border-zinc-800 overflow-hidden shadow-2xl transition-all ${viewportWidthClass}`}>
+              <div className="w-full h-full max-w-6xl max-h-[85vh] bg-black rounded-xl border border-zinc-800 overflow-hidden">
                 <iframe
                   key={refreshKey}
                   srcDoc={generateSrcDoc()}
-                  title="Fullscreen Live Code Preview"
+                  title="Fullscreen Preview"
                   className="w-full h-full border-none bg-zinc-950"
                   sandbox="allow-scripts allow-modals"
                 />
               </div>
             </div>
-          </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>
@@ -460,7 +415,7 @@ const FormattedMessage: React.FC<{ content: string }> = ({ content }) => {
   const parts = content.split(/(```[\s\S]*?```)/g);
 
   return (
-    <div className="space-y-3 font-sans text-xs sm:text-sm">
+    <div className="space-y-3 font-sans text-sm text-zinc-200 leading-relaxed">
       {parts.map((part, idx) => {
         if (part.startsWith('```') && part.endsWith('```')) {
           const inner = part.slice(3, -3);
@@ -475,9 +430,46 @@ const FormattedMessage: React.FC<{ content: string }> = ({ content }) => {
           return <CodeBlockPreviewItem key={idx} codeText={codeText} lang={lang} />;
         }
 
+        // Render basic markdown like bold text, bullet points, headers
+        const lines = part.split('\n');
         return (
-          <div key={idx} className="whitespace-pre-wrap leading-relaxed">
-            {part}
+          <div key={idx} className="space-y-1.5">
+            {lines.map((line, lineIdx) => {
+              if (line.startsWith('### ')) {
+                return (
+                  <h3 key={lineIdx} className="text-base font-semibold text-white mt-3 mb-1">
+                    {line.replace('### ', '')}
+                  </h3>
+                );
+              }
+              if (line.startsWith('## ')) {
+                return (
+                  <h2 key={lineIdx} className="text-lg font-bold text-white mt-4 mb-1">
+                    {line.replace('## ', '')}
+                  </h2>
+                );
+              }
+              if (line.startsWith('# ')) {
+                return (
+                  <h1 key={lineIdx} className="text-xl font-bold text-white mt-4 mb-2">
+                    {line.replace('# ', '')}
+                  </h1>
+                );
+              }
+              if (line.trim().startsWith('* ') || line.trim().startsWith('- ')) {
+                return (
+                  <div key={lineIdx} className="flex items-start space-x-2 pl-2">
+                    <span className="text-zinc-400 mt-1.5 text-[8px]">•</span>
+                    <span>{line.replace(/^(\* |- )/, '')}</span>
+                  </div>
+                );
+              }
+              return (
+                <p key={lineIdx} className="min-h-[1rem]">
+                  {line}
+                </p>
+              );
+            })}
           </div>
         );
       })}
@@ -485,28 +477,125 @@ const FormattedMessage: React.FC<{ content: string }> = ({ content }) => {
   );
 };
 
+const ClaudeSunburstIcon: React.FC<{ className?: string }> = ({ className = 'w-11 h-11 text-[#e07a5f]' }) => {
+  const angles = [0, 22.5, 45, 67.5, 90, 112.5, 135, 157.5];
+  return (
+    <svg
+      viewBox="-20 -20 40 40"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.8"
+      strokeLinecap="round"
+    >
+      {angles.map((angle) => (
+        <line
+          key={`ray-a-${angle}`}
+          x1="0"
+          y1="-5.5"
+          x2="0"
+          y2="-15.5"
+          transform={`rotate(${angle})`}
+        />
+      ))}
+      {angles.map((angle) => (
+        <line
+          key={`ray-b-${angle}`}
+          x1="0"
+          y1="5.5"
+          x2="0"
+          y2="15.5"
+          transform={`rotate(${angle})`}
+        />
+      ))}
+    </svg>
+  );
+};
+
 interface AiViewProps {
-  onGrantAdmin?: () => void;
-  onUnlockPrivateChat?: () => void;
-  onUnlockHalo?: () => void;
 }
 
-export const AiView: React.FC<AiViewProps> = ({ onGrantAdmin, onUnlockPrivateChat, onUnlockHalo }) => {
+export const AiView: React.FC<AiViewProps> = () => {
   const [selectedModel, setSelectedModel] = useState<AiModelOption>(AI_MODELS[0]);
   const [isModelModalOpen, setIsModelModalOpen] = useState(false);
+  const [isAiSettingsModalOpen, setIsAiSettingsModalOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState('All Models');
   const [modelSearchQuery, setModelSearchQuery] = useState('');
   const [promptInput, setPromptInput] = useState('');
-  const [messages, setMessages] = useState<ChatTurn[]>([
-    {
-      id: 'welcome-msg',
-      role: 'model',
-      content:
-        'Hello! I am **Yunø AI**. I can assist with schoolwork, write code, analyze math problems, summarize documents, or help generate creative ideas. Choose an AI model above and ask anything!',
-      modelUsed: AI_MODELS[0].name,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    },
-  ]);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [searchChatHistory, setSearchChatHistory] = useState('');
+  const [aiSettings, setAiSettings] = useState<AiPersonalitySettings>(getSavedAiSettings);
+  const [newMemoryInput, setNewMemoryInput] = useState('');
+  const [settingsSavedToast, setSettingsSavedToast] = useState(false);
+
+  // Catchphrase state for greetings - single catchphrase randomized
+  const [activeCatchphrase, setActiveCatchphrase] = useState<string>(() =>
+    getRandomCatchphrase(getSavedAiSettings().userCallSign || 'user')
+  );
+
+  const shuffleCatchphrase = () => {
+    setActiveCatchphrase(getRandomCatchphrase(aiSettings.userCallSign || 'user'));
+  };
+
+  const handleUpdateAiSettings = (partial: Partial<AiPersonalitySettings>) => {
+    const updated = { ...aiSettings, ...partial };
+    setAiSettings(updated);
+    saveAiSettings(updated);
+    setSettingsSavedToast(true);
+    setTimeout(() => setSettingsSavedToast(false), 2000);
+  };
+
+  const handleAddMemory = () => {
+    if (!newMemoryInput.trim()) return;
+    const current = aiSettings.memories || [];
+    if (!current.includes(newMemoryInput.trim())) {
+      handleUpdateAiSettings({ memories: [...current, newMemoryInput.trim()] });
+      setNewMemoryInput('');
+    }
+  };
+
+  const handleRemoveMemory = (index: number) => {
+    const current = [...(aiSettings.memories || [])];
+    current.splice(index, 1);
+    handleUpdateAiSettings({ memories: current });
+  };
+
+  // Chat Sessions Persistence State - with thorough /e douche sanitization
+  const [sessions, setSessions] = useState<ChatSession[]>(() => {
+    try {
+      const saved = localStorage.getItem('yuno_ai_chat_sessions_chatgpt');
+      if (saved) {
+        let parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          parsed = parsed
+            .map((session) => ({
+              ...session,
+              messages: (session.messages || []).filter((msg: any) => {
+                const text = String(msg?.content || '').toLowerCase();
+                return !text.includes('/e douche') && !text.includes('douche');
+              }),
+            }))
+            .filter((session) => {
+              const title = String(session?.title || '').toLowerCase();
+              return !title.includes('/e douche') && !title.includes('douche');
+            });
+
+          if (parsed.length > 0) return parsed;
+        }
+      }
+    } catch (e) {}
+    return [
+      {
+        id: 'session-' + Date.now(),
+        title: 'New chat',
+        updatedAt: Date.now(),
+        modelId: AI_MODELS[0].id,
+        messages: [],
+      },
+    ];
+  });
+
+  const [activeSessionId, setActiveSessionId] = useState<string>(() => sessions[0]?.id || 'session-1');
   const [isGenerating, setIsGenerating] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
@@ -515,12 +604,49 @@ export const AiView: React.FC<AiViewProps> = ({ onGrantAdmin, onUnlockPrivateCha
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Active Session and Messages
+  const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0];
+  const messages = activeSession ? activeSession.messages : [];
+
+  // Clear any residual prompt or corrupted /e douche storage on mount
+  useEffect(() => {
+    setPromptInput('');
+    try {
+      const raw = localStorage.getItem('yuno_ai_chat_sessions_chatgpt');
+      if (raw && (raw.toLowerCase().includes('/e douche') || raw.toLowerCase().includes('douche'))) {
+        const cleaned = sessions.map((session) => ({
+          ...session,
+          messages: (session.messages || []).filter((msg) => {
+            const text = String(msg.content || '').toLowerCase();
+            return !text.includes('/e douche') && !text.includes('douche');
+          }),
+        }));
+        localStorage.setItem('yuno_ai_chat_sessions_chatgpt', JSON.stringify(cleaned));
+      }
+    } catch (e) {}
+  }, []);
+
+  // Save sessions to localStorage whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem('yuno_ai_chat_sessions_chatgpt', JSON.stringify(sessions));
+    } catch (e) {}
+  }, [sessions]);
+
+  // Shuffle catchphrase when active session changes to an empty session
+  useEffect(() => {
+    if (messages.length === 0) {
+      shuffleCatchphrase();
+    }
+  }, [activeSessionId]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isGenerating]);
 
-  // Support pasting images or files directly into AI assistant
+  // Support pasting images or files directly
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
       if (!e.clipboardData) return;
@@ -539,10 +665,70 @@ export const AiView: React.FC<AiViewProps> = ({ onGrantAdmin, onUnlockPrivateCha
     return () => window.removeEventListener('paste', handlePaste);
   }, []);
 
+  const updateActiveSessionMessages = (newMsgs: ChatTurn[] | ((prev: ChatTurn[]) => ChatTurn[])) => {
+    setSessions((prevSessions) => {
+      return prevSessions.map((s) => {
+        if (s.id === activeSessionId) {
+          const updatedMsgs = typeof newMsgs === 'function' ? newMsgs(s.messages) : newMsgs;
+          let title = s.title;
+          if (title === 'New chat' || title === 'New Chat') {
+            const firstUserTurn = updatedMsgs.find((m) => m.role === 'user');
+            if (firstUserTurn && firstUserTurn.content) {
+              title = firstUserTurn.content.slice(0, 30) + (firstUserTurn.content.length > 30 ? '...' : '');
+            }
+          }
+          return {
+            ...s,
+            title,
+            messages: updatedMsgs,
+            updatedAt: Date.now(),
+          };
+        }
+        return s;
+      });
+    });
+  };
+
+  const handleCreateNewChat = () => {
+    const newSession: ChatSession = {
+      id: 'session-' + Date.now(),
+      title: 'New chat',
+      updatedAt: Date.now(),
+      modelId: selectedModel.id,
+      messages: [],
+    };
+    setSessions((prev) => [newSession, ...prev]);
+    setActiveSessionId(newSession.id);
+    setActiveCatchphrase(getRandomCatchphrase(aiSettings.userCallSign || 'user'));
+  };
+
+  const handleDeleteSession = (sessionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSessions((prev) => {
+      const filtered = prev.filter((s) => s.id !== sessionId);
+      if (filtered.length === 0) {
+        const fresh: ChatSession = {
+          id: 'session-' + Date.now(),
+          title: 'New chat',
+          updatedAt: Date.now(),
+          modelId: selectedModel.id,
+          messages: [],
+        };
+        setActiveSessionId(fresh.id);
+        setActiveCatchphrase(getRandomCatchphrase(aiSettings.userCallSign || 'user'));
+        return [fresh];
+      }
+      if (sessionId === activeSessionId) {
+        setActiveSessionId(filtered[0].id);
+      }
+      return filtered;
+    });
+  };
+
   const processFiles = (files: FileList | File[]) => {
     Array.from(files).forEach((file) => {
-      if (file.size > 15 * 1024 * 1024) {
-        alert(`File "${file.name}" exceeds 15MB limit.`);
+      if (file.size > 20 * 1024 * 1024) {
+        alert(`File "${file.name}" exceeds 20MB limit.`);
         return;
       }
       const isImage = file.type.startsWith('image/');
@@ -632,92 +818,29 @@ export const AiView: React.FC<AiViewProps> = ({ onGrantAdmin, onUnlockPrivateCha
     const userTurn: ChatTurn = {
       id: Date.now().toString(),
       role: 'user',
-      content: textToSend || (currentAtts.length > 0 ? '[Uploaded Attachments/Screenshots]' : ''),
+      content: textToSend || (currentAtts.length > 0 ? 'Analyze attached file' : ''),
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       attachments: currentAtts,
     };
 
-    setMessages((prev) => [...prev, userTurn]);
+    updateActiveSessionMessages((prev) => [...prev, userTurn]);
     if (!customPrompt) setPromptInput('');
-
-    // Check for secret admin override phrase
-    if (textToSend.trim().toLowerCase() === '/e give admin code 2012') {
-      let isAuth = false;
-      try {
-        const saved = localStorage.getItem('yuno_user_profile');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          const uname = (parsed.username || parsed.displayName || '').trim().toLowerCase();
-          if (uname === 'yuno' || uname === 'yuno dev isa' || uname === 'isaman' || uname.startsWith('yuno') || uname.startsWith('isaman')) {
-            isAuth = true;
-          }
-        }
-      } catch (e) {}
-
-      if (isAuth) {
-        try {
-          localStorage.setItem('yuno_is_admin', 'true');
-        } catch (e) {}
-        if (onGrantAdmin) onGrantAdmin();
-        const secretTurn: ChatTurn = {
-          id: (Date.now() + 1).toString(),
-          role: 'model',
-          content: '🔓 **SECRET OVERRIDE DETECTED.** Clearance verified for admin user. Developer & Admin Control Panel privileges granted.',
-          modelUsed: selectedModel.name,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        };
-        setMessages((prev) => [...prev, secretTurn]);
-      } else {
-        const deniedTurn: ChatTurn = {
-          id: (Date.now() + 1).toString(),
-          role: 'model',
-          content: '⛔ **ACCESS DENIED.** Developer & Admin Control Panel privileges are strictly restricted to verified administrators (`yuno` or `isaman`). Please update your username in Edit Profile first.',
-          modelUsed: selectedModel.name,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        };
-        setMessages((prev) => [...prev, deniedTurn]);
-      }
-      return;
-    }
-
-    // Check for secret private chatroom & watch party unlock command
-    if (textToSend.trim().toLowerCase() === '/e douche') {
-      if (onUnlockPrivateChat) onUnlockPrivateChat();
-      const secretTurn: ChatTurn = {
-        id: (Date.now() + 1).toString(),
-        role: 'model',
-        content: '🔓 **VIP ACCESS GRANTED.** Secret Private Chatroom & Movie Watch Party tab has been unlocked! Check your navigation bar for "VIP Watch Party".',
-        modelUsed: selectedModel.name,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-      setMessages((prev) => [...prev, secretTurn]);
-      return;
-    }
-
-    // Check for secret Christian AI companion "Halo" unlock command
-    if (textToSend.trim().toLowerCase() === '/e jesus') {
-      if (onUnlockHalo) onUnlockHalo();
-      const secretTurn: ChatTurn = {
-        id: (Date.now() + 1).toString(),
-        role: 'model',
-        content: '✨ **HALO MODE UNLOCKED.** Welcome to **Halo** — your confidential, judgment-free Christian AI companion & Bible study mentor. Check your navigation bar for "Halo Faith AI" or speak by saying "Halo [your message]".',
-        modelUsed: selectedModel.name,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-      setMessages((prev) => [...prev, secretTurn]);
-      return;
-    }
 
     setIsGenerating(true);
 
     try {
+      const aiPrefs = getSavedAiSettings();
+      const userMoniker = aiPrefs.userCallSign?.trim() || 'user';
+      const sysInstruction = generateSystemInstruction(aiPrefs, userMoniker);
+
       const response = await fetch('/api/gemini/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: textToSend || 'Please analyze the attached files/screenshots.',
+          prompt: textToSend || 'Please analyze the attached image or file.',
           model: selectedModel.id,
-          history: messages.slice(-6).map((m) => ({
+          systemInstruction: sysInstruction,
+          history: messages.slice(-10).map((m) => ({
             role: m.role,
             content: m.content,
           })),
@@ -741,17 +864,17 @@ export const AiView: React.FC<AiViewProps> = ({ onGrantAdmin, onUnlockPrivateCha
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
 
-      setMessages((prev) => [...prev, aiTurn]);
+      updateActiveSessionMessages((prev) => [...prev, aiTurn]);
     } catch (err: any) {
       console.error('Failed to query AI:', err);
       const errorTurn: ChatTurn = {
         id: (Date.now() + 1).toString(),
         role: 'model',
-        content: '⚠️ Failed to connect to Yunø AI server. Please verify your network connection or API settings.',
+        content: 'I encountered an issue connecting to the AI service. Please check your network connection.',
         modelUsed: selectedModel.name,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
-      setMessages((prev) => [...prev, errorTurn]);
+      updateActiveSessionMessages((prev) => [...prev, errorTurn]);
     } finally {
       setIsGenerating(false);
     }
@@ -763,390 +886,722 @@ export const AiView: React.FC<AiViewProps> = ({ onGrantAdmin, onUnlockPrivateCha
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const clearChat = () => {
-    setMessages([
-      {
-        id: Date.now().toString(),
-        role: 'model',
-        content: 'Chat session reset. What would you like to build or explore next?',
-        modelUsed: selectedModel.name,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      },
-    ]);
-  };
-
   const filteredModels = AI_MODELS.filter((model) => {
     const matchesCategory =
       activeCategory === 'All Models' || model.category === activeCategory;
     const matchesSearch =
       model.name.toLowerCase().includes(modelSearchQuery.toLowerCase()) ||
       model.provider.toLowerCase().includes(modelSearchQuery.toLowerCase()) ||
-      model.description.toLowerCase().includes(modelSearchQuery.toLowerCase()) ||
-      (model.badge && model.badge.toLowerCase().includes(modelSearchQuery.toLowerCase()));
+      model.description.toLowerCase().includes(modelSearchQuery.toLowerCase());
     return matchesCategory && matchesSearch;
   });
 
+  const filteredSessions = sessions.filter((s) =>
+    s.title.toLowerCase().includes(searchChatHistory.toLowerCase())
+  );
+
   return (
-    <div className="flex flex-col h-[calc(100vh-6rem)] max-w-5xl mx-auto pb-4 relative">
-      {/* Top AI Controls Bar */}
-      <div className="flex items-center justify-between p-3.5 bg-zinc-900/95 border border-zinc-800 rounded-2xl backdrop-blur-xl mb-4 shadow-xl">
-        {/* Model Selector Modal Trigger Button */}
-        <button
-          onClick={() => setIsModelModalOpen(true)}
-          className="flex items-center space-x-3 px-4 py-2 bg-zinc-950 hover:bg-zinc-900 border border-amber-500/30 hover:border-amber-500/80 rounded-xl text-xs font-semibold text-white transition-all shadow-md group"
-        >
-          <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 text-black flex items-center justify-center font-bold text-xs shadow-sm">
-            <Cpu className="w-3.5 h-3.5" />
-          </div>
-          <div className="flex flex-col items-start">
-            <div className="flex items-center space-x-2">
-              <span className="font-bold text-amber-400 group-hover:text-amber-300 transition-colors">
-                {selectedModel.name}
+    <div className="flex h-[calc(100vh-5.5rem)] w-full max-w-7xl mx-auto rounded-2xl border border-zinc-800 bg-zinc-950 overflow-hidden shadow-2xl">
+      
+      {/* Jack's cough Left Sidebar */}
+      <AnimatePresence initial={false}>
+        {isSidebarOpen && (
+          <motion.aside
+            initial={{ width: 0, opacity: 0 }}
+            animate={{ width: 260, opacity: 1 }}
+            exit={{ width: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: 'easeInOut' }}
+            className="h-full bg-zinc-950 border-r border-zinc-800 flex flex-col flex-shrink-0 z-20 overflow-hidden"
+          >
+            {/* Sidebar Top / New Chat */}
+            <div className="p-3 border-b border-zinc-800/80 space-y-2">
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={handleCreateNewChat}
+                  className="flex-1 flex items-center justify-between px-3 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium border border-zinc-800 transition-colors mr-2 cursor-pointer"
+                >
+                  <span className="flex items-center space-x-2">
+                    <Plus className="w-4 h-4 text-amber-400" />
+                    <span>New chat</span>
+                  </span>
+                </button>
+                <button
+                  onClick={() => setIsSidebarOpen(false)}
+                  className="p-2 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                  title="Close sidebar"
+                >
+                  <PanelLeftClose className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* History Search */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-zinc-500" />
+                <input
+                  type="text"
+                  value={searchChatHistory}
+                  onChange={(e) => setSearchChatHistory(e.target.value)}
+                  placeholder="Search chats..."
+                  className="w-full pl-8 pr-3 py-1.5 bg-zinc-900/60 border border-zinc-800 rounded-lg text-xs text-zinc-300 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
+                />
+              </div>
+            </div>
+
+            {/* Sidebar Chat List */}
+            <div className="flex-1 overflow-y-auto p-2 space-y-1 scrollbar-thin">
+              <div className="px-2 py-1 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
+                Recent Chats
+              </div>
+              {filteredSessions.length === 0 ? (
+                <div className="p-4 text-center text-xs text-zinc-500">
+                  No chats found
+                </div>
+              ) : (
+                filteredSessions.map((session) => {
+                  const isActive = session.id === activeSessionId;
+                  return (
+                    <div
+                      key={session.id}
+                      onClick={() => setActiveSessionId(session.id)}
+                      className={`group flex items-center justify-between px-2.5 py-2 rounded-lg text-xs cursor-pointer transition-colors ${
+                        isActive
+                          ? 'bg-zinc-800 text-white font-medium'
+                          : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2 truncate pr-2">
+                        <MessageSquare className="w-3.5 h-3.5 flex-shrink-0 text-zinc-500" />
+                        <span className="truncate">{session.title || 'New chat'}</span>
+                      </div>
+                      <button
+                        onClick={(e) => handleDeleteSession(session.id, e)}
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-red-400 transition-all flex-shrink-0"
+                        title="Delete chat"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Sidebar Footer */}
+            <div className="p-3 border-t border-zinc-800/80 flex items-center justify-between text-xs text-zinc-400">
+              <span className="font-semibold text-white flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-amber-400" />
+                <span>Jack's cough</span>
               </span>
+              <span className="text-[10px] bg-zinc-900 px-2 py-0.5 rounded text-zinc-400 border border-zinc-800">
+                {sessions.length} chats
+              </span>
+            </div>
+          </motion.aside>
+        )}
+      </AnimatePresence>
+
+      {/* Main Workspace */}
+      <div className="flex-1 flex flex-col h-full min-w-0 relative bg-zinc-950">
+        
+        {/* Top Minimal Navigation Bar */}
+        <header className="h-12 border-b border-zinc-800/80 px-4 flex items-center justify-between flex-shrink-0 bg-zinc-950">
+          <div className="flex items-center space-x-3">
+            {!isSidebarOpen && (
+              <button
+                onClick={() => setIsSidebarOpen(true)}
+                className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                title="Open sidebar"
+              >
+                <PanelLeft className="w-4 h-4" />
+              </button>
+            )}
+
+            {/* Model Selector Dropdown Pill */}
+            <button
+              onClick={() => setIsModelModalOpen(true)}
+              className="flex items-center space-x-2 px-3 py-1 rounded-xl bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 text-white text-xs font-semibold transition-colors cursor-pointer"
+            >
+              <span>{selectedModel.name}</span>
               {selectedModel.badge && (
-                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">
+                <span className="text-[10px] px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 border border-zinc-700 font-mono">
                   {selectedModel.badge}
                 </span>
               )}
-            </div>
-            <span className="text-[10px] text-zinc-400">{selectedModel.provider} • Click to change model</span>
+              <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
+            </button>
           </div>
-          <ChevronDown className="w-4 h-4 text-zinc-400 group-hover:text-amber-400 transition-colors ml-2" />
-        </button>
 
-        {/* Action Buttons */}
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={() => setIsModelModalOpen(true)}
-            className="hidden sm:flex items-center space-x-1.5 px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 rounded-xl text-xs font-medium transition-all"
-          >
-            <Layers className="w-3.5 h-3.5" />
-            <span>25+ Models</span>
-          </button>
-          <button
-            onClick={clearChat}
-            className="flex items-center space-x-1.5 px-3 py-2 bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white rounded-xl text-xs transition-colors"
-            title="Clear session history"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Reset</span>
-          </button>
-        </div>
-      </div>
+          {/* Quick AI Settings & Actions */}
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setIsAiSettingsModalOpen(true)}
+              className="flex items-center space-x-1.5 px-2.5 py-1 rounded-xl bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 text-zinc-300 hover:text-white text-xs font-medium transition-colors cursor-pointer"
+              title="Configure Jack's cough personality, emojis, memory & instructions"
+            >
+              <Sliders className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">AI Settings</span>
+            </button>
 
+            <button
+              onClick={handleCreateNewChat}
+              className="p-1.5 rounded-xl hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer text-xs flex items-center space-x-1 border border-transparent hover:border-zinc-700"
+              title="New Chat"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="hidden sm:inline">New</span>
+            </button>
+          </div>
+        </header>
 
+        {/* Chat Feed Area */}
+        <div className="flex-1 overflow-y-auto px-4 py-6 scrollbar-thin">
+          <div className="max-w-3xl mx-auto space-y-6">
+            
+            {/* Empty State / Welcome Screen - Clean Centered Sunburst Icon + Single Catchphrase (Claude style) */}
+            {messages.length === 0 ? (
+              <div className="min-h-[55vh] flex flex-col items-center justify-center text-center select-none px-4 space-y-5 animate-in fade-in duration-300">
+                {/* Sunburst Icon */}
+                <button
+                  type="button"
+                  onClick={shuffleCatchphrase}
+                  className="p-1 rounded-2xl hover:bg-zinc-900/60 active:scale-95 transition-all duration-200 cursor-pointer focus:outline-none"
+                  title="Click to shuffle catchphrase"
+                >
+                  <ClaudeSunburstIcon className="w-12 h-12 text-[#e07a5f] hover:text-[#f48a6f] transition-colors" />
+                </button>
 
-      {/* Chat Messages Feed */}
-      <div className="flex-1 bg-zinc-950/90 border border-zinc-800/80 rounded-3xl p-4 sm:p-6 overflow-y-auto space-y-4 shadow-inner backdrop-blur-xl">
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex items-start space-x-3 ${
-              msg.role === 'user' ? 'justify-end' : 'justify-start'
-            }`}
-          >
-            {msg.role === 'model' && (
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-black font-bold flex-shrink-0 shadow-md mt-1">
-                <Bot className="w-4 h-4" />
+                {/* Single Catchphrase directly under AI Icon */}
+                <div
+                  onClick={shuffleCatchphrase}
+                  className="cursor-pointer group flex items-center justify-center max-w-xl"
+                  title="Click to shuffle catchphrase"
+                >
+                  <h1 className="text-2xl sm:text-3xl font-serif font-normal tracking-normal text-zinc-100 group-hover:text-amber-200 transition-colors leading-snug">
+                    {activeCatchphrase}
+                  </h1>
+                </div>
+              </div>
+            ) : (
+              messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`w-full flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  {msg.role === 'user' ? (
+                    <div className="max-w-[85%] sm:max-w-[75%] rounded-2xl bg-zinc-850 border border-zinc-750 text-white px-4 py-3 shadow-sm space-y-2">
+                      {/* Attached images / files in user bubble */}
+                      {msg.attachments && msg.attachments.length > 0 && (
+                        <div className="flex flex-wrap gap-2 pb-1">
+                          {msg.attachments.map((att) => (
+                            <div key={att.id} className="relative">
+                              {att.isImage ? (
+                                <img
+                                  src={att.dataUrl}
+                                  alt={att.name}
+                                  onClick={() => setPreviewModalImg(att.dataUrl)}
+                                  className="h-24 w-36 object-cover rounded-xl border border-zinc-700 cursor-pointer hover:opacity-90 transition-opacity"
+                                />
+                              ) : (
+                                <div className="flex items-center space-x-2 bg-zinc-900 border border-zinc-700 px-3 py-1.5 rounded-xl text-xs">
+                                  <FileText className="w-3.5 h-3.5 text-zinc-400" />
+                                  <span className="truncate max-w-[120px]">{att.name}</span>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                    </div>
+                  ) : (
+                    <div className="w-full flex items-start space-x-3.5">
+                      {/* Jack's cough Model Avatar Icon */}
+                      <div className="w-8 h-8 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-amber-400 flex-shrink-0 mt-0.5 shadow-sm">
+                        <Bot className="w-4 h-4" />
+                      </div>
+
+                      <div className="flex-1 space-y-2 min-w-0">
+                        <div className="flex items-center space-x-2 text-xs font-semibold text-zinc-300 mb-1">
+                          <span className="text-white">Jack's cough</span>
+                          <span className="text-[10px] text-zinc-500 font-mono">({msg.modelUsed || selectedModel.name})</span>
+                          <span className="text-[10px] text-zinc-600 font-mono">{msg.timestamp}</span>
+                        </div>
+
+                        <FormattedMessage content={msg.content} />
+
+                        {/* Message action buttons */}
+                        <div className="flex items-center space-x-2 pt-2 text-zinc-500">
+                          <button
+                            onClick={() => copyToClipboard(msg.id, msg.content)}
+                            className="p-1.5 rounded-lg hover:bg-zinc-800 hover:text-zinc-300 transition-colors"
+                            title="Copy response"
+                          >
+                            {copiedId === msg.id ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => handleSendMessage(messages[messages.length - 2]?.content || 'Explain again')}
+                            className="p-1.5 rounded-lg hover:bg-zinc-800 hover:text-zinc-300 transition-colors"
+                            title="Regenerate"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+
+            {/* Generating response indicator */}
+            {isGenerating && (
+              <div className="w-full flex items-start space-x-3.5">
+                <div className="w-8 h-8 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-amber-400 flex-shrink-0">
+                  <Bot className="w-4 h-4 animate-pulse" />
+                </div>
+                <div className="flex items-center space-x-2 text-xs text-zinc-400 pt-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                  <span>
+                    {aiSettings.speed === 'smooth'
+                      ? "Jack's cough is thinking smoothly..."
+                      : "Jack's cough is cooking..."}
+                  </span>
+                </div>
               </div>
             )}
 
-            <div
-              className={`max-w-[85%] rounded-2xl p-4 space-y-2 text-sm leading-relaxed shadow-lg ${
-                msg.role === 'user'
-                  ? 'bg-gradient-to-r from-amber-600 to-orange-600 text-white rounded-tr-none font-medium'
-                  : 'bg-zinc-900/90 text-zinc-100 border border-zinc-800 rounded-tl-none'
-              }`}
+            <div ref={chatEndRef} />
+          </div>
+        </div>
+
+        {/* Hidden File Input */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          multiple
+          accept="image/*,.txt,.js,.ts,.tsx,.jsx,.json,.py,.html,.css,.md,.csv,.pdf,.doc,.docx"
+          onChange={(e) => {
+            if (e.target.files) processFiles(e.target.files);
+            e.target.value = '';
+          }}
+          className="hidden"
+        />
+
+        {/* Bottom Input Box */}
+        <div className="p-4 bg-zinc-950 border-t border-zinc-900">
+          <div className="max-w-3xl mx-auto">
+            
+            {/* Attachment preview tags */}
+            {attachedFiles.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2 p-2 bg-zinc-900 border border-zinc-800 rounded-xl">
+                {attachedFiles.map((att) => (
+                  <div
+                    key={att.id}
+                    className="flex items-center space-x-2 bg-zinc-950 border border-zinc-800 px-2.5 py-1 rounded-lg text-xs text-zinc-300"
+                  >
+                    {att.isImage ? (
+                      <img src={att.dataUrl} alt={att.name} className="w-6 h-6 object-cover rounded border border-zinc-700" />
+                    ) : (
+                      <FileText className="w-3.5 h-3.5 text-zinc-400" />
+                    )}
+                    <span className="max-w-[120px] truncate">{att.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(att.id)}
+                      className="p-0.5 text-zinc-500 hover:text-red-400"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSendMessage();
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDraggingOver(true);
+              }}
+              onDragLeave={() => setIsDraggingOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setIsDraggingOver(false);
+                if (e.dataTransfer.files) processFiles(e.dataTransfer.files);
+              }}
+              className={`relative flex items-center bg-zinc-900 border ${
+                isDraggingOver ? 'border-amber-400' : 'border-zinc-800'
+              } rounded-2xl px-3 py-2 shadow-lg focus-within:border-zinc-700 transition-colors`}
             >
-              <div className="flex items-center justify-between text-[10px] font-mono opacity-70 border-b border-white/10 pb-1.5 mb-1">
-                <span className="font-bold">{msg.role === 'user' ? 'You' : msg.modelUsed || 'Yunø AI'}</span>
-                <span>{msg.timestamp}</span>
+              {/* Attach File / Screenshot Buttons */}
+              <div className="flex items-center space-x-1 pr-1">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                  title="Attach images or files"
+                >
+                  <Paperclip className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCaptureScreenshot}
+                  className="p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                  title="Capture screenshot"
+                >
+                  <Camera className="w-4 h-4" />
+                </button>
               </div>
 
-              {/* Render User Attached Images or Files */}
-              {msg.attachments && msg.attachments.length > 0 && (
-                <div className="flex flex-wrap gap-2 py-1.5 border-b border-white/10">
-                  {msg.attachments.map((att) => (
-                    <div key={att.id} className="group relative">
-                      {att.isImage ? (
-                        <div
-                          onClick={() => setPreviewModalImg(att.dataUrl)}
-                          className="relative cursor-pointer overflow-hidden rounded-xl border border-white/20 bg-black/40 hover:border-amber-400 transition-all shadow-sm"
+              {/* Textarea Input */}
+              <textarea
+                ref={textareaRef}
+                value={promptInput}
+                onChange={(e) => setPromptInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+                rows={1}
+                placeholder="Message Jack's cough..."
+                className="flex-1 bg-transparent px-2 py-1.5 text-sm text-white placeholder-zinc-500 focus:outline-none resize-none max-h-32 leading-relaxed"
+              />
+
+              {/* Send Button */}
+              <button
+                type="submit"
+                disabled={(!promptInput.trim() && attachedFiles.length === 0) || isGenerating}
+                className={`p-2 rounded-xl transition-all flex items-center justify-center cursor-pointer ${
+                  promptInput.trim() || attachedFiles.length > 0
+                    ? 'bg-amber-400 text-black hover:bg-amber-300 font-semibold'
+                    : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                }`}
+              >
+                <ArrowUp className="w-4 h-4 stroke-[2.5]" />
+              </button>
+            </form>
+
+            <p className="text-center text-[11px] text-zinc-500 mt-2">
+              Jack's cough can make mistakes. Keep it 100.
+            </p>
+          </div>
+        </div>
+
+      </div>
+
+      {/* Quick AI Settings Modal */}
+      <AnimatePresence>
+        {isAiSettingsModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-2xl bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900/60">
+                <div className="flex items-center space-x-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-amber-400">
+                    <Sliders className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold text-white">Jack's cough AI Settings</h2>
+                    <p className="text-[11px] text-zinc-400">Customize personality, emojis, memory, and custom instructions</p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setIsAiSettingsModalOpen(false)}
+                  className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-800 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-4 overflow-y-auto space-y-4 flex-1">
+                {/* 1. Speaking Style / Persona */}
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-zinc-300 block flex items-center gap-1.5">
+                    <Bot className="w-3.5 h-3.5 text-amber-400" />
+                    <span>AI Persona & Tone</span>
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {[
+                      { id: 'jacks_cough', label: "Jack's Cough", desc: "Original witty & roasty" },
+                      { id: 'sarcastic', label: 'Sarcastic', desc: 'Clever dry humor' },
+                      { id: 'chill', label: 'Chill & Casual', desc: "Duuuude, no stress" },
+                      { id: 'concise', label: 'Ultra-Concise', desc: 'Direct, zero fluff' },
+                      { id: 'academic', label: 'Academic', desc: 'Formal breakdown' },
+                      { id: 'tutor', label: 'Socratic Tutor', desc: 'Step-by-step guide' },
+                    ].map((st) => {
+                      const isSel = aiSettings.style === st.id;
+                      return (
+                        <button
+                          key={st.id}
+                          type="button"
+                          onClick={() => handleUpdateAiSettings({ style: st.id as AiSpeakingStyle })}
+                          className={`p-2.5 rounded-xl border text-left transition-colors cursor-pointer ${
+                            isSel
+                              ? 'bg-zinc-800 border-amber-400 text-white'
+                              : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                          }`}
                         >
-                          <img
-                            src={att.dataUrl}
-                            alt={att.name}
-                            className="h-28 w-44 object-cover group-hover:scale-105 transition-transform"
-                          />
-                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-xs font-semibold text-white gap-1.5">
-                            <Eye className="w-4 h-4 text-amber-400" />
-                            <span>Preview</span>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-center space-x-2 bg-black/40 border border-white/10 px-3 py-2 rounded-xl text-xs text-zinc-200">
-                          <FileText className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                          <div className="max-w-[140px] truncate">
-                            <p className="font-mono text-[11px] truncate">{att.name}</p>
-                            <p className="text-[9px] text-zinc-400">{(att.size / 1024).toFixed(1)} KB</p>
-                          </div>
+                          <div className="text-xs font-bold text-white">{st.label}</div>
+                          <div className="text-[10px] text-zinc-500">{st.desc}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 2. User CallSign & Emoji Mode & Thinking Speed */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-zinc-850">
+                  {/* Callsign */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-zinc-300 block">
+                      What AI Calls You
+                    </label>
+                    <input
+                      type="text"
+                      value={aiSettings.userCallSign}
+                      onChange={(e) => handleUpdateAiSettings({ userCallSign: e.target.value })}
+                      placeholder="e.g. user, Chief, Boss"
+                      className="w-full px-2.5 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+
+                  {/* Emoji Mode */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-zinc-300 block flex items-center gap-1">
+                      <Smile className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Emoji Level</span>
+                    </label>
+                    <select
+                      value={aiSettings.emojiMode || 'standard'}
+                      onChange={(e) => handleUpdateAiSettings({ emojiMode: e.target.value as AiEmojiMode })}
+                      className="w-full px-2.5 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                    >
+                      <option value="heavily">Heavy (😭🙏🙌)</option>
+                      <option value="standard">Standard / Balanced</option>
+                      <option value="minimal">Minimal (Max 1)</option>
+                      <option value="none">No Emojis</option>
+                    </select>
+                  </div>
+
+                  {/* Thinking Speed */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-zinc-300 block flex items-center gap-1">
+                      <Zap className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Thinking Mode</span>
+                    </label>
+                    <select
+                      value={aiSettings.speed === 'smooth' ? 'smooth' : 'fast'}
+                      onChange={(e) => handleUpdateAiSettings({ speed: e.target.value as AiResponseSpeed })}
+                      className="w-full px-2.5 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                    >
+                      <option value="fast">Fast Answers</option>
+                      <option value="smooth">Smooth Thinking</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* 3. Cross-Chat Memory */}
+                <div className="space-y-2 pt-2 border-t border-zinc-850">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                      <Brain className="w-3.5 h-3.5 text-purple-400" />
+                      <span>Memory From Other Chats</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateAiSettings({ memoryEnabled: !aiSettings.memoryEnabled })}
+                      className={`text-[11px] px-2 py-0.5 rounded-lg border font-medium ${
+                        aiSettings.memoryEnabled !== false
+                          ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                          : 'bg-zinc-900 text-zinc-500 border-zinc-800'
+                      }`}
+                    >
+                      {aiSettings.memoryEnabled !== false ? 'Enabled' : 'Disabled'}
+                    </button>
+                  </div>
+
+                  {aiSettings.memoryEnabled !== false && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          value={newMemoryInput}
+                          onChange={(e) => setNewMemoryInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddMemory();
+                            }
+                          }}
+                          placeholder="Add fact for AI to remember..."
+                          className="flex-1 px-2.5 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-purple-400"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddMemory}
+                          disabled={!newMemoryInput.trim()}
+                          className="px-2.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-semibold border border-zinc-700 disabled:opacity-40"
+                        >
+                          Add
+                        </button>
+                      </div>
+
+                      {aiSettings.memories && aiSettings.memories.length > 0 && (
+                        <div className="max-h-24 overflow-y-auto space-y-1">
+                          {aiSettings.memories.map((mem, i) => (
+                            <div key={i} className="flex items-center justify-between p-1.5 px-2 bg-zinc-900 rounded-lg text-xs text-zinc-300">
+                              <span className="truncate">{mem}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveMemory(i)}
+                                className="p-0.5 text-zinc-500 hover:text-red-400"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
-                  ))}
+                  )}
                 </div>
-              )}
 
-              <FormattedMessage content={msg.content} />
-
-              {msg.role === 'model' && (
-                <div className="flex items-center justify-end pt-2">
-                  <button
-                    onClick={() => copyToClipboard(msg.id, msg.content)}
-                    className="flex items-center space-x-1 text-[10px] font-mono text-zinc-400 hover:text-white transition-colors"
-                  >
-                    {copiedId === msg.id ? (
-                      <>
-                        <Check className="w-3 h-3 text-emerald-400" />
-                        <span className="text-emerald-400">Copied</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3 h-3" />
-                        <span>Copy</span>
-                      </>
-                    )}
-                  </button>
+                {/* 4. Symbol Rules & Custom Instructions */}
+                <div className="space-y-2 pt-2 border-t border-zinc-850">
+                  <label className="text-xs font-semibold text-zinc-300 block flex items-center gap-1.5">
+                    <Hash className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Custom Instructions & Symbol Rules</span>
+                  </label>
+                  <textarea
+                    value={aiSettings.customSymbolRules || ''}
+                    onChange={(e) => handleUpdateAiSettings({ customSymbolRules: e.target.value })}
+                    placeholder="Symbol rules (e.g. Always use ➔ for steps, ★ for key takeaways)..."
+                    rows={2}
+                    className="w-full px-2.5 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400 resize-none"
+                  />
+                  <textarea
+                    value={aiSettings.customPrompt}
+                    onChange={(e) => handleUpdateAiSettings({ customPrompt: e.target.value })}
+                    placeholder="General custom instructions for Jack's cough..."
+                    rows={2}
+                    className="w-full px-2.5 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400 resize-none"
+                  />
                 </div>
-              )}
-            </div>
 
-            {msg.role === 'user' && (
-              <div className="w-8 h-8 rounded-xl bg-zinc-800 flex items-center justify-center text-zinc-300 flex-shrink-0 border border-zinc-700 mt-1">
-                <User className="w-4 h-4" />
-              </div>
-            )}
-          </div>
-        ))}
-
-        {isGenerating && (
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30">
-              <Sparkles className="w-4 h-4 animate-spin" />
-            </div>
-            <div className="p-3 bg-zinc-900 rounded-2xl border border-zinc-800 text-xs font-mono text-amber-400 flex items-center space-x-2">
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-              <span>{selectedModel.name} is processing and generating response...</span>
-            </div>
-          </div>
-        )}
-
-        <div ref={chatEndRef} />
-      </div>
-
-      {/* Hidden File Input */}
-      <input
-        type="file"
-        ref={fileInputRef}
-        multiple
-        accept="image/*,.txt,.js,.ts,.tsx,.jsx,.json,.py,.html,.css,.md,.csv,.pdf,.doc,.docx"
-        onChange={(e) => {
-          if (e.target.files) processFiles(e.target.files);
-          e.target.value = '';
-        }}
-        className="hidden"
-      />
-
-      {/* Input Prompt Box */}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          handleSendMessage();
-        }}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsDraggingOver(true);
-        }}
-        onDragLeave={() => setIsDraggingOver(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setIsDraggingOver(false);
-          if (e.dataTransfer.files) processFiles(e.dataTransfer.files);
-        }}
-        className="mt-4 relative"
-      >
-        {/* Attached Files Preview Bar */}
-        {attachedFiles.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-2.5 p-2 bg-zinc-900/90 border border-zinc-800 rounded-2xl">
-            {attachedFiles.map((att) => (
-              <div
-                key={att.id}
-                className="flex items-center space-x-2 bg-zinc-950 border border-zinc-700/80 px-2.5 py-1.5 rounded-xl text-xs text-zinc-200"
-              >
-                {att.isImage ? (
-                  <img src={att.dataUrl} alt={att.name} className="w-7 h-7 object-cover rounded-md border border-zinc-700" />
-                ) : (
-                  <FileText className="w-4 h-4 text-amber-400" />
+                {settingsSavedToast && (
+                  <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-300 text-xs border border-emerald-500/30 flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Settings saved!</span>
+                  </div>
                 )}
-                <span className="max-w-[120px] truncate font-mono text-[11px]">{att.name}</span>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-3 border-t border-zinc-800 bg-zinc-900/60 flex items-center justify-end">
                 <button
                   type="button"
-                  onClick={() => removeAttachment(att.id)}
-                  className="p-0.5 hover:bg-zinc-800 rounded-md text-zinc-400 hover:text-red-400 transition-colors"
-                  title="Remove attachment"
+                  onClick={() => setIsAiSettingsModalOpen(false)}
+                  className="px-4 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black text-xs font-semibold transition-colors cursor-pointer"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  Done
                 </button>
               </div>
-            ))}
+            </motion.div>
           </div>
         )}
-
-        <div
-          className={`relative flex items-center bg-zinc-900 border ${
-            isDraggingOver ? 'border-amber-400 ring-2 ring-amber-500/40 bg-amber-500/5' : 'border-zinc-700/80'
-          } rounded-2xl shadow-2xl p-1.5 focus-within:border-amber-500 focus-within:ring-2 focus-within:ring-amber-500/20 transition-all`}
-        >
-          {/* Action Buttons: Attach File & Capture Screenshot */}
-          <div className="flex items-center pl-2 space-x-1">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="p-2 text-zinc-400 hover:text-amber-400 hover:bg-zinc-800 rounded-xl transition-all"
-              title="Upload file or image (PNG, JPG, Code, Docs)"
-            >
-              <Paperclip className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={handleCaptureScreenshot}
-              className="p-2 text-zinc-400 hover:text-amber-400 hover:bg-zinc-800 rounded-xl transition-all"
-              title="Take live screenshot & send to AI"
-            >
-              <Camera className="w-4 h-4" />
-            </button>
-          </div>
-
-          <input
-            type="text"
-            value={promptInput}
-            onChange={(e) => setPromptInput(e.target.value)}
-            placeholder={
-              attachedFiles.length > 0
-                ? 'Add prompt describing what you want to analyze...'
-                : `Ask ${selectedModel.name} anything, paste screenshots or drop files...`
-            }
-            className="w-full bg-transparent px-3 py-3 text-sm text-white placeholder-zinc-500 focus:outline-none"
-          />
-
-          <button
-            type="submit"
-            disabled={(!promptInput.trim() && attachedFiles.length === 0) || isGenerating}
-            className="px-5 py-3 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 disabled:opacity-40 text-black font-extrabold rounded-xl shadow-md transition-all flex items-center space-x-2 flex-shrink-0"
-          >
-            <span>Send</span>
-            <Send className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </form>
+      </AnimatePresence>
 
       {/* Image Preview Modal */}
       <AnimatePresence>
         {previewModalImg && (
           <div
             onClick={() => setPreviewModalImg(null)}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md cursor-zoom-out"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm cursor-zoom-out"
           >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              className="relative max-w-4xl max-h-[85vh] rounded-2xl overflow-hidden border border-zinc-700 bg-zinc-950 p-2 shadow-2xl"
+            <div
+              className="relative max-w-4xl max-h-[85vh] rounded-2xl overflow-hidden border border-zinc-800 bg-zinc-950 p-2"
               onClick={(e) => e.stopPropagation()}
             >
-              <img src={previewModalImg} alt="Screenshot Preview" className="max-w-full max-h-[80vh] object-contain rounded-xl" />
+              <img src={previewModalImg} alt="Preview" className="max-w-full max-h-[80vh] object-contain rounded-xl" />
               <button
                 onClick={() => setPreviewModalImg(null)}
-                className="absolute top-4 right-4 p-2 bg-black/60 hover:bg-zinc-800 text-white rounded-full transition-colors border border-zinc-700"
+                className="absolute top-4 right-4 p-2 bg-zinc-900/80 hover:bg-zinc-800 text-white rounded-full transition-colors border border-zinc-700"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
-            </motion.div>
+            </div>
           </div>
         )}
       </AnimatePresence>
 
-      {/* MODEL SELECTION OVERLAY MODAL (Matching video design) */}
+      {/* Model Selection Modal */}
       <AnimatePresence>
         {isModelModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              transition={{ duration: 0.2 }}
-              className="w-full max-w-5xl bg-zinc-950 border border-zinc-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-4xl bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
             >
               {/* Modal Top Header */}
-              <div className="flex items-center justify-between p-5 sm:p-6 border-b border-zinc-800/80 bg-zinc-900/50">
+              <div className="flex items-center justify-between p-5 border-b border-zinc-800 bg-zinc-900/50">
                 <div className="flex items-center space-x-3">
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-black flex items-center justify-center font-black text-lg shadow-md">
-                    <Cpu className="w-5 h-5" />
+                  <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-white">
+                    <Cpu className="w-4 h-4" />
                   </div>
                   <div>
-                    <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
-                      <span>Choose AI Model</span>
-                      <span className="text-amber-400 text-sm font-medium bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
-                        25+ Available
-                      </span>
-                    </h2>
-                    <p className="text-xs text-zinc-400">
-                      Select high-speed multimodal or deep reasoning models for coding, math, and writing
-                    </p>
+                    <h2 className="text-base font-bold text-white">Select Model</h2>
+                    <p className="text-xs text-zinc-400">Choose an AI model for your conversations</p>
                   </div>
                 </div>
 
                 <button
                   onClick={() => setIsModelModalOpen(false)}
-                  className="flex items-center space-x-1.5 px-3 py-1.5 bg-zinc-900 hover:bg-amber-500 hover:text-black text-zinc-300 border border-zinc-700 rounded-xl text-xs font-bold transition-all"
+                  className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-800 transition-colors"
                 >
-                  <span>Done / Close</span>
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
-              {/* Category Filter Tabs & Search Bar */}
-              <div className="p-4 sm:p-5 border-b border-zinc-800/80 bg-zinc-950/80 space-y-3">
-                {/* Search Bar */}
+              {/* Search & Categories */}
+              <div className="p-4 border-b border-zinc-800 bg-zinc-950 space-y-3">
                 <div className="relative">
-                  <Search className="w-4 h-4 absolute left-3.5 top-3 text-zinc-500" />
+                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-zinc-500" />
                   <input
                     type="text"
                     value={modelSearchQuery}
                     onChange={(e) => setModelSearchQuery(e.target.value)}
-                    placeholder="Search by model name, provider (Google, Anthropic, OpenAI, DeepSeek, Meta), or capabilities..."
-                    className="w-full pl-10 pr-4 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs sm:text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-amber-500 transition-colors"
+                    placeholder="Search models..."
+                    className="w-full pl-9 pr-4 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
                   />
-                  {modelSearchQuery && (
-                    <button
-                      onClick={() => setModelSearchQuery('')}
-                      className="absolute right-3 top-2.5 text-zinc-500 hover:text-white"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  )}
                 </div>
 
-                {/* Filter Pills */}
                 <div className="flex items-center space-x-2 overflow-x-auto pb-1 scrollbar-none">
                   {CATEGORIES.map((cat) => (
                     <button
                       key={cat}
                       onClick={() => setActiveCategory(cat)}
-                      className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap flex-shrink-0 ${
+                      className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
                         activeCategory === cat
-                          ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
-                          : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-800'
+                          ? 'bg-zinc-800 text-white'
+                          : 'bg-zinc-900 hover:bg-zinc-850 text-zinc-400 hover:text-zinc-200 border border-zinc-800'
                       }`}
                     >
                       {cat}
@@ -1156,79 +1611,59 @@ export const AiView: React.FC<AiViewProps> = ({ onGrantAdmin, onUnlockPrivateCha
               </div>
 
               {/* Model Grid */}
-              <div className="p-4 sm:p-6 overflow-y-auto flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 bg-zinc-950">
-                {filteredModels.length === 0 ? (
-                  <div className="col-span-full py-12 text-center text-zinc-500 text-sm">
-                    No models found matching "{modelSearchQuery}"
-                  </div>
-                ) : (
-                  filteredModels.map((model) => {
-                    const isSelected = selectedModel.id === model.id;
-                    return (
-                      <div
-                        key={model.id}
-                        onClick={() => {
-                          setSelectedModel(model);
-                          setIsModelModalOpen(false);
-                        }}
-                        className={`group relative p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
-                          isSelected
-                            ? 'bg-amber-500/10 border-amber-500 shadow-xl shadow-amber-500/10 ring-1 ring-amber-500'
-                            : 'bg-zinc-900/80 hover:bg-zinc-900 border-zinc-800 hover:border-amber-500/50'
-                        }`}
-                      >
-                        {/* Top Line badges */}
-                        <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-[10px] font-mono font-bold text-zinc-400 bg-zinc-950 px-2 py-0.5 rounded border border-zinc-800 tracking-wider">
-                              {model.provider}
-                            </span>
-                            {model.badge && (
-                              <span className="text-[9px] font-mono font-extrabold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase tracking-wider">
-                                {model.badge}
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Title */}
-                          <h3 className="text-base font-bold text-white group-hover:text-amber-400 transition-colors flex items-center justify-between">
-                            <span>{model.name}</span>
-                            {isSelected && (
-                              <Check className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                            )}
-                          </h3>
-
-                          {/* Description */}
-                          <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed">
-                            {model.description}
-                          </p>
-                        </div>
-
-                        {/* Bottom Row */}
-                        <div className="mt-4 pt-3 border-t border-zinc-800/60 flex items-center justify-between text-xs">
-                          <span className="text-[11px] text-zinc-500 font-medium font-mono">
-                            {model.speed || 'Speed: Ultra Fast'}
+              <div className="p-4 overflow-y-auto flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 bg-zinc-950">
+                {filteredModels.map((model) => {
+                  const isSelected = selectedModel.id === model.id;
+                  return (
+                    <div
+                      key={model.id}
+                      onClick={() => {
+                        setSelectedModel(model);
+                        setIsModelModalOpen(false);
+                      }}
+                      className={`p-4 rounded-xl border transition-colors cursor-pointer flex flex-col justify-between ${
+                        isSelected
+                          ? 'bg-zinc-900 border-zinc-600 text-white'
+                          : 'bg-zinc-900/60 hover:bg-zinc-900 border-zinc-800 text-zinc-300'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[10px] font-mono text-zinc-400 bg-zinc-950 px-2 py-0.5 rounded border border-zinc-800">
+                            {model.provider}
                           </span>
-                          <button
-                            className={`flex items-center space-x-1 font-bold text-xs transition-colors ${
-                              isSelected
-                                ? 'text-amber-400 font-extrabold'
-                                : 'text-zinc-400 group-hover:text-amber-400'
-                            }`}
-                          >
-                            <span>{isSelected ? 'Active Model' : 'Select Model'}</span>
-                            <ArrowRight className="w-3.5 h-3.5" />
-                          </button>
+                          {model.badge && (
+                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700">
+                              {model.badge}
+                            </span>
+                          )}
                         </div>
+
+                        <h3 className="text-sm font-bold text-white flex items-center justify-between">
+                          <span>{model.name}</span>
+                          {isSelected && <Check className="w-4 h-4 text-emerald-400" />}
+                        </h3>
+
+                        <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
+                          {model.description}
+                        </p>
                       </div>
-                    );
-                  })
-                )}
+
+                      <div className="mt-3 pt-2 border-t border-zinc-800/60 flex items-center justify-between text-[11px] text-zinc-500">
+                        <span>{model.speed || 'Standard'}</span>
+                        <span className={isSelected ? 'text-white font-medium' : 'text-zinc-400'}>
+                          {isSelected ? 'Active' : 'Select'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
+
     </div>
   );
 };

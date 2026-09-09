@@ -1,4 +1,4 @@
-export type NavTab = 'home' | 'movies' | 'games' | 'youtube' | 'ai' | 'community' | 'music' | 'settings' | 'proxy' | 'private_chat' | 'links';
+export type NavTab = 'home' | 'games' | 'proxy' | 'movies' | 'youtube' | 'music' | 'settings' | 'links';
 
 export interface ProxyBrowserTab {
   id: string;
@@ -44,6 +44,8 @@ export interface MovieItem {
   category: 'trending' | 'fresh' | 'popular' | 'anime' | 'shows' | string;
   image: string;
   backdrop: string;
+  posterUrl?: string;
+  backdropUrl?: string;
   description: string;
   genres: string[];
   duration: string;
@@ -53,12 +55,16 @@ export interface MovieItem {
 }
 
 export type StreamSource =
-  | 'vidfast'
   | 'vidcore'
-  | 'streamrip'
   | 'viduki'
-  | 'vidsrc'
-  | 'streamrip-anime';
+  | 'vidfast_pro'
+  | 'vidlink_pro'
+  | 'vidfast_vc'
+  | 'vidsrc_to'
+  | 'smashystream'
+  | 'vidlink_anime'
+  | 'streamrip_anime'
+  | 'videasy_anime';
 
 export interface GameItem {
   id: string;
@@ -127,6 +133,7 @@ export interface MusicTrack {
   album?: string;
   duration: number; // in seconds
   cover: string;
+  coverUrl?: string;
   audioUrl?: string;
   lrcUrl?: string;
   jooxMsg?: string;
@@ -144,11 +151,18 @@ export interface WallpaperOption {
   type: 'image' | 'video' | 'gif' | 'gradient';
 }
 
+export interface PartnerLink {
+  label?: string;
+  url: string;
+}
+
 export interface PartnerItem {
   id: string;
   name: string;
-  logo: string;
-  url: string;
+  logo?: string;
+  image?: string;
+  url?: string;
+  links?: PartnerLink[];
   description?: string;
   addedAt?: string;
 }
@@ -171,6 +185,85 @@ export interface UserProfile {
   bio: string;
   badge: string;
   accentColor: string;
+  isAdmin?: boolean;
+  showNowPlaying?: boolean;
+  nowPlaying?: {
+    title: string;
+    artist: string;
+    cover?: string;
+    isPlaying: boolean;
+  };
+}
+
+export interface BanInfo {
+  username: string;
+  reason: string;
+  bannedAt: string;
+  bannedBy: string;
+  banImageUrl?: string;
+}
+
+export interface UserReportItem {
+  id: string;
+  type: 'message' | 'user' | 'bug';
+  reporter: string;
+  targetUser?: string;
+  messageContent?: string;
+  messageId?: string;
+  channelId?: string;
+  reason: string;
+  details?: string;
+  timestamp: string;
+  status: 'open' | 'resolved' | 'dismissed';
+}
+
+export interface BugReportItem {
+  id: string;
+  reporter: string;
+  title: string;
+  description: string;
+  category: 'Streaming' | 'Audio/Music' | 'Games' | 'Chat' | 'UI' | 'Other';
+  timestamp: string;
+  status: 'open' | 'in_progress' | 'fixed';
+}
+
+export interface FriendRequestItem {
+  id: string;
+  fromUser: string;
+  toUser: string;
+  fromAvatar?: string;
+  status: 'pending' | 'accepted' | 'declined';
+  timestamp: string;
+}
+
+export interface WatchHistoryItem {
+  id: string;
+  movieId: string;
+  title: string;
+  image: string;
+  mediaType: 'movie' | 'tv' | 'anime';
+  season?: number;
+  episode?: number;
+  timestamp: number;
+}
+
+export interface PlayHistoryItem {
+  id: string;
+  gameId: string;
+  title: string;
+  image: string;
+  category: string;
+  timestamp: number;
+}
+
+export interface ListenHistoryItem {
+  id: string;
+  trackId: string;
+  title: string;
+  artist: string;
+  cover: string;
+  duration: number;
+  timestamp: number;
 }
 
 export interface FriendItem {
@@ -237,6 +330,12 @@ export interface TabMaskPreset {
   description?: string;
 }
 
+export interface DmStreakInfo {
+  count: number;
+  lastDate: string; // YYYY-MM-DD
+  lastSender?: string;
+}
+
 export interface TabCloakSettings {
   activeMaskId: string;
   customTitle: string;
@@ -248,7 +347,7 @@ export interface TabCloakSettings {
 }
 
 export type AiSpeakingStyle =
-  | 'jacks_cough'
+  | 'dior_sharp'
   | 'sarcastic'
   | 'chill'
   | 'concise'

@@ -2,7 +2,7 @@
  * URL and Search Utilities for Scramjet Web Proxy
  */
 
-export const DEFAULT_SEARCH_ENGINE = 'https://www.bing.com/search?q=%s';
+export const DEFAULT_SEARCH_ENGINE = 'https://duckduckgo.com/?q=%s';
 
 /**
  * Checks if a string looks like a direct URL rather than a search query.

@@ -12,6 +12,8 @@ import {
   Info,
   CaretLeft as ChevronLeft,
   CaretRight as ChevronRight,
+  CaretDown as ChevronDown,
+  CaretUp as ChevronUp,
   Plus,
   Check,
   SpeakerHigh as Volume2,
@@ -26,8 +28,13 @@ import {
   WarningCircle as AlertCircle,
   TelevisionSimple as Tv2,
   ShieldCheck,
+  Sparkle,
+  Queue as ListNumbers,
+  Broadcast,
 } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'motion/react';
+import { addHistoryItem } from './HistoryModal';
+import { StreamSourceDropdown, STREAM_SERVERS } from './StreamSourceDropdown';
 
 interface MoviesViewProps {
   selectedMovieId?: string;
@@ -80,15 +87,6 @@ const FEATURED_MEDIA_DICT: Record<string, MovieItem> = {
   },
 };
 
-const STREAM_SERVERS: Array<{ id: StreamSource; label: string }> = [
-  { id: 'vidcore', label: 'VidCore' },
-  { id: 'vidfast', label: 'VidFast' },
-  { id: 'streamrip', label: 'StreamRip' },
-  { id: 'viduki', label: 'VidUki' },
-  { id: 'vidsrc', label: 'VidSrc' },
-  { id: 'streamrip-anime', label: 'StreamRip Anime' },
-];
-
 export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
   // Navigation & Category filter
   const [activeCategory, setActiveCategory] = useState<'all' | 'shows' | 'movies' | 'anime' | 'watchlist'>('all');
@@ -116,6 +114,7 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
   const [selectedSource, setSelectedSource] = useState<StreamSource>('vidcore');
   const [season, setSeason] = useState<number>(1);
   const [episode, setEpisode] = useState<number>(1);
+  const [isEpisodesDrawerOpen, setIsEpisodesDrawerOpen] = useState<boolean>(true);
   const [iframeKey, setIframeKey] = useState<number>(0);
   const [trailerKey, setTrailerKey] = useState<string | null>(null);
   const [isIframeLoading, setIsIframeLoading] = useState<boolean>(false);
@@ -370,34 +369,44 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
     const isAnime = movie.mediaType === 'anime' || movie.category === 'anime' || activeCategory === 'anime';
     const animeId = movie.anilistId || movie.tmdbId || 20;
 
-    if (isAnime || selectedSource === 'streamrip-anime') {
-      return `https://streamrip.fun/anime/${animeId}/${episode}`;
-    }
-
     const tmdbId = movie.tmdbId || 550;
     const isTv = movie.mediaType === 'tv' || movie.duration?.includes('Series');
 
     switch (selectedSource) {
-      case 'vidfast':
-        return isTv
-          ? `https://vidfast.vc/tv/${tmdbId}/${season}/${episode}?autoPlay=true`
-          : `https://vidfast.vc/movie/${tmdbId}?autoPlay=true`;
       case 'vidcore':
         return isTv
           ? `https://vidcore.net/tv/${tmdbId}/${season}/${episode}?autoPlay=true`
           : `https://vidcore.net/movie/${tmdbId}?autoPlay=true`;
-      case 'streamrip':
+      case 'vidlink_pro':
         return isTv
-          ? `https://streamrip.fun/play?type=tv&id=${tmdbId}&season=${season}&episode=${episode}`
-          : `https://streamrip.fun/play?type=movie&id=${tmdbId}`;
+          ? `https://vidlink.pro/tv/${tmdbId}/${season}/${episode}?primaryColor=ef4444`
+          : `https://vidlink.pro/movie/${tmdbId}?primaryColor=ef4444`;
+      case 'vidfast_pro':
+        return isTv
+          ? `https://vidfast.pro/tv/${tmdbId}/${season}/${episode}`
+          : `https://vidfast.pro/movie/${tmdbId}`;
+      case 'vidfast_vc':
+        return isTv
+          ? `https://vidfast.vc/tv/${tmdbId}/${season}/${episode}?autoPlay=true`
+          : `https://vidfast.vc/movie/${tmdbId}?autoPlay=true`;
       case 'viduki':
         return isTv
-          ? `https://viduki.net/1/tv/${tmdbId}/${season}/${episode}?color=06b6d4`
-          : `https://viduki.net/1/movie/${tmdbId}?color=06b6d4`;
-      case 'vidsrc':
+          ? `https://streamrip.fun/tv/${tmdbId}/${season}/${episode}`
+          : `https://viduki.net/1/movie/${tmdbId}?color=ef4444`;
+      case 'vidsrc_to':
         return isTv
-          ? `https://vidsrc.me/embed/tv?tmdb=${tmdbId}&season=${season}&episode=${episode}`
-          : `https://vidsrc.me/embed/movie?tmdb=${tmdbId}`;
+          ? `https://vidsrc.to/embed/tv/${tmdbId}/${season}/${episode}`
+          : `https://vidsrc.to/embed/movie/${tmdbId}`;
+      case 'smashystream':
+        return isTv
+          ? `https://player.smashystream.com/tv/${tmdbId}?s=${season}&e=${episode}`
+          : `https://player.smashystream.com/movie/${tmdbId}`;
+      case 'vidlink_anime':
+        return `https://vidlink.pro/anime/${animeId}/${episode}`;
+      case 'streamrip_anime':
+        return `https://streamrip.fun/anime/${animeId}/${episode}`;
+      case 'videasy_anime':
+        return `https://player.videasy.net/anime/${animeId}/${episode}`;
       default:
         return isTv
           ? `https://vidcore.net/tv/${tmdbId}/${season}/${episode}?autoPlay=true`
@@ -406,9 +415,10 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
   };
 
   const getStreamEmbedUrl = (movie: MovieItem | null): string => {
-    const raw = getStreamRawUrl(movie);
-    if (!raw) return '';
-    return `/api/stream/proxy?url=${encodeURIComponent(raw)}`;
+    const rawUrl = getStreamRawUrl(movie);
+    if (!rawUrl) return '';
+    // Auto-proxy everything through the backend proxy route
+    return `/api/stream/proxy?url=${encodeURIComponent(rawUrl)}`;
   };
 
   const openPlayMovie = (movie: MovieItem) => {
@@ -418,9 +428,28 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
     const isTv = movie.mediaType === 'tv' || movie.duration?.includes('Series');
     const isAnime = movie.mediaType === 'anime' || movie.category === 'anime' || activeCategory === 'anime';
 
+    // Record Watch History
+    addHistoryItem({
+      type: 'watch',
+      title: movie.title,
+      subtitle: isAnime ? 'Anime Series' : isTv ? 'Television Series' : 'Feature Film',
+      thumbnail: movie.posterUrl || movie.backdropUrl,
+      data: movie,
+    });
+
     if (isAnime) {
-      setSelectedSource('streamrip-anime');
-    } else if (selectedSource === 'streamrip-anime') {
+      if (
+        selectedSource !== 'streamrip_anime' &&
+        selectedSource !== 'vidlink_anime' &&
+        selectedSource !== 'videasy_anime'
+      ) {
+        setSelectedSource('streamrip_anime');
+      }
+    } else if (
+      selectedSource === 'streamrip_anime' ||
+      selectedSource === 'vidlink_anime' ||
+      selectedSource === 'videasy_anime'
+    ) {
       setSelectedSource('vidcore');
     }
 
@@ -442,6 +471,7 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
 
     setSeason(1);
     setEpisode(1);
+    setIsEpisodesDrawerOpen(true);
     setIsPlayerOpen(true);
   };
 
@@ -476,15 +506,14 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
 
   return (
     <div className="w-full max-w-full lg:max-w-7xl mx-auto space-y-6 sm:space-y-8 pb-16 min-w-0 text-white">
-      {/* YUNØFLIX BRANDING & TOP CONTROL BAR */}
+      {/* DIØR CINEMA BRANDING & TOP CONTROL BAR */}
       <div className="sticky top-0 z-30 bg-zinc-950/95 backdrop-blur-xl border-b border-zinc-800 -mx-3 sm:-mx-5 lg:-mx-8 px-3 sm:px-5 lg:px-8 py-3.5 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
         <div className="flex items-center space-x-4 overflow-x-auto scrollbar-none py-1">
-          {/* YUNØFLIX Brand Logo */}
+          {/* Cinema Brand Logo */}
           <div className="flex items-center space-x-2 flex-shrink-0 cursor-pointer" onClick={() => setActiveCategory('all')}>
-            <span className="font-black text-2xl text-white tracking-wider flex items-center">
-              YUNØ<span className="text-red-600 ml-1">FLIX</span>
+            <span className="font-black text-xl text-white tracking-widest uppercase flex items-center">
+              CINEMA
             </span>
-            <span className="text-[10px] font-mono py-0.5 px-2 rounded bg-zinc-800 text-zinc-300 border border-zinc-700">PORTAL</span>
           </div>
 
           {/* Navigation Category Tabs */}
@@ -502,9 +531,9 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
                   setActiveCategory(tab.id as any);
                   setSearchQuery('');
                 }}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
                   activeCategory === tab.id
-                    ? 'bg-red-600 text-white'
+                    ? 'bg-zinc-800 text-white font-semibold border border-zinc-700'
                     : 'text-zinc-400 hover:text-white hover:bg-zinc-900 border border-transparent'
                 }`}
               >
@@ -536,23 +565,15 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
           </div>
 
           {/* Stream Server Source Selector Dropdown */}
-          <div className="flex items-center space-x-1.5 bg-zinc-900 border border-zinc-800 px-3 py-1.5 rounded-xl text-xs">
-            <span className="text-[11px] font-mono text-zinc-400 font-bold uppercase hidden sm:inline">Source:</span>
-            <select
-              value={selectedSource}
-              onChange={(e) => {
-                setSelectedSource(e.target.value as StreamSource);
-                setIframeKey((k) => k + 1);
-              }}
-              className="bg-transparent text-white font-mono text-xs font-semibold focus:outline-none cursor-pointer"
-            >
-              {STREAM_SERVERS.map((src) => (
-                <option key={src.id} value={src.id} className="bg-zinc-900 text-white">
-                  {src.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <StreamSourceDropdown
+            currentSource={selectedSource}
+            onSelectSource={(src) => {
+              setSelectedSource(src);
+              setIframeKey((k) => k + 1);
+            }}
+            isAnime={activeCategory === 'anime'}
+            align="right"
+          />
         </div>
       </div>
 
@@ -576,7 +597,7 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
               >
                 <div className="aspect-[2/3] w-full relative overflow-hidden bg-zinc-800">
                   <img src={item.image} alt={item.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-transparent to-transparent opacity-80" />
+                  <div className="absolute inset-x-0 bottom-0 h-16 bg-zinc-950/80" />
                   <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded bg-black/80 text-[10px] font-mono font-bold text-amber-400 border border-amber-500/30 flex items-center space-x-1">
                     <Star className="w-3 h-3 fill-current" />
                     <span>{item.rating}</span>
@@ -605,9 +626,8 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
                 className="absolute inset-0 w-full h-full object-cover opacity-60 filter contrast-110 brightness-90 group-hover:scale-105 transition-transform duration-1000 ease-out"
               />
 
-              {/* Cinematic Netflix Gradient Vignette (Fade down and fade left) */}
-              <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/60 to-transparent" />
-              <div className="absolute inset-0 bg-gradient-to-r from-zinc-950 via-zinc-950/70 to-transparent w-full lg:w-3/4" />
+              {/* Clean Dark Overlay */}
+              <div className="absolute inset-0 bg-zinc-950/70" />
 
               {/* Hero Content Information */}
               <div className="relative z-10 max-w-2xl space-y-3 sm:space-y-4">
@@ -840,7 +860,7 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
                   alt={modalMovie.title}
                   className="w-full h-full object-cover filter contrast-105"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-transparent" />
+                <div className="absolute inset-0 bg-zinc-950/70" />
 
                 <button
                   onClick={() => setIsInfoModalOpen(false)}
@@ -907,71 +927,120 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
                   </div>
                 </div>
 
-                {/* Episode Selector for TV Shows */}
-                {modalMovie.mediaType === 'tv' && (
+                {/* Episode Selector for TV Shows & Anime */}
+                {(modalMovie.mediaType === 'tv' || modalMovie.mediaType === 'anime') && (
                   <div className="space-y-4 pt-4 border-t border-zinc-800">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-base font-bold text-white">Episodes</h3>
-                      <select
-                        value={season}
-                        onChange={(e) => setSeason(Number(e.target.value))}
-                        className="bg-zinc-900 text-red-400 font-bold text-xs rounded-xl px-3 py-1.5 border border-zinc-800 focus:outline-none"
-                      >
-                        {[1, 2, 3, 4, 5].map((s) => (
-                          <option key={s} value={s}>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center space-x-2">
+                        <ListNumbers className="w-4 h-4 text-red-500" />
+                        <h3 className="text-base font-bold text-white tracking-wide">
+                          Episodes & Seasons
+                        </h3>
+                      </div>
+
+                      {/* Sleek Season Pill Selector */}
+                      <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 max-w-full scrollbar-none">
+                        {Array.from(
+                          { length: modalMovie.seasonsCount || 5 },
+                          (_, i) => i + 1
+                        ).map((s) => (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => setSeason(s)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all whitespace-nowrap border ${
+                              season === s
+                                ? 'bg-red-600 text-white border-red-500 shadow-lg shadow-red-600/30'
+                                : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border-zinc-800'
+                            }`}
+                          >
                             Season {s}
-                          </option>
+                          </button>
                         ))}
-                      </select>
+                      </div>
                     </div>
 
-                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                    {/* Episode Cards Grid / List */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-72 overflow-y-auto pr-1 scrollbar-thin">
                       {episodesList.length > 0 ? (
-                        episodesList.map((ep) => (
-                          <div
-                            key={ep.episode_number}
-                            onClick={() => {
-                              setEpisode(ep.episode_number);
-                              setIsInfoModalOpen(false);
-                              openPlayMovie(modalMovie);
-                            }}
-                            className="flex items-center justify-between p-3 rounded-2xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 cursor-pointer transition-all group"
-                          >
-                            <div className="flex items-center space-x-3">
-                              <span className="text-xs font-mono font-bold text-zinc-500 group-hover:text-red-400 w-6">
-                                {ep.episode_number}
-                              </span>
-                              <div>
-                                <h4 className="text-xs font-bold text-white group-hover:text-red-400">{ep.name || `Episode ${ep.episode_number}`}</h4>
-                                <p className="text-[10px] text-zinc-400 line-clamp-1">{ep.overview || 'Available in HD 4K Streaming.'}</p>
+                        episodesList.map((ep) => {
+                          const isCurrent = episode === ep.episode_number;
+                          return (
+                            <div
+                              key={ep.episode_number}
+                              onClick={() => {
+                                setEpisode(ep.episode_number);
+                                setIsInfoModalOpen(false);
+                                openPlayMovie(modalMovie);
+                              }}
+                              className={`flex items-center space-x-3 p-2.5 rounded-2xl border transition-all cursor-pointer group ${
+                                isCurrent
+                                  ? 'bg-red-600/15 border-red-500 text-white shadow-md'
+                                  : 'bg-zinc-900/90 hover:bg-zinc-800/90 border-zinc-800/80 text-zinc-300 hover:text-white hover:border-zinc-700'
+                              }`}
+                            >
+                              <div className="relative w-16 h-12 rounded-xl bg-zinc-800 overflow-hidden flex-shrink-0 flex items-center justify-center border border-zinc-700/50">
+                                {ep.still_path ? (
+                                  <img
+                                    src={`https://image.tmdb.org/t/p/w300${ep.still_path}`}
+                                    alt={ep.name}
+                                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                                  />
+                                ) : (
+                                  <span className="text-xs font-mono font-bold text-zinc-500">
+                                    EP {ep.episode_number}
+                                  </span>
+                                )}
+                                <div className="absolute inset-0 bg-black/40 group-hover:bg-black/10 flex items-center justify-center transition-colors">
+                                  <Play className="w-3.5 h-3.5 text-white fill-current opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all" />
+                                </div>
+                              </div>
+
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center justify-between gap-1">
+                                  <h4 className="text-xs font-bold truncate group-hover:text-red-400 transition-colors">
+                                    {ep.episode_number}. {ep.name || `Episode ${ep.episode_number}`}
+                                  </h4>
+                                </div>
+                                <p className="text-[10px] text-zinc-400 line-clamp-1 mt-0.5">
+                                  {ep.overview || 'Stream in High Definition 1080p.'}
+                                </p>
                               </div>
                             </div>
-                            <Play className="w-4 h-4 text-red-500 group-hover:scale-110 transition-transform" />
-                          </div>
-                        ))
+                          );
+                        })
                       ) : (
-                        Array.from({ length: 12 }, (_, i) => i + 1).map((epNum) => (
-                          <div
-                            key={epNum}
-                            onClick={() => {
-                              setEpisode(epNum);
-                              setIsInfoModalOpen(false);
-                              openPlayMovie(modalMovie);
-                            }}
-                            className="flex items-center justify-between p-3 rounded-2xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 cursor-pointer transition-all group"
-                          >
-                            <div className="flex items-center space-x-3">
-                              <span className="text-xs font-mono font-bold text-zinc-500 group-hover:text-red-400 w-6">
+                        Array.from({ length: 16 }, (_, i) => i + 1).map((epNum) => {
+                          const isCurrent = episode === epNum;
+                          return (
+                            <div
+                              key={epNum}
+                              onClick={() => {
+                                setEpisode(epNum);
+                                setIsInfoModalOpen(false);
+                                openPlayMovie(modalMovie);
+                              }}
+                              className={`flex items-center space-x-3 p-2.5 rounded-2xl border transition-all cursor-pointer group ${
+                                isCurrent
+                                  ? 'bg-red-600/15 border-red-500 text-white shadow-md'
+                                  : 'bg-zinc-900/90 hover:bg-zinc-800/90 border-zinc-800/80 text-zinc-300 hover:text-white hover:border-zinc-700'
+                              }`}
+                            >
+                              <div className="w-12 h-10 rounded-xl bg-zinc-800 flex items-center justify-center flex-shrink-0 font-mono text-xs font-bold text-zinc-400 border border-zinc-700/50 group-hover:border-red-500/50 group-hover:text-red-400 transition-colors">
                                 {epNum}
-                              </span>
-                              <div>
-                                <h4 className="text-xs font-bold text-white group-hover:text-red-400">Episode {epNum}</h4>
-                                <p className="text-[10px] text-zinc-400">Season {season} • High Definition Stream</p>
                               </div>
+                              <div className="min-w-0 flex-1">
+                                <h4 className="text-xs font-bold truncate group-hover:text-red-400 transition-colors">
+                                  Episode {epNum}
+                                </h4>
+                                <p className="text-[10px] text-zinc-400 line-clamp-1">
+                                  Season {season} • High Definition Stream
+                                </p>
+                              </div>
+                              <Play className="w-3.5 h-3.5 text-zinc-500 group-hover:text-red-400 flex-shrink-0" />
                             </div>
-                            <Play className="w-4 h-4 text-red-500 group-hover:scale-110 transition-transform" />
-                          </div>
-                        ))
+                          );
+                        })
                       )}
                     </div>
                   </div>
@@ -1000,10 +1069,10 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
                   </div>
                   <div className="min-w-0">
                     <h3 className="text-xs sm:text-sm font-bold text-white truncate flex items-center space-x-2">
-                      <span>{modalMovie.title}</span>
-                      {modalMovie.mediaType === 'tv' && (
-                        <span className="text-[10px] text-red-400 font-mono bg-red-950/60 px-1.5 py-0.5 rounded border border-red-800/50">
-                          S{season} E{episode}
+                      <span className="truncate">{modalMovie.title}</span>
+                      {(modalMovie.mediaType === 'tv' || modalMovie.mediaType === 'anime') && (
+                        <span className="text-[10px] text-red-400 font-mono bg-red-950/60 px-2 py-0.5 rounded-lg border border-red-800/50 flex-shrink-0 font-bold">
+                          S{season} : E{episode}
                         </span>
                       )}
                     </h3>
@@ -1012,11 +1081,12 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
 
                 <div className="flex items-center space-x-2">
                   <button
+                    type="button"
                     onClick={() => {
                       setIframeKey((k) => k + 1);
                       setIsIframeLoading(true);
                     }}
-                    className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-mono text-zinc-300 hover:text-white transition-colors flex items-center gap-1.5"
+                    className="px-2.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-mono text-zinc-300 hover:text-white transition-colors flex items-center gap-1.5 border border-zinc-700"
                     title="Reload current stream mirror"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
@@ -1024,67 +1094,124 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
                   </button>
 
                   <button
+                    type="button"
                     onClick={() => {
                       const url = getStreamEmbedUrl(modalMovie);
                       window.open(url, '_blank', 'noopener,noreferrer');
                     }}
-                    className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-xs font-mono text-white transition-colors flex items-center gap-1.5 shadow-sm font-bold"
+                    className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-xs font-mono text-white transition-colors flex items-center gap-1.5 shadow-sm font-bold"
                     title="Open stream in a clean unblocked tab"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
-                    <span>Pop-out Unblocked ↗</span>
+                    <span className="hidden sm:inline">Pop-out Unblocked ↗</span>
+                    <span className="sm:hidden">Pop-out</span>
                   </button>
 
                   <button
+                    type="button"
                     onClick={() => setIsPlayerOpen(false)}
-                    className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors"
+                    className="p-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors border border-zinc-700"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 </div>
               </div>
 
-              {/* Streaming Source & Episode Selector Bar */}
+              {/* Streaming Source & Sleek Season/Episode Toolbar */}
               <div className="px-4 py-2.5 bg-zinc-900/90 border-b border-zinc-800 flex flex-wrap items-center justify-between gap-3 text-xs flex-shrink-0">
+                {/* Left: Sleek Semi-Animated Stream Source Dropdown */}
                 <div className="flex items-center space-x-2">
-                  <span className="font-mono text-zinc-400 font-bold text-[11px] uppercase flex items-center gap-1.5">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 inline" />
-                    Source:
-                  </span>
-                  <select
-                    value={selectedSource}
-                    onChange={(e) => {
-                      setSelectedSource(e.target.value as StreamSource);
+                  <StreamSourceDropdown
+                    currentSource={selectedSource}
+                    onSelectSource={(src) => {
+                      setSelectedSource(src);
                       setIframeKey((k) => k + 1);
                       setIsIframeLoading(true);
                     }}
-                    className="bg-zinc-800 border border-zinc-700 text-white font-mono text-xs font-semibold rounded-lg px-3 py-1.5 focus:outline-none focus:border-red-500 cursor-pointer"
-                  >
-                    {STREAM_SERVERS.map((src) => (
-                      <option key={src.id} value={src.id} className="bg-zinc-900 text-white">
-                        {src.label}
-                      </option>
-                    ))}
-                  </select>
+                    isAnime={modalMovie.mediaType === 'anime'}
+                    align="left"
+                    variant="player"
+                  />
                 </div>
 
-                {modalMovie.mediaType === 'tv' && (
-                  <div className="flex items-center space-x-2">
-                    <span className="text-zinc-400 font-mono text-xs">Episode:</span>
-                    <select
-                      value={episode}
-                      onChange={(e) => {
-                        setEpisode(Number(e.target.value));
-                        setIframeKey((k) => k + 1);
-                      }}
-                      className="bg-zinc-900 text-red-400 font-bold rounded-lg px-2.5 py-1 text-xs border border-zinc-700 focus:outline-none cursor-pointer"
-                    >
-                      {Array.from({ length: 24 }, (_, i) => i + 1).map((ep) => (
-                        <option key={ep} value={ep}>
-                          Episode {ep}
-                        </option>
+                {/* Right: Sleek Season and Episode Switcher Controls */}
+                {(modalMovie.mediaType === 'tv' || modalMovie.mediaType === 'anime') && (
+                  <div className="flex items-center space-x-2 flex-wrap gap-1.5">
+                    {/* Season Selector */}
+                    <div className="flex items-center space-x-1 bg-zinc-950/80 border border-zinc-800 rounded-xl p-0.5">
+                      <span className="text-[10px] font-mono font-bold text-zinc-500 px-2 uppercase">
+                        Season:
+                      </span>
+                      {Array.from(
+                        { length: modalMovie.seasonsCount || 5 },
+                        (_, i) => i + 1
+                      ).map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => {
+                            setSeason(s);
+                            setEpisode(1);
+                            setIframeKey((k) => k + 1);
+                          }}
+                          className={`px-2 py-0.5 rounded-lg text-xs font-mono font-bold transition-all ${
+                            season === s
+                              ? 'bg-red-600 text-white shadow-sm'
+                              : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                          }`}
+                        >
+                          {s}
+                        </button>
                       ))}
-                    </select>
+                    </div>
+
+                    {/* Quick Episode Stepper & Drawer Toggle */}
+                    <div className="flex items-center space-x-1 bg-zinc-950/80 border border-zinc-800 rounded-xl p-0.5">
+                      <button
+                        type="button"
+                        disabled={episode <= 1}
+                        onClick={() => {
+                          if (episode > 1) {
+                            setEpisode((e) => e - 1);
+                            setIframeKey((k) => k + 1);
+                          }
+                        }}
+                        className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                        title="Previous Episode"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                      </button>
+
+                      <span className="px-2 font-mono font-extrabold text-red-400 text-xs">
+                        EP {episode}
+                      </span>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEpisode((e) => e + 1);
+                          setIframeKey((k) => k + 1);
+                        }}
+                        className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
+                        title="Next Episode"
+                      >
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    {/* Episode Guide / Quick Switcher Drawer Toggle */}
+                    <button
+                      type="button"
+                      onClick={() => setIsEpisodesDrawerOpen(!isEpisodesDrawerOpen)}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-mono font-bold flex items-center space-x-1.5 border transition-all ${
+                        isEpisodesDrawerOpen
+                          ? 'bg-red-600/20 text-red-300 border-red-500/40'
+                          : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-700'
+                      }`}
+                    >
+                      <ListNumbers className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Episodes Drawer</span>
+                    </button>
                   </div>
                 )}
               </div>
@@ -1094,7 +1221,9 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
                 {/* Background loader & fallback card */}
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950 text-zinc-400 p-4 text-center select-none pointer-events-none">
                   <div className="w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin mb-3"></div>
-                  <p className="text-xs font-mono text-zinc-300">Loading stream mirror ({selectedSource})...</p>
+                  <p className="text-xs font-mono text-zinc-300">
+                    Loading stream mirror ({selectedSource})...
+                  </p>
                 </div>
 
                 <iframe
@@ -1109,24 +1238,100 @@ export const MoviesView: React.FC<MoviesViewProps> = ({ selectedMovieId }) => {
                 />
               </div>
 
+              {/* SLEEK QUICK EPISODE SWITCHER DRAWER (FOR TV & ANIME) */}
+              <AnimatePresence>
+                {(modalMovie.mediaType === 'tv' || modalMovie.mediaType === 'anime') &&
+                  isEpisodesDrawerOpen && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="bg-zinc-950 border-t border-zinc-800/90 overflow-hidden flex-shrink-0"
+                    >
+                      <div className="p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center space-x-2">
+                            <span className="text-[11px] font-mono font-bold text-zinc-400 uppercase">
+                              Season {season} Episode Guide:
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-mono text-zinc-500">
+                            Click any episode to switch instantly
+                          </span>
+                        </div>
+
+                        {/* Horizontal Episode Strip */}
+                        <div className="flex items-center space-x-2.5 overflow-x-auto pb-1.5 scrollbar-thin">
+                          {(episodesList.length > 0
+                            ? episodesList
+                            : Array.from({ length: 24 }, (_, i) => ({
+                                episode_number: i + 1,
+                                name: `Episode ${i + 1}`,
+                              }))
+                          ).map((ep) => {
+                            const isCurrent = episode === ep.episode_number;
+                            return (
+                              <button
+                                key={ep.episode_number}
+                                type="button"
+                                onClick={() => {
+                                  setEpisode(ep.episode_number);
+                                  setIframeKey((k) => k + 1);
+                                }}
+                                className={`flex-shrink-0 w-36 sm:w-44 p-2 rounded-xl text-left border transition-all duration-200 group relative ${
+                                  isCurrent
+                                    ? 'bg-red-600/20 border-red-500 ring-1 ring-red-500/50 text-white shadow-lg'
+                                    : 'bg-zinc-900/90 hover:bg-zinc-800/90 border-zinc-800 text-zinc-400 hover:text-white'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-1 mb-1">
+                                  <span
+                                    className={`text-[11px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                                      isCurrent
+                                        ? 'bg-red-600 text-white'
+                                        : 'bg-zinc-800 text-zinc-300 group-hover:bg-zinc-700'
+                                    }`}
+                                  >
+                                    EP {ep.episode_number}
+                                  </span>
+                                  {isCurrent && (
+                                    <span className="flex items-center space-x-1 text-[9px] font-mono font-bold text-red-400">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-ping" />
+                                      <span>PLAYING</span>
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs font-semibold truncate text-white">
+                                  {ep.name || `Episode ${ep.episode_number}`}
+                                </p>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+              </AnimatePresence>
+
               {/* Unblock & Troubleshooting Helper Footer */}
               <div className="p-3 bg-zinc-900/95 border-t border-zinc-800 text-[11px] text-zinc-400 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 px-4 flex-shrink-0">
                 <div className="flex items-center space-x-2 text-zinc-300">
-                  <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                  <ShieldCheck className="w-4 h-4 text-emerald-400 flex-shrink-0" />
                   <span>
-                    <strong>Blocked at school/filter?</strong> Switch mirror buttons above or click{' '}
+                    <strong>Auto-Proxy Active:</strong> Streams are proxied without ads or blocks. If a server is slow, click the dropdown above or{' '}
                     <button
+                      type="button"
                       onClick={() => window.open(getStreamEmbedUrl(modalMovie), '_blank', 'noopener,noreferrer')}
                       className="text-red-400 hover:text-red-300 underline font-bold"
                     >
                       Pop-out Unblocked ↗
-                    </button>{' '}
-                    to play without iframe blocks.
+                    </button>
                   </span>
                 </div>
 
                 <div className="text-[10px] font-mono text-zinc-500 flex-shrink-0">
-                  Active Server: <span className="text-red-400 font-bold uppercase">{selectedSource}</span>
+                  Engine: <span className="text-red-400 font-bold uppercase">{selectedSource}</span>
                 </div>
               </div>
             </div>
@@ -1164,51 +1369,71 @@ const NetflixRow: React.FC<NetflixRowProps> = ({
   onInfo,
 }) => {
   return (
-    <div className="space-y-2.5 relative group/row">
+    <div className="space-y-3 relative group/row">
       {title && (
-        <div className="flex items-center space-x-2">
-          {icon}
-          <h2 className="text-lg sm:text-xl font-bold text-white tracking-wide flex items-center gap-2">
-            <span>{title}</span>
-          </h2>
+        <div className="flex items-center justify-between px-1">
+          <div className="flex items-center space-x-2.5">
+            {icon}
+            <h2 className="text-lg sm:text-xl font-bold text-white tracking-wide flex items-center gap-2">
+              <span>{title}</span>
+            </h2>
+          </div>
+          <div className="flex items-center space-x-1.5 opacity-80 sm:opacity-0 group-hover/row:opacity-100 transition-opacity">
+            <button
+              onClick={() => scrollRow(rowKey, 'left')}
+              className="w-8 h-8 rounded-full bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 hover:text-white flex items-center justify-center transition-all shadow-md active:scale-95 cursor-pointer"
+              title="Scroll left"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => scrollRow(rowKey, 'right')}
+              className="w-8 h-8 rounded-full bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 hover:text-white flex items-center justify-center transition-all shadow-md active:scale-95 cursor-pointer"
+              title="Scroll right"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Row Scroll Container */}
-      <div className="relative">
-        {/* Left Arrow Button */}
+      {/* Row Scroll Container with Smooth Rounded Side-Scrolling */}
+      <div className="relative rounded-3xl overflow-hidden p-0.5">
+        {/* Left Circular Floating Arrow Button */}
         <button
           onClick={() => scrollRow(rowKey, 'left')}
-          className="absolute left-0 top-0 bottom-0 z-20 w-10 bg-black/70 hover:bg-black/90 text-white flex items-center justify-center opacity-0 group-hover/row:opacity-100 transition-opacity backdrop-blur-sm rounded-r-lg"
+          className="absolute left-2 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-zinc-950/85 hover:bg-zinc-900 border border-zinc-700/80 text-white flex items-center justify-center opacity-0 group-hover/row:opacity-100 transition-all backdrop-blur-md shadow-2xl hover:scale-110 active:scale-95 cursor-pointer"
+          title="Previous"
         >
           <ChevronLeft className="w-6 h-6" />
         </button>
 
-        {/* Scrollable Movies Row */}
+        {/* Scrollable Movies Row - Smooth Rounded Touch & Snap Flow */}
         <div
           ref={(el) => (rowRefs.current[rowKey] = el)}
-          className="flex items-center space-x-3.5 overflow-x-auto scrollbar-none py-3 px-1 scroll-smooth"
+          className="flex items-center space-x-4 overflow-x-auto scrollbar-none py-2 px-1 scroll-smooth snap-x snap-mandatory rounded-2xl"
+          style={{ scrollBehavior: 'smooth', WebkitOverflowScrolling: 'touch' }}
         >
           {movies.map((movie, idx) => (
             <div
               key={`${rowKey}-${movie.id}-${idx}`}
               onClick={() => onInfo(movie)}
-              className="group/card relative flex-shrink-0 w-36 sm:w-44 md:w-48 lg:w-52 rounded-xl overflow-hidden bg-zinc-950 border border-zinc-800 hover:border-zinc-700 cursor-pointer transition-all duration-200 hover:scale-105 hover:z-20 shadow-md"
+              className="group/card relative flex-shrink-0 w-36 sm:w-44 md:w-48 lg:w-52 rounded-2xl overflow-hidden bg-zinc-900/90 border border-zinc-800 hover:border-zinc-700 cursor-pointer transition-all duration-300 hover:scale-[1.03] hover:z-20 shadow-lg snap-start"
             >
-              <div className="aspect-[2/3] w-full relative overflow-hidden bg-zinc-800">
+              <div className="aspect-[2/3] w-full relative overflow-hidden bg-zinc-800 rounded-t-2xl">
                 <img
                   src={movie.image}
                   alt={movie.title}
-                  className="w-full h-full object-cover group-hover/card:scale-105 transition-transform duration-300"
+                  className="w-full h-full object-cover group-hover/card:scale-105 transition-transform duration-500 rounded-t-2xl"
                 />
                 <div className="absolute inset-0 bg-black/30 opacity-0 group-hover/card:opacity-100 transition-opacity" />
 
-                <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded bg-black/80 text-[10px] font-mono text-zinc-200 font-bold border border-zinc-700 flex items-center space-x-1">
+                <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-full bg-black/80 text-[10px] font-mono text-zinc-200 font-bold border border-zinc-700 flex items-center space-x-1 backdrop-blur-sm shadow-sm">
                   <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
                   <span>{movie.rating}</span>
                 </div>
 
-                <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded bg-black/80 text-[9px] font-mono text-zinc-300 font-bold border border-zinc-700 uppercase">
+                <div className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-full bg-black/80 text-[9px] font-mono text-zinc-300 font-bold border border-zinc-700 uppercase backdrop-blur-sm shadow-sm">
                   {movie.year}
                 </div>
 
@@ -1218,16 +1443,16 @@ const NetflixRow: React.FC<NetflixRowProps> = ({
                     e.stopPropagation();
                     onPlay(movie);
                   }}
-                  className="absolute inset-0 m-auto w-11 h-11 rounded-full bg-red-600 text-white flex items-center justify-center opacity-0 group-hover/card:opacity-100 transition-opacity shadow-lg hover:scale-110"
+                  className="absolute inset-0 m-auto w-12 h-12 rounded-full bg-white text-zinc-950 flex items-center justify-center opacity-0 group-hover/card:opacity-100 transition-all shadow-2xl hover:scale-110 cursor-pointer"
                 >
-                  <Play className="w-5 h-5 fill-current ml-0.5" />
+                  <Play className="w-5 h-5 fill-current ml-0.5 text-zinc-950" />
                 </div>
               </div>
 
               {/* Card Footer Details */}
-              <div className="p-2.5 bg-zinc-950 flex items-center justify-between gap-1">
+              <div className="p-3 bg-zinc-950/95 flex items-center justify-between gap-1.5 rounded-b-2xl border-t border-zinc-800/60">
                 <div className="min-w-0 flex-1">
-                  <h4 className="text-xs font-bold text-white group-hover/card:text-red-400 truncate">
+                  <h4 className="text-xs font-bold text-white group-hover/card:text-zinc-200 truncate">
                     {movie.title}
                   </h4>
                   <div className="flex items-center space-x-1.5 text-[10px] text-zinc-400 mt-0.5">
@@ -1239,10 +1464,11 @@ const NetflixRow: React.FC<NetflixRowProps> = ({
 
                 <button
                   onClick={(e) => toggleWatchlist(movie.id, e)}
-                  className="p-1 rounded text-zinc-400 hover:text-white flex-shrink-0"
+                  className="p-1.5 rounded-xl hover:bg-zinc-800 text-zinc-400 hover:text-white flex-shrink-0 transition-colors cursor-pointer"
+                  title="Add to Watchlist"
                 >
                   {watchlist.includes(movie.id) ? (
-                    <Check className="w-4 h-4 text-red-500" />
+                    <Check className="w-4 h-4 text-emerald-400" />
                   ) : (
                     <Plus className="w-4 h-4" />
                   )}
@@ -1252,10 +1478,11 @@ const NetflixRow: React.FC<NetflixRowProps> = ({
           ))}
         </div>
 
-        {/* Right Arrow Button */}
+        {/* Right Circular Floating Arrow Button */}
         <button
           onClick={() => scrollRow(rowKey, 'right')}
-          className="absolute right-0 top-0 bottom-0 z-20 w-10 bg-black/70 hover:bg-black/90 text-white flex items-center justify-center opacity-0 group-hover/row:opacity-100 transition-opacity backdrop-blur-sm rounded-l-xl"
+          className="absolute right-2 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-zinc-950/85 hover:bg-zinc-900 border border-zinc-700/80 text-white flex items-center justify-center opacity-0 group-hover/row:opacity-100 transition-all backdrop-blur-md shadow-2xl hover:scale-110 active:scale-95 cursor-pointer"
+          title="Next"
         >
           <ChevronRight className="w-6 h-6" />
         </button>

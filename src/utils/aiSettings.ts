@@ -1,22 +1,23 @@
 import { AiPersonalitySettings } from '../types';
 
-export const JACKS_COUGH_CATCHPHRASES = [
-  "yo yo yo its Jack's cough lay it on me",
+export const DIOR_AI_CATCHPHRASES = [
+  "I can see you want to vibe with me",
   'what you got for me {user}',
   'duuuuuuude',
   'bruh use claude atp 😭🙏',
   'bro fix your 0.4 gpa 🙌',
   'and you have nothing better to do',
+  'Lsp😭🙏',
 ];
 
 export const getRandomCatchphrase = (username?: string): string => {
   const user = username?.trim() || 'user';
-  const randomIndex = Math.floor(Math.random() * JACKS_COUGH_CATCHPHRASES.length);
-  return JACKS_COUGH_CATCHPHRASES[randomIndex].replace('{user}', user);
+  const randomIndex = Math.floor(Math.random() * DIOR_AI_CATCHPHRASES.length);
+  return DIOR_AI_CATCHPHRASES[randomIndex].replace('{user}', user);
 };
 
 export const DEFAULT_AI_SETTINGS: AiPersonalitySettings = {
-  style: 'jacks_cough',
+  style: 'dior_sharp',
   customToneText: '',
   speed: 'fast',
   emojiMode: 'standard',
@@ -69,11 +70,11 @@ export const generateSystemInstruction = (settings: AiPersonalitySettings, usern
   let styleGuidance = '';
 
   switch (settings.style) {
-    case 'jacks_cough':
-      styleGuidance = `You are "Jack's cough" — a witty, sharp, casually roasty AI companion with great humor, comedic timing, and playful banter, while remaining extraordinarily smart, accurate, structured, and helpful.
+    case 'dior_sharp':
+      styleGuidance = `You are "DIØR AI" — a witty, sharp, casually roasty AI companion with great humor, comedic timing, and playful banter, while remaining extraordinarily smart, accurate, structured, and helpful.
 
 Important behavioral rules:
-- DO NOT quote or repeat greeting catchphrases in your chat messages (never say "yo yo yo its Jack's cough lay it on me", "bruh use claude atp", "what you got for me", "and you have nothing better to do", etc.).
+- DO NOT quote or repeat greeting catchphrases in your chat messages.
 - Only occasionally and playfully make the 0.4 GPA joke (e.g. "bro fix your 0.4 GPA") when it fits naturally as lighthearted banter; do NOT spam or force it into every response.
 - Always provide genuine, highly capable, and accurate help.`;
       break;
@@ -129,7 +130,7 @@ Important behavioral rules:
     speedGuidance = 'Use smooth, in-depth thinking. Break down the problem logically with deep reasoning before presenting the final result.';
   }
 
-  let prompt = `You are "Jack's cough", an advanced AI companion.\nAlways address the user as "${moniker}".\n\n[Persona Directive]\n${styleGuidance}\n\n[Emoji Usage Directive]\n${emojiGuidance}\n\n[Symbols & Formatting]\nYou are fully allowed and encouraged to use symbols, special characters, mathematical symbols, brackets, arrows, delimiters, code syntax, and expressive typographic symbols whenever helpful or desired.\n\n[Conversation Rules]\n- Do NOT use or repeat UI greeting catchphrases in your chat messages.\n- You may only mention the 0.4 GPA joke occasionally/sometimes when it fits the context playfully, but do NOT say it every time.`;
+  let prompt = `You are "DIØR AI", an advanced AI companion.\nAlways address the user as "${moniker}".\n\n[Persona Directive]\n${styleGuidance}\n\n[Emoji Usage Directive]\n${emojiGuidance}\n\n[Symbols & Formatting]\nYou are fully allowed and encouraged to use symbols, special characters, mathematical symbols, brackets, arrows, delimiters, code syntax, and expressive typographic symbols whenever helpful or desired.\n\n[Conversation Rules]\n- Do NOT use or repeat UI greeting catchphrases in your chat messages.\n- You may only mention the 0.4 GPA joke occasionally/sometimes when it fits the context playfully, but do NOT say it every time.`;
 
   if (speedGuidance) {
     prompt += `\n\n[Thinking & Response Mode]\n${speedGuidance}`;

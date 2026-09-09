@@ -1,20 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavTab } from '../types';
 import {
   MagnifyingGlass as Search,
-  GameController as Gamepad2,
-  FilmStrip as Film,
-  Television as Tv,
-  ChatCircleText as MessageSquare,
-  Globe,
-  BookOpen,
-  ArrowClockwise as RotateCw,
-  LinkSimple as Link2,
-  MusicNotes as Music,
-  SlidersHorizontal as Sliders,
   ArrowSquareOut as ExternalLink,
+  GameController,
+  Sparkle,
+  Globe,
+  FilmStrip,
+  MusicNotes,
+  ChatCircleText,
+  ShieldCheck,
+  Lightning,
+  X,
+  Compass,
 } from '@phosphor-icons/react';
-import { BibleVerse, getRandomBibleVerse } from '../data/bibleVerses';
+import { addHistoryItem } from './HistoryModal';
 
 interface HomeViewProps {
   currentWallpaper?: string;
@@ -31,199 +31,168 @@ export const HomeView: React.FC<HomeViewProps> = ({
   onNavigate,
   onLaunchProxy,
 }) => {
-  const [proxyInput, setProxyInput] = useState('');
-  const [bibleVerse, setBibleVerse] = useState<BibleVerse>(() => getRandomBibleVerse());
+  const [query, setQuery] = useState('');
+  const [searchEngine, setSearchEngine] = useState<'proxy' | 'google' | 'duckduckgo' | 'youtube' | 'bing'>('proxy');
+  const [currentTimeStr, setCurrentTimeStr] = useState<string>('');
 
-  const handleNextVerse = () => {
-    setBibleVerse(getRandomBibleVerse());
-  };
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      setCurrentTimeStr(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 10000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!proxyInput.trim()) return;
+    const clean = query.trim();
+    if (!clean) return;
+
+    let target = clean;
+    if (searchEngine === 'google' && !clean.startsWith('http://') && !clean.startsWith('https://')) {
+      target = `https://www.google.com/search?q=${encodeURIComponent(clean)}`;
+    } else if (searchEngine === 'duckduckgo' && !clean.startsWith('http://') && !clean.startsWith('https://')) {
+      target = `https://duckduckgo.com/?q=${encodeURIComponent(clean)}`;
+    } else if (searchEngine === 'youtube' && !clean.startsWith('http://') && !clean.startsWith('https://')) {
+      target = `https://www.youtube.com/results?search_query=${encodeURIComponent(clean)}`;
+    } else if (searchEngine === 'bing' && !clean.startsWith('http://') && !clean.startsWith('https://')) {
+      target = `https://www.bing.com/search?q=${encodeURIComponent(clean)}`;
+    }
+
+    addHistoryItem({
+      type: 'search',
+      title: clean,
+      subtitle: `DIØR Web Engine (${searchEngine.toUpperCase()})`,
+    });
+
     if (onLaunchProxy) {
-      onLaunchProxy(proxyInput.trim());
+      onLaunchProxy(target);
     } else {
       onNavigate('proxy');
     }
   };
 
-  const quickNav = [
-    { id: 'proxy' as NavTab, label: 'Proxy Browser', icon: Globe, desc: 'Web navigation' },
-    { id: 'games' as NavTab, label: 'Game Library', icon: Gamepad2, desc: 'Playable web titles' },
-    { id: 'movies' as NavTab, label: 'Media Stream', icon: Film, desc: 'Shows and movies' },
-    { id: 'youtube' as NavTab, label: 'Video Player', icon: Tv, desc: 'Video search & stream' },
-    { id: 'community' as NavTab, label: 'Community Chat', icon: MessageSquare, desc: 'Direct rooms & calls' },
-    { id: 'music' as NavTab, label: 'Music Library', icon: Music, desc: 'Tracks & lyrics' },
-    { id: 'links' as NavTab, label: 'Link Generator', icon: Link2, desc: 'Active mirror links' },
-    { id: 'settings' as NavTab, label: 'Settings', icon: Sliders, desc: 'Preferences & profile' },
-  ];
-
-  const searchPresets = [
-    { label: 'Google', query: 'https://google.com' },
-    { label: 'YouTube', query: 'https://youtube.com' },
-    { label: 'Discord', query: 'https://discord.com' },
-    { label: 'Wikipedia', query: 'https://wikipedia.org' },
+  const quickLinks = [
+    { label: 'YouTube', url: 'https://youtube.com' },
+    { label: 'Discord', url: 'https://discord.com/app' },
+    { label: 'Roblox', url: 'https://roblox.com' },
+    { label: 'ChatGPT', url: 'https://chat.openai.com' },
+    { label: 'GitHub', url: 'https://github.com' },
+    { label: 'Twitch', url: 'https://twitch.tv' },
+    { label: 'Spotify', url: 'https://open.spotify.com' },
+    { label: 'TikTok', url: 'https://tiktok.com' },
   ];
 
   return (
-    <div className="w-full max-w-5xl mx-auto space-y-6 pt-2 pb-12 text-zinc-100">
-      
-      {/* Top Brand & Omnibar Search Hero */}
-      <div className="p-6 sm:p-8 rounded-2xl bg-[#111115] border border-zinc-800 space-y-5">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-zinc-800 pb-5">
-          <div className="space-y-0.5">
-            <div className="flex items-center space-x-2">
-              <span className="text-xl font-bold text-white tracking-tight">Yuno Workspace</span>
-              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-zinc-900 text-zinc-400 border border-zinc-800">
-                ACTIVE
-              </span>
-            </div>
-            <p className="text-xs text-zinc-400">Web applications, tools, and media platform</p>
-          </div>
-          <div className="flex items-center space-x-2 text-xs font-mono text-zinc-400">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
-            <span>Connected</span>
-          </div>
+    <div className="relative min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center px-4 py-10 text-zinc-100 select-none">
+      <div className="w-full max-w-2xl mx-auto flex flex-col items-center text-center space-y-6">
+        
+        {/* Brand Header */}
+        <div className="space-y-1">
+          <h1
+            className="text-5xl sm:text-6xl font-normal tracking-[0.2em] leading-none uppercase text-zinc-100"
+            style={{
+              fontFamily: "'Bodoni Moda', 'Cinzel', 'Playfair Display', Georgia, serif",
+            }}
+          >
+            DIØR
+          </h1>
+          <p className="text-xs text-zinc-400 font-mono tracking-wider pt-1">
+            {currentTimeStr ? `${currentTimeStr} • FAST WEB PORTAL` : 'FAST WEB PORTAL'}
+          </p>
         </div>
 
-        {/* Omnibar Search Form */}
-        <form onSubmit={handleSearch} className="space-y-2.5">
-          <div className="flex items-center bg-zinc-950 border border-zinc-800 focus-within:border-zinc-600 rounded-xl px-3.5 py-2 transition-colors">
-            <Search className="w-4 h-4 text-zinc-400 mr-2.5 flex-shrink-0" />
+        {/* Search Omnibox */}
+        <form onSubmit={handleSearch} className="w-full space-y-2.5">
+          <div className="relative flex items-center bg-zinc-900 border border-zinc-700 focus-within:border-zinc-500 rounded-xl px-4 py-3 shadow-sm transition-colors">
+            <Search className="w-4 h-4 text-zinc-400 mr-3 flex-shrink-0" />
             <input
               type="text"
-              value={proxyInput}
-              onChange={(e) => setProxyInput(e.target.value)}
-              placeholder="Enter a web URL (e.g. google.com) or search term..."
-              className="w-full bg-transparent text-xs sm:text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search Google, DuckDuckGo or enter URL..."
+              className="w-full bg-transparent text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none"
+              autoFocus
             />
-            <button
-              type="submit"
-              className="px-4 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-semibold border border-zinc-700 transition-colors cursor-pointer flex-shrink-0"
-            >
-              Open URL
-            </button>
+            {query.trim() && (
+              <div className="flex items-center space-x-2 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setQuery('')}
+                  className="p-1 text-zinc-400 hover:text-zinc-200 cursor-pointer"
+                  title="Clear"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+                <button
+                  type="submit"
+                  className="px-3 py-1 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  Open
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* Quick Preset Queries */}
-          <div className="flex items-center flex-wrap gap-1.5 pt-0.5">
-            <span className="text-[11px] text-zinc-500 mr-1 font-mono">Quick launch:</span>
-            {searchPresets.map((preset) => (
+          {/* Engine Selector Pills */}
+          <div className="flex items-center justify-center flex-wrap gap-1.5 pt-0.5 text-xs text-zinc-400">
+            <span className="text-[11px] font-mono text-zinc-500 mr-1">Search:</span>
+            {[
+              { id: 'proxy', label: 'Direct URL' },
+              { id: 'google', label: 'Google' },
+              { id: 'duckduckgo', label: 'DuckDuckGo' },
+              { id: 'youtube', label: 'YouTube' },
+              { id: 'bing', label: 'Bing' },
+            ].map((eng) => (
               <button
-                key={preset.label}
+                key={eng.id}
                 type="button"
-                onClick={() => {
-                  setProxyInput(preset.query);
-                  if (onLaunchProxy) {
-                    onLaunchProxy(preset.query);
-                  } else {
-                    onNavigate('proxy');
-                  }
-                }}
-                className="px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[11px] text-zinc-300 hover:text-white transition-colors cursor-pointer"
+                onClick={() => setSearchEngine(eng.id as any)}
+                className={`px-2.5 py-1 rounded-md text-xs transition-colors cursor-pointer border ${
+                  searchEngine === eng.id
+                    ? 'bg-zinc-800 text-white border-zinc-600 font-medium'
+                    : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+                }`}
               >
-                {preset.label}
+                {eng.label}
               </button>
             ))}
           </div>
         </form>
-      </div>
 
-      {/* Quick Services Navigation Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {quickNav.map((item) => {
-          const Icon = item.icon;
-          return (
-            <button
-              key={item.id}
-              onClick={() => onNavigate(item.id)}
-              className="p-4 rounded-xl bg-[#111115] hover:bg-[#18181f] border border-zinc-800 hover:border-zinc-700 text-left transition-all group flex flex-col justify-between h-28 cursor-pointer"
-            >
-              <div className="flex items-center justify-between w-full">
-                <div className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 group-hover:text-white transition-colors">
-                  <Icon className="w-4 h-4" />
-                </div>
-                <ExternalLink className="w-3.5 h-3.5 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
-              </div>
-              <div>
-                <span className="text-xs font-bold text-zinc-200 group-hover:text-white block">
-                  {item.label}
-                </span>
-                <span className="text-[11px] text-zinc-500 block truncate">
-                  {item.desc}
-                </span>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Main Content Layout: Scripture & Mirror Finder */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Daily Scripture Card */}
-        <div className="p-5 rounded-2xl bg-[#111115] border border-zinc-800 flex flex-col justify-between space-y-4">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <BookOpen className="w-4 h-4 text-zinc-400" />
-                <span className="text-xs font-bold text-zinc-200">Daily Scripture</span>
-              </div>
-              <div className="flex items-center space-x-1.5">
-                <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-zinc-900 border border-zinc-800 text-zinc-400">
-                  {bibleVerse.translation || 'NIV'}
-                </span>
-                {bibleVerse.theme && (
-                  <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-800 text-zinc-300">
-                    {bibleVerse.theme}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <p className="text-xs sm:text-sm text-zinc-300 italic leading-relaxed">
-              "{bibleVerse.text}"
-            </p>
+        {/* Clean Shortcuts Grid */}
+        <div className="w-full pt-4">
+          <div className="text-left mb-2.5 px-1 flex items-center justify-between text-xs text-zinc-400 font-mono">
+            <span>QUICK SHORTCUTS</span>
+            <span className="text-[10px] text-zinc-500">CLICK TO LAUNCH</span>
           </div>
-
-          <div className="flex items-center justify-between pt-2 border-t border-zinc-800">
-            <span className="text-xs font-semibold text-zinc-400 font-mono">
-              {bibleVerse.reference}
-            </span>
-            <button
-              onClick={handleNextVerse}
-              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 text-xs font-medium transition-colors cursor-pointer"
-            >
-              <RotateCw className="w-3.5 h-3.5 text-zinc-400" />
-              <span>Next Verse</span>
-            </button>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full">
+            {quickLinks.map((link) => (
+              <button
+                key={link.label}
+                type="button"
+                onClick={() => {
+                  setQuery(link.url);
+                  if (onLaunchProxy) {
+                    onLaunchProxy(link.url);
+                  } else {
+                    onNavigate('proxy');
+                  }
+                }}
+                className="p-3 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-850 text-left transition-colors cursor-pointer flex items-center justify-between group"
+              >
+                <span className="text-xs font-medium text-zinc-200 group-hover:text-white truncate">
+                  {link.label}
+                </span>
+                <ExternalLink className="w-3.5 h-3.5 text-zinc-500 group-hover:text-zinc-300 flex-shrink-0" />
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Link Finder Fast Access Card */}
-        <div className="p-5 rounded-2xl bg-[#111115] border border-zinc-800 flex flex-col justify-between space-y-4">
-          <div className="space-y-2">
-            <div className="flex items-center space-x-2">
-              <Link2 className="w-4 h-4 text-zinc-400" />
-              <span className="text-xs font-bold text-zinc-200">Mirror Link Generator</span>
-            </div>
-            <p className="text-xs text-zinc-400 leading-relaxed">
-              Generate direct web mirrors and proxy endpoints with authenticated tokens.
-            </p>
-          </div>
-
-          <div className="pt-2 border-t border-zinc-800 flex items-center justify-between">
-            <span className="text-[11px] font-mono text-zinc-500">Configured</span>
-            <button
-              onClick={() => onNavigate('links')}
-              className="px-3.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white text-xs font-semibold border border-zinc-700 transition-colors cursor-pointer"
-            >
-              Open Links
-            </button>
-          </div>
-        </div>
       </div>
-
     </div>
   );
 };

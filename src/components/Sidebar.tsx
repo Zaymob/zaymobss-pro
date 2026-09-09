@@ -10,6 +10,7 @@ import {
   Robot,
   ChatCircleText,
   MusicNotes,
+  Handshake,
   Gear,
   CaretLeft,
   CaretRight,
@@ -53,14 +54,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'movies' as NavTab, label: 'Movies & TV', icon: FilmStrip },
     { id: 'games' as NavTab, label: 'Arcade Games', icon: GameController },
     { id: 'youtube' as NavTab, label: 'Yunø Tube', icon: Television },
-    { id: 'ai' as NavTab, label: "Jack's cough", icon: Robot },
+    { id: 'ai' as NavTab, label: 'DIØR AI', icon: Robot },
     { id: 'community' as NavTab, label: 'Community Chat', icon: ChatCircleText },
     { id: 'music' as NavTab, label: 'Music', icon: MusicNotes },
+    { id: 'partners' as NavTab, label: 'Partners', icon: Handshake },
     { id: 'settings' as NavTab, label: 'Settings', icon: Gear },
   ];
 
-  const defaultAvatar =
-    'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80';
+  const defaultAvatar = '';
 
   return (
     <>
@@ -78,7 +79,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Main Sidebar Component */}
       <aside
-        className={`fixed top-0 left-0 bottom-0 z-40 flex flex-col bg-zinc-950/90 backdrop-blur-2xl border-r border-zinc-800/70 transition-all duration-300 ease-in-out ${
+        className={`fixed top-0 left-0 bottom-0 z-40 flex flex-col bg-zinc-950/40 backdrop-blur-xl backdrop-saturate-150 border-r border-white/10 transition-all duration-300 ease-in-out ${
           closed
             ? '-translate-x-full opacity-0 pointer-events-none'
             : 'translate-x-0 opacity-100'
@@ -111,7 +112,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="flex items-center space-x-1">
               <button
                 onClick={() => setCollapsed(!collapsed)}
-                className="p-1 rounded-lg bg-black/40 hover:bg-black/80 text-zinc-400 hover:text-white border border-white/10 transition-colors cursor-pointer"
+                className="p-1 rounded-lg bg-black/30 hover:bg-black/60 text-zinc-400 hover:text-white border border-white/10 transition-colors cursor-pointer"
                 title={collapsed ? 'Expand sidebar' : 'Collapse to compact'}
               >
                 {collapsed ? <CaretRight className="w-3.5 h-3.5" /> : <CaretLeft className="w-3.5 h-3.5" />}
@@ -119,7 +120,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
               <button
                 onClick={() => setClosed(true)}
-                className="p-1 rounded-lg bg-black/40 hover:bg-red-500/20 text-zinc-400 hover:text-red-300 border border-white/10 transition-colors cursor-pointer"
+                className="p-1 rounded-lg bg-black/30 hover:bg-red-500/20 text-zinc-400 hover:text-red-300 border border-white/10 transition-colors cursor-pointer"
                 title="Close sidebar completely"
               >
                 <X className="w-3.5 h-3.5" />
@@ -129,7 +130,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Scrollable Navigation list */}
-        <nav className="p-2.5 space-y-1 overflow-y-auto flex-1 min-h-0 scrollbar-thin scrollbar-thumb-zinc-800">
+        <nav className="p-2.5 space-y-1 overflow-y-auto flex-1 min-h-0 scrollbar-thin scrollbar-thumb-zinc-800/60">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -141,7 +142,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className={`relative w-full flex items-center space-x-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all group cursor-pointer ${
                   isActive
                     ? 'text-zinc-950 bg-amber-400 font-bold shadow-md'
-                    : 'text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent'
+                    : 'text-zinc-300 hover:text-white hover:bg-white/10 border border-transparent'
                 }`}
               >
                 <Icon
@@ -158,7 +159,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
                 {/* Collapsed Tooltip */}
                 {collapsed && (
-                  <div className="absolute left-full ml-3 px-2.5 py-1.5 bg-black/90 text-white text-xs rounded-lg shadow-xl border border-white/10 opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity">
+                  <div className="absolute left-full ml-3 px-2.5 py-1.5 bg-zinc-900/95 backdrop-blur-md text-white text-xs rounded-lg shadow-xl border border-white/10 opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity">
                     {item.label}
                   </div>
                 )}
@@ -168,11 +169,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </nav>
 
         {/* Fixed Footer controls at bottom */}
-        <div className="p-2.5 border-t border-zinc-800/70 space-y-1.5 flex-shrink-0 bg-zinc-950">
+        <div className="p-2.5 border-t border-white/10 space-y-1.5 flex-shrink-0 bg-transparent">
           {/* Replay boot screen button */}
           <button
             onClick={onReplayBoot}
-            className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl text-[11px] text-zinc-400 hover:text-white bg-zinc-900/50 hover:bg-zinc-800 border border-zinc-800/60 transition-colors ${
+            className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl text-[11px] text-zinc-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 transition-colors ${
               collapsed ? 'justify-center' : ''
             }`}
             title="Replay Yunø Boot Animation"
@@ -184,7 +185,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* User profile snippet (Clickable to Edit Name & Avatar!) */}
           <button
             onClick={onOpenProfileModal}
-            className={`w-full flex items-center space-x-2.5 p-2 rounded-xl bg-zinc-900/70 hover:bg-zinc-800/90 border border-zinc-800/80 hover:border-cyan-500/50 transition-all text-left group shadow-lg ${
+            className={`w-full flex items-center space-x-2.5 p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-cyan-500/50 transition-all text-left group shadow-lg ${
               collapsed ? 'justify-center' : ''
             }`}
             title="Click to edit your name and profile picture"
@@ -196,7 +197,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className="w-7 h-7 rounded-lg object-cover ring-2 ring-cyan-500/40 flex-shrink-0 group-hover:scale-105 transition-transform"
               />
             ) : (
-              <div className="w-7 h-7 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-cyan-400 flex-shrink-0 group-hover:scale-105 transition-transform">
+              <div className="w-7 h-7 rounded-lg bg-zinc-800/80 border border-zinc-700 flex items-center justify-center text-cyan-400 flex-shrink-0 group-hover:scale-105 transition-transform">
                 <User className="w-3.5 h-3.5" />
               </div>
             )}

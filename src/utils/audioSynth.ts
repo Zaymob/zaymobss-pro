@@ -155,6 +155,42 @@ class AudioEngine {
     osc1.stop(now + 0.4);
     osc2.stop(now + 0.4);
   }
+
+  // Exact Audio Ringtone from MP3 file
+  private ringtoneAudio: HTMLAudioElement | null = null;
+  private ringtoneActive: boolean = false;
+
+  public startRingtone() {
+    this.stopRingtone();
+    this.ringtoneActive = true;
+
+    try {
+      if (!this.ringtoneAudio) {
+        this.ringtoneAudio = new Audio('/ringtone.mp3');
+        this.ringtoneAudio.loop = true;
+      }
+      this.ringtoneAudio.currentTime = 0;
+      this.ringtoneAudio.volume = 0.85;
+      const playPromise = this.ringtoneAudio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((err) => {
+          console.warn('Audio play prevented or interrupted:', err);
+        });
+      }
+    } catch (e) {
+      console.warn('Failed to play audio ringtone', e);
+    }
+  }
+
+  public stopRingtone() {
+    this.ringtoneActive = false;
+    if (this.ringtoneAudio) {
+      try {
+        this.ringtoneAudio.pause();
+        this.ringtoneAudio.currentTime = 0;
+      } catch (e) {}
+    }
+  }
 }
 
 export const audioEngine = new AudioEngine();

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { NavTab, MusicTrack, CallState, CallParticipant, PlaybackContext, UserProfile, YouTubeVideo, BanAppealItem } from './types';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { NavTab, MusicTrack, PlaybackContext, UserProfile, YouTubeVideo, BanAppealItem } from './types';
 import { WALLPAPERS, MUSIC_TRACKS } from './data/portalData';
 import { audioEngine } from './utils/audioSynth';
 
@@ -7,24 +7,25 @@ import { BootScreen } from './components/BootScreen';
 import { HomeView } from './components/HomeView';
 import { MoviesView } from './components/MoviesView';
 import { GamesView } from './components/GamesView';
-import { AiView } from './components/AiView';
-import { CommunityView } from './components/CommunityView';
 import { YoutubeView } from './components/YoutubeView';
 import { MusicView } from './components/MusicView';
 import { SettingsView } from './components/SettingsView';
 import { MusicPlayerBar } from './components/MusicPlayerBar';
-import { CallOverlay } from './components/CallOverlay';
-import { ProfileModal } from './components/ProfileModal';
 import { ProxyTab } from './components/ProxyTab';
 import { LinkFinderView } from './components/LinkFinderView';
-import { PrivateChatView } from './components/PrivateChatView';
 import { PipVideoOverlay } from './components/PipVideoOverlay';
-import { FloatingNavbar } from './components/FloatingNavbar';
+import { VerticalNavRail } from './components/VerticalNavRail';
 
 import { motion, AnimatePresence } from 'motion/react';
 import { BanAppealModal } from './components/BanAppealModal';
 import { TabMaskModal } from './components/TabMaskModal';
+import { AdminDashboardModal } from './components/AdminDashboardModal';
+import { AnnouncementPopupModal, AnnouncementData } from './components/AnnouncementPopupModal';
+import { ReportModal } from './components/ReportModal';
+import { HistoryModal, addHistoryItem, HistoryItem } from './components/HistoryModal';
+import { BannedScreen } from './components/BannedScreen';
 import { getSavedCloakSettings, saveCloakSettings } from './utils/tabCloak';
+import { ConstellationCanvas } from './components/ConstellationCanvas';
 import {
   WallpaperCanvasEffects,
   WallpaperEffectSettings,
@@ -33,14 +34,22 @@ import {
 } from './components/WallpaperCanvasEffects';
 
 export default function App() {
-  const [showBootScreen, setShowBootScreen] = useState<boolean>(true);
+  const [showBootScreen, setShowBootScreen] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<NavTab>('home');
+
+  const handleNavigateTab = (tab: NavTab) => {
+    if (tab === activeTab) return;
+    setActiveTab(tab);
+  };
+
   const [currentWallpaper, setCurrentWallpaper] = useState<string>(() => {
     try {
       const saved = localStorage.getItem('yuno_current_wallpaper');
-      if (saved) return saved;
+      if (saved && !saved.includes('unsplash.com') && !saved.includes('pinimg.com') && !saved.includes('wallpaperflare.com')) {
+        return saved;
+      }
     } catch (e) {}
-    return WALLPAPERS[0].url;
+    return '#09090b';
   });
 
   const [effectSettings, setEffectSettings] = useState<WallpaperEffectSettings>(getSavedEffectSettings);
@@ -74,7 +83,7 @@ export default function App() {
       bio: '',
       status: 'Online',
       badge: '',
-      accentColor: 'from-cyan-500 to-blue-600',
+      accentColor: '#18181b',
     };
   });
 
@@ -115,13 +124,91 @@ export default function App() {
 
   const handleLaunchProxy = (urlOrQuery: string) => {
     setProxyTargetUrl(urlOrQuery);
-    setActiveTab('proxy');
+    handleNavigateTab('proxy');
   };
 
   // Modals state
   const [isBanAppealOpen, setIsBanAppealOpen] = useState<boolean>(false);
-  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
   const [isTabMaskModalOpen, setIsTabMaskModalOpen] = useState<boolean>(false);
+  const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState<boolean>(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState<boolean>(false);
+  const [reportModalState, setReportModalState] = useState<{
+    isOpen: boolean;
+    type: 'user' | 'message' | 'bug';
+    targetUser?: string;
+    messageContent?: string;
+    messageId?: string;
+  }>({
+    isOpen: false,
+    type: 'bug',
+  });
+
+  // Announcements Pop-up on Startup State
+  const [activeAnnouncement, setActiveAnnouncement] = useState<AnnouncementData | null>(null);
+  const [isAnnouncementPopupOpen, setIsAnnouncementPopupOpen] = useState<boolean>(false);
+
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('yuno_is_admin') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const [banDetails, setBanDetails] = useState<{ reason?: string; banImage?: string } | null>(null);
+
+  // Check and show active announcement once on site open
+  useEffect(() => {
+    const checkAnnouncements = async () => {
+      try {
+        const res = await fetch('/api/announcements');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (Array.isArray(data.announcements) && data.announcements.length > 0) {
+          const latest = data.announcements[0];
+          const seenKey = `yuno_seen_ann_${latest.id}`;
+          const hasSeen = sessionStorage.getItem(seenKey) || localStorage.getItem(seenKey);
+          if (!hasSeen) {
+            setActiveAnnouncement(latest);
+            setIsAnnouncementPopupOpen(true);
+          }
+        }
+      } catch (e) {
+        console.error('Error fetching announcements:', e);
+      }
+    };
+    checkAnnouncements();
+  }, []);
+
+  // Handle Dismiss Announcement
+  const handleDismissAnnouncement = () => {
+    if (activeAnnouncement) {
+      const seenKey = `yuno_seen_ann_${activeAnnouncement.id}`;
+      try {
+        sessionStorage.setItem(seenKey, 'true');
+        localStorage.setItem(seenKey, 'true');
+      } catch (e) {}
+    }
+    setIsAnnouncementPopupOpen(false);
+  };
+
+  // Calculator Equation Secret Unlock Event Listener
+  useEffect(() => {
+    const handleAdminUnlockedEvent = () => {
+      setIsAdminAuthenticated(true);
+      setIsAdminDashboardOpen(true);
+      setUserProfile((prev) => {
+        const updated = { ...prev, badge: 'ADMIN' };
+        try {
+          localStorage.setItem('yuno_user_profile', JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
+    };
+
+    window.addEventListener('yuno_admin_unlocked', handleAdminUnlockedEvent);
+    return () => window.removeEventListener('yuno_admin_unlocked', handleAdminUnlockedEvent);
+  }, []);
 
   // Tab Cloaking Startup Application & Global Panic Hotkey Listener
   useEffect(() => {
@@ -142,6 +229,18 @@ export default function App() {
         e.preventDefault();
         setIsTabMaskModalOpen((prev) => !prev);
         return;
+      }
+
+      // Keyboard Shortcut: Ctrl + Shift + A or Alt + A for Admin Portal (Only opens if already admin)
+      if (
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'a' || e.key === 'A')) ||
+        (e.altKey && (e.key === 'a' || e.key === 'A'))
+      ) {
+        if (localStorage.getItem('yuno_is_admin') === 'true') {
+          e.preventDefault();
+          setIsAdminDashboardOpen((prev) => !prev);
+          return;
+        }
       }
 
       // Panic Key Trigger (Emergency Decoy Redirection)
@@ -177,6 +276,12 @@ export default function App() {
       const res = await fetch('/api/admin/status');
       const data = await res.json();
       if (data.bannedUsers) setBannedUsersList(data.bannedUsers);
+      if (data.bannedUsersDetails && userProfile.username) {
+        const detail =
+          data.bannedUsersDetails[userProfile.username] ||
+          data.bannedUsersDetails[userProfile.username.toLowerCase()];
+        if (detail) setBanDetails(detail);
+      }
       if (data.timeouts) {
         const list = Object.entries(data.timeouts).map(([name, expiry]: [string, any]) => {
           const remainingMs = Math.max(0, expiry - Date.now());
@@ -192,8 +297,41 @@ export default function App() {
   useEffect(() => {
     fetchAdminStatusData();
     const interval = setInterval(fetchAdminStatusData, 4000);
+
+    // Auto-validate stored session token if available
+    try {
+      const savedToken = localStorage.getItem('yuno_admin_token');
+      if (savedToken) {
+        fetch('/api/admin/validate-token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: savedToken, username: userProfile.username }),
+        })
+          .then((r) => r.json())
+          .then((d) => {
+            if (d.isAdmin) {
+              setIsAdminAuthenticated(true);
+            }
+          })
+          .catch(() => {});
+      }
+    } catch {}
+
     return () => clearInterval(interval);
   }, []);
+
+  const handleAdminLogout = () => {
+    try {
+      localStorage.removeItem('yuno_is_admin');
+      localStorage.removeItem('yuno_admin_token');
+    } catch {}
+    setIsAdminAuthenticated(false);
+    setIsAdminDashboardOpen(false);
+    setUserProfile((prev) => ({
+      ...prev,
+      badge: prev.badge?.includes('Admin') ? 'Member' : prev.badge,
+    }));
+  };
 
   const normalizedCurrentUsername = (userProfile.username || '').trim().toLowerCase();
   const isCurrentUserBanned = Boolean(
@@ -207,485 +345,6 @@ export default function App() {
   // PiP YouTube Video State
   const [pipVideo, setPipVideo] = useState<YouTubeVideo | null>(null);
   const [pipInitialVideo, setPipInitialVideo] = useState<YouTubeVideo | null>(null);
-
-  // WebRTC Call State & Live Media Streams
-  const [callState, setCallState] = useState<CallState>({
-    isActive: false,
-    channelId: 'global-voice',
-    channelName: 'Global Voice Lounge',
-    callType: 'voice',
-    isMuted: false,
-    isCameraOn: false,
-    isScreenSharing: false,
-    durationSeconds: 0,
-    participants: [],
-  });
-
-  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
-  const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
-
-  const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
-  const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
-  const lastSignalTimeRef = useRef<number>(0);
-
-  // Get current username from local profile
-  const getCurrentUsername = () => {
-    try {
-      const saved = localStorage.getItem('yuno_user_profile');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.username) return parsed.username;
-      }
-    } catch (e) {}
-    return 'Guest';
-  };
-
-  const getCurrentAvatar = () => {
-    try {
-      const saved = localStorage.getItem('yuno_user_profile');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.avatar) return parsed.avatar;
-      }
-    } catch (e) {}
-    return '';
-  };
-
-  // Helper to create & configure RTCPeerConnection for a remote participant
-  const getOrCreatePeerConnection = (remoteUser: string, channelId: string) => {
-    if (peerConnectionsRef.current.has(remoteUser)) {
-      return peerConnectionsRef.current.get(remoteUser)!;
-    }
-
-    const pc = new RTCPeerConnection({
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-      ],
-    });
-
-    // Add local tracks (microphone & camera)
-    if (localStream) {
-      localStream.getTracks().forEach((track) => {
-        pc.addTrack(track, localStream);
-      });
-    }
-
-    // Add screen tracks
-    if (screenStream) {
-      screenStream.getTracks().forEach((track) => {
-        pc.addTrack(track, screenStream);
-      });
-    }
-
-    // Handle remote media tracks
-    pc.ontrack = (event) => {
-      const stream = event.streams[0] || new MediaStream([event.track]);
-      remoteStreamsRef.current.set(remoteUser, stream);
-      setRemoteStreams({ ...Object.fromEntries(remoteStreamsRef.current) });
-    };
-
-    // Send ICE candidates to remote peer via backend signaling
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        fetch('/api/webrtc/signal', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            channelId,
-            username: getCurrentUsername(),
-            signal: {
-              type: 'candidate',
-              to: remoteUser,
-              data: event.candidate,
-            },
-          }),
-        }).catch(() => {});
-      }
-    };
-
-    pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
-        remoteStreamsRef.current.delete(remoteUser);
-        setRemoteStreams({ ...Object.fromEntries(remoteStreamsRef.current) });
-      }
-    };
-
-    peerConnectionsRef.current.set(remoteUser, pc);
-    return pc;
-  };
-
-  // Synchronize real call participants and WebRTC peer connections while call is active
-  useEffect(() => {
-    if (!callState.isActive || !callState.channelId) return;
-
-    const uname = getCurrentUsername();
-    const avatar = getCurrentAvatar();
-
-    const syncRoom = async () => {
-      try {
-        const res = await fetch('/api/webrtc/signal', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            channelId: callState.channelId,
-            username: uname,
-            avatar,
-            action: 'update',
-            isMuted: callState.isMuted,
-            isCameraOn: callState.isCameraOn,
-            isScreenSharing: callState.isScreenSharing,
-            since: lastSignalTimeRef.current,
-          }),
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          if (data.timestamp) {
-            lastSignalTimeRef.current = data.timestamp;
-          }
-
-          if (Array.isArray(data.participants)) {
-            const remoteParticipants: CallParticipant[] = data.participants
-              .filter((p: any) => p.username !== uname)
-              .map((p: any) => ({
-                id: p.id || `peer-${p.username.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
-                username: p.username,
-                avatar: p.avatar || '',
-                isMuted: !!p.isMuted,
-                isCameraOn: !!p.isCameraOn,
-                isScreenSharing: !!p.isScreenSharing,
-              }));
-
-            const localP: CallParticipant = {
-              id: 'local-user',
-              username: uname,
-              avatar,
-              isMuted: callState.isMuted,
-              isCameraOn: callState.isCameraOn,
-              isScreenSharing: callState.isScreenSharing,
-            };
-
-            setCallState((prev) => ({
-              ...prev,
-              participants: [localP, ...remoteParticipants],
-            }));
-
-            // Initiate WebRTC peer connection with each remote participant
-            for (const rUser of remoteParticipants) {
-              const pc = getOrCreatePeerConnection(rUser.username, callState.channelId);
-              // Deterministic initiator (e.g. if our username comes first alphabetically)
-              if (uname < rUser.username && pc.signalingState === 'stable' && !pc.currentRemoteDescription) {
-                try {
-                  const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
-                  await pc.setLocalDescription(offer);
-                  fetch('/api/webrtc/signal', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      channelId: callState.channelId,
-                      username: uname,
-                      signal: {
-                        type: 'offer',
-                        to: rUser.username,
-                        data: offer,
-                      },
-                    }),
-                  }).catch(() => {});
-                } catch (err) {}
-              }
-            }
-          }
-
-          // Handle incoming WebRTC signals
-          if (Array.isArray(data.recentSignals)) {
-            for (const sig of data.recentSignals) {
-              if (sig.from === uname) continue;
-              const sender = sig.from;
-              const pc = getOrCreatePeerConnection(sender, callState.channelId);
-
-              if (sig.type === 'offer' && sig.data) {
-                try {
-                  await pc.setRemoteDescription(new RTCSessionDescription(sig.data));
-                  const answer = await pc.createAnswer();
-                  await pc.setLocalDescription(answer);
-                  fetch('/api/webrtc/signal', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      channelId: callState.channelId,
-                      username: uname,
-                      signal: {
-                        type: 'answer',
-                        to: sender,
-                        data: answer,
-                      },
-                    }),
-                  }).catch(() => {});
-                } catch (e) {}
-              } else if (sig.type === 'answer' && sig.data) {
-                try {
-                  if (pc.signalingState === 'have-local-offer') {
-                    await pc.setRemoteDescription(new RTCSessionDescription(sig.data));
-                  }
-                } catch (e) {}
-              } else if (sig.type === 'candidate' && sig.data) {
-                try {
-                  await pc.addIceCandidate(new RTCIceCandidate(sig.data));
-                } catch (e) {}
-              } else if (sig.type === 'leave') {
-                pc.close();
-                peerConnectionsRef.current.delete(sender);
-                remoteStreamsRef.current.delete(sender);
-                setRemoteStreams({ ...Object.fromEntries(remoteStreamsRef.current) });
-              }
-            }
-          }
-        }
-      } catch (e) {}
-    };
-
-    syncRoom();
-    const interval = setInterval(syncRoom, 1500);
-    return () => clearInterval(interval);
-  }, [callState.isActive, callState.channelId, callState.isMuted, callState.isCameraOn, callState.isScreenSharing, localStream, screenStream]);
-
-  // Start Real Call Handler (Public, Groups, Private Rooms)
-  const handleStartCall = async (channelId: string, channelName: string, callType: 'voice' | 'video' | 'screen') => {
-    const uname = getCurrentUsername();
-    const avatar = getCurrentAvatar();
-
-    let audioVideoStream: MediaStream | null = null;
-    let scStream: MediaStream | null = null;
-
-    try {
-      if (callType === 'video' || callType === 'voice') {
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-          audioVideoStream = await navigator.mediaDevices.getUserMedia({
-            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-            video: callType === 'video',
-          }).catch((err) => {
-            console.warn('Microphone/Camera access notice:', err);
-            return null;
-          });
-        }
-      }
-
-      if (callType === 'screen') {
-        if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
-          scStream = await navigator.mediaDevices.getDisplayMedia({
-            video: true,
-            audio: true,
-          }).catch((err) => {
-            console.warn('Screen share notice:', err);
-            return null;
-          });
-        }
-      }
-    } catch (e) {
-      console.warn('Media devices capture error:', e);
-    }
-
-    setLocalStream(audioVideoStream);
-    setScreenStream(scStream);
-
-    const initialParticipants: CallParticipant[] = [
-      {
-        id: 'local-user',
-        username: uname,
-        avatar,
-        isMuted: false,
-        isCameraOn: callType === 'video',
-        isScreenSharing: callType === 'screen',
-      }
-    ];
-
-    setCallState({
-      isActive: true,
-      channelId,
-      channelName,
-      callType,
-      isMuted: false,
-      isCameraOn: callType === 'video',
-      isScreenSharing: callType === 'screen',
-      durationSeconds: 0,
-      participants: initialParticipants,
-    });
-
-    // Notify backend signaling room
-    fetch('/api/webrtc/signal', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        channelId,
-        username: uname,
-        avatar,
-        action: 'join',
-        isMuted: false,
-        isCameraOn: callType === 'video',
-        isScreenSharing: callType === 'screen',
-      }),
-    }).catch((e) => console.warn('Signaling error:', e));
-  };
-
-  const handleLeaveCall = () => {
-    if (localStream) {
-      localStream.getTracks().forEach((track) => track.stop());
-      setLocalStream(null);
-    }
-    if (screenStream) {
-      screenStream.getTracks().forEach((track) => track.stop());
-      setScreenStream(null);
-    }
-
-    // Close all WebRTC peer connections
-    peerConnectionsRef.current.forEach((pc) => pc.close());
-    peerConnectionsRef.current.clear();
-    remoteStreamsRef.current.clear();
-    setRemoteStreams({});
-
-    const uname = getCurrentUsername();
-    fetch('/api/webrtc/signal', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        channelId: callState.channelId,
-        username: uname,
-        action: 'leave',
-      }),
-    }).catch((e) => console.warn('Signaling error:', e));
-
-    setCallState((prev) => ({ ...prev, isActive: false }));
-  };
-
-  const handleToggleMic = () => {
-    const newMuted = !callState.isMuted;
-    if (localStream) {
-      localStream.getAudioTracks().forEach((track) => {
-        track.enabled = !newMuted;
-      });
-    }
-    setCallState((prev) => ({
-      ...prev,
-      isMuted: newMuted,
-      participants: prev.participants.map((p) =>
-        p.id === 'local-user' ? { ...p, isMuted: newMuted } : p
-      ),
-    }));
-
-    // Broadcast state update immediately
-    fetch('/api/webrtc/signal', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        channelId: callState.channelId,
-        username: getCurrentUsername(),
-        avatar: getCurrentAvatar(),
-        action: 'update',
-        isMuted: newMuted,
-        isCameraOn: callState.isCameraOn,
-        isScreenSharing: callState.isScreenSharing,
-      }),
-    }).catch(() => {});
-  };
-
-  const handleToggleCamera = async () => {
-    const newCameraOn = !callState.isCameraOn;
-    if (newCameraOn && !localStream) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: { echoCancellation: true, noiseSuppression: true },
-        });
-        setLocalStream(stream);
-
-        // Add tracks to existing peer connections
-        peerConnectionsRef.current.forEach((pc) => {
-          stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-        });
-      } catch (e) {
-        console.warn('Could not enable camera stream');
-      }
-    } else if (localStream) {
-      localStream.getVideoTracks().forEach((track) => {
-        track.enabled = newCameraOn;
-      });
-    }
-
-    setCallState((prev) => ({
-      ...prev,
-      isCameraOn: newCameraOn,
-      participants: prev.participants.map((p) =>
-        p.id === 'local-user' ? { ...p, isCameraOn: newCameraOn } : p
-      ),
-    }));
-
-    // Broadcast state update immediately
-    fetch('/api/webrtc/signal', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        channelId: callState.channelId,
-        username: getCurrentUsername(),
-        avatar: getCurrentAvatar(),
-        action: 'update',
-        isMuted: callState.isMuted,
-        isCameraOn: newCameraOn,
-        isScreenSharing: callState.isScreenSharing,
-      }),
-    }).catch(() => {});
-  };
-
-  const handleToggleScreenShare = async () => {
-    const newScreenSharing = !callState.isScreenSharing;
-    if (newScreenSharing && !screenStream) {
-      try {
-        const sc = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-        setScreenStream(sc);
-
-        // Add screen tracks to peer connections
-        peerConnectionsRef.current.forEach((pc) => {
-          sc.getTracks().forEach((track) => pc.addTrack(track, sc));
-        });
-
-        sc.getVideoTracks()[0].onended = () => {
-          setScreenStream(null);
-          setCallState((prev) => ({ ...prev, isScreenSharing: false }));
-        };
-      } catch (e) {
-        console.warn('Screen share cancelled');
-        return;
-      }
-    } else if (screenStream && !newScreenSharing) {
-      screenStream.getTracks().forEach((track) => track.stop());
-      setScreenStream(null);
-    }
-
-    setCallState((prev) => ({
-      ...prev,
-      isScreenSharing: newScreenSharing,
-      participants: prev.participants.map((p) =>
-        p.id === 'local-user' ? { ...p, isScreenSharing: newScreenSharing } : p
-      ),
-    }));
-
-    // Broadcast state update immediately
-    fetch('/api/webrtc/signal', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        channelId: callState.channelId,
-        username: getCurrentUsername(),
-        avatar: getCurrentAvatar(),
-        action: 'update',
-        isMuted: callState.isMuted,
-        isCameraOn: callState.isCameraOn,
-        isScreenSharing: newScreenSharing,
-      }),
-    }).catch(() => {});
-  };
 
   // Music state & HTML5 Audio element
   const [currentTrack, setCurrentTrack] = useState<MusicTrack | null>(null);
@@ -727,7 +386,15 @@ export default function App() {
       setPlaybackContext(context);
     }
 
-    // Save track to recently played history in localStorage
+    // Save track to history modal & localStorage
+    addHistoryItem({
+      type: 'music',
+      title: track.title,
+      subtitle: track.artist,
+      thumbnail: track.coverUrl,
+      data: track,
+    });
+
     try {
       const historyRaw = localStorage.getItem('yuno_recently_played');
       const history: MusicTrack[] = historyRaw ? JSON.parse(historyRaw) : [];
@@ -735,6 +402,21 @@ export default function App() {
       const updated = [track, ...filtered].slice(0, 20);
       localStorage.setItem('yuno_recently_played', JSON.stringify(updated));
     } catch (e) {}
+
+    // Broadcast Now Playing live activity to backend
+    if (userProfile.showNowPlaying !== false) {
+      fetch('/api/profile/now-playing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: userProfile.username,
+          trackTitle: track.title,
+          artist: track.artist,
+          coverUrl: track.coverUrl,
+          isPlaying: true,
+        }),
+      }).catch(() => {});
+    }
 
     if (currentTrack?.id === track.id && isPlayingMusic) {
       if (audioRef.current) audioRef.current.pause();
@@ -888,43 +570,72 @@ export default function App() {
     audioEngine.setVolume(vol);
   };
 
+  if (isCurrentUserBanned) {
+    return (
+      <BannedScreen
+        bannedReason={banDetails?.reason}
+        banImage={banDetails?.banImage}
+        onOpenAppeal={() => setIsBanAppealOpen(true)}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans relative overflow-x-hidden select-none">
-      {/* Yunø Boot Screen Sequence */}
+      {/* Boot Screen Sequence */}
       {showBootScreen && (
         <BootScreen onComplete={() => setShowBootScreen(false)} />
       )}
 
-      {/* Dynamic Background Wallpaper & Screen Effects across EVERY Tab (Disabled in Yunø Lite Mode) */}
+      {/* Dynamic Background Wallpaper & Screen Effects across EVERY Tab */}
       {!isYunoLiteActive ? (
         <>
-          <div
-            className="fixed inset-0 pointer-events-none z-0 overflow-hidden"
-            style={{
-              filter: `blur(${effectSettings.blur}px) brightness(${effectSettings.brightness}%)`,
-              transform: effectSettings.blur > 0 ? 'scale(1.08)' : 'scale(1.02)',
-              transition: 'filter 0.3s ease, transform 0.3s ease',
-            }}
-          >
-            {currentWallpaper.startsWith('data:video') || currentWallpaper.includes('.mp4') || currentWallpaper.includes('.mov') ? (
-              <video
-                src={currentWallpaper}
-                autoPlay
-                loop
-                muted
-                playsInline
-                className="w-full h-full object-cover opacity-85"
-              />
-            ) : (
-              <img
-                src={currentWallpaper}
-                alt="Workspace Wallpaper"
-                className="w-full h-full object-cover opacity-80"
-              />
-            )}
-            {/* Subtle Dark Backdrop Tint for Readability */}
-            <div className="absolute inset-0 bg-black/40" />
-          </div>
+          {currentWallpaper === 'constellation' ? (
+            <div className="fixed inset-0 pointer-events-none z-0 bg-[#050507] overflow-hidden">
+              <ConstellationCanvas />
+              {effectSettings.vignette && (
+                <div
+                  className="absolute inset-0 pointer-events-none"
+                  style={{
+                    boxShadow: 'inset 0 0 140px rgba(0, 0, 0, 0.9)',
+                  }}
+                />
+              )}
+            </div>
+          ) : currentWallpaper.startsWith('#') || currentWallpaper.startsWith('rgb') ? (
+            <div
+              className="fixed inset-0 pointer-events-none z-0 overflow-hidden"
+              style={{ backgroundColor: currentWallpaper }}
+            />
+          ) : (
+            <div
+              className="fixed inset-0 pointer-events-none z-0 overflow-hidden"
+              style={{
+                filter: `blur(${effectSettings.blur}px) brightness(${effectSettings.brightness}%)`,
+                transform: effectSettings.blur > 0 ? 'scale(1.08)' : 'scale(1.02)',
+                transition: 'filter 0.3s ease, transform 0.3s ease',
+              }}
+            >
+              {currentWallpaper.startsWith('data:video') || currentWallpaper.includes('.mp4') || currentWallpaper.includes('.mov') || currentWallpaper.includes('.webm') ? (
+                <video
+                  src={currentWallpaper}
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  className="w-full h-full object-cover opacity-90"
+                />
+              ) : (
+                <img
+                  src={currentWallpaper}
+                  alt="Workspace Wallpaper"
+                  className="w-full h-full object-cover opacity-90"
+                />
+              )}
+              {/* Subtle Dark Backdrop Tint for Readability */}
+              <div className="absolute inset-0 bg-black/35" />
+            </div>
+          )}
 
           {/* Screen Effects Layer (Rain, Snow, Stars, Fireflies, Fog, Vignette) */}
           <WallpaperCanvasEffects settings={effectSettings} />
@@ -933,20 +644,23 @@ export default function App() {
         <div className="fixed inset-0 pointer-events-none z-0 bg-[#09090b]" />
       )}
 
-      {/* Main Workspace Layout */}
-      <div className="relative z-10 flex flex-col min-h-screen">
-        {/* Navigation Bar */}
-        <FloatingNavbar
+      {/* Main Workspace Layout with Vertical Rail */}
+      <div className="relative z-10 flex min-h-screen bg-transparent text-white">
+        {/* Sleek Vertical Rail */}
+        <VerticalNavRail
           activeTab={activeTab}
-          onNavigate={(tab) => setActiveTab(tab)}
+          onNavigate={(tab) => handleNavigateTab(tab)}
+          onOpenHistory={() => setIsHistoryModalOpen(true)}
+          isAdmin={isAdminAuthenticated}
+          onOpenAdminDashboard={() => setIsAdminDashboardOpen(true)}
         />
 
-        {/* Content Area */}
+        {/* Content Area (offset by left rail) */}
         {(() => {
-          const isFullBleedTab = activeTab === 'community' || activeTab === 'private_chat' || activeTab === 'proxy';
+          const isFullBleedTab = activeTab === 'proxy';
           return (
             <main
-              className={`flex-1 w-full transition-all duration-300 ${
+              className={`flex-1 w-full pl-14 sm:pl-16 transition-all duration-300 ${
                 isFullBleedTab
                   ? `p-0 m-0 max-w-none ${currentTrack ? 'pb-24' : 'pb-6'}`
                   : `max-w-7xl mx-auto p-3 sm:p-5 lg:p-6 ${currentTrack ? 'pb-24' : 'pb-12'}`
@@ -964,15 +678,15 @@ export default function App() {
                   {activeTab === 'home' && (
                     <HomeView
                       currentWallpaper={currentWallpaper}
-                      onNavigate={setActiveTab}
+                      onNavigate={handleNavigateTab}
                       onLaunchProxy={handleLaunchProxy}
                       onSelectMovie={(id) => {
                         setSelectedMovieId(id);
-                        setActiveTab('movies');
+                        handleNavigateTab('movies');
                       }}
                       onSelectGame={(id) => {
                         setSelectedGameId(id);
-                        setActiveTab('games');
+                        handleNavigateTab('games');
                       }}
                       onPlayTrack={handlePlayTrack}
                       currentTrack={currentTrack}
@@ -983,7 +697,7 @@ export default function App() {
                   {activeTab === 'proxy' && (
                     <ProxyTab
                       initialUrl={proxyTargetUrl}
-                      onNavigateHome={() => setActiveTab('home')}
+                      onNavigateHome={() => handleNavigateTab('home')}
                     />
                   )}
 
@@ -1009,27 +723,6 @@ export default function App() {
                     />
                   )}
 
-                  {activeTab === 'ai' && (
-                    <AiView />
-                  )}
-
-                  {activeTab === 'private_chat' && (
-                    <PrivateChatView
-                      userProfile={userProfile}
-                      onStartCall={handleStartCall}
-                      callState={callState}
-                      screenStream={screenStream}
-                      onToggleScreenShare={handleToggleScreenShare}
-                    />
-                  )}
-
-                  {activeTab === 'community' && (
-                    <CommunityView
-                      callState={callState}
-                      onStartCall={handleStartCall}
-                    />
-                  )}
-
                   {activeTab === 'music' && (
                     <MusicView
                       currentTrack={currentTrack}
@@ -1041,7 +734,7 @@ export default function App() {
                       onAddToQueue={handleAddToQueue}
                       onRemoveFromQueue={handleRemoveFromQueue}
                       onClearQueue={handleClearQueue}
-                      onNavigateHome={() => setActiveTab('home')}
+                      onNavigateHome={() => handleNavigateTab('home')}
                     />
                   )}
 
@@ -1052,11 +745,12 @@ export default function App() {
                       effectSettings={effectSettings}
                       onChangeEffectSettings={handleChangeEffectSettings}
                       onReplayBoot={() => setShowBootScreen(true)}
-                      userProfile={userProfile}
-                      onSaveProfile={(updated) => setUserProfile(updated)}
                       onOpenAppealModal={() => setIsBanAppealOpen(true)}
                       isYunoLiteEnabled={isYunoLiteActive}
                       onToggleYunoLite={handleToggleYunoLite}
+                      isAdmin={isAdminAuthenticated}
+                      onOpenAdminDashboard={() => setIsAdminDashboardOpen(true)}
+                      onAdminLogout={handleAdminLogout}
                     />
                   )}
                 </motion.div>
@@ -1084,18 +778,6 @@ export default function App() {
         onPlayTrack={handlePlayTrack}
       />
 
-      {/* Persistent Global WebRTC Call Overlay (Stays connected across tabs!) */}
-      <CallOverlay
-        callState={callState}
-        onLeaveCall={handleLeaveCall}
-        onToggleMic={handleToggleMic}
-        onToggleCamera={handleToggleCamera}
-        onToggleScreenShare={handleToggleScreenShare}
-        localStream={localStream}
-        screenStream={screenStream}
-        remoteStreams={remoteStreams}
-      />
-
       {/* Ban & Timeout Appeal Petition Modal */}
       <BanAppealModal
         isOpen={isBanAppealOpen}
@@ -1104,21 +786,58 @@ export default function App() {
         onSubmitted={fetchAdminStatusData}
       />
 
-      {/* Profile Edit Modal */}
-      <ProfileModal
-        isOpen={isProfileModalOpen}
-        onClose={() => setIsProfileModalOpen(false)}
-        currentProfile={userProfile}
-        onSaveProfile={(updated) => {
-          setUserProfile(updated);
-          localStorage.setItem('yuno_user_profile', JSON.stringify(updated));
-        }}
-      />
-
       {/* Tab Masking & Cloaker Modal */}
       <TabMaskModal
         isOpen={isTabMaskModalOpen}
         onClose={() => setIsTabMaskModalOpen(false)}
+      />
+
+      {/* Global Broadcast / Announcement Modal */}
+      <AnnouncementPopupModal
+        isOpen={isAnnouncementPopupOpen}
+        announcement={activeAnnouncement}
+        onDismiss={handleDismissAnnouncement}
+      />
+
+      {/* Admin Moderation Terminal */}
+      <AdminDashboardModal
+        isOpen={isAdminDashboardOpen}
+        onClose={() => {
+          setIsAdminDashboardOpen(false);
+          fetchAdminStatusData();
+        }}
+        adminUsername={userProfile.username}
+        onRefreshStatus={fetchAdminStatusData}
+        onLogout={handleAdminLogout}
+      />
+
+      {/* Bug and Report Modal */}
+      <ReportModal
+        isOpen={reportModalState.isOpen}
+        onClose={() => setReportModalState((prev) => ({ ...prev, isOpen: false }))}
+        reportType={reportModalState.type}
+        targetUser={reportModalState.targetUser}
+        messageContent={reportModalState.messageContent}
+        messageId={reportModalState.messageId}
+      />
+
+      {/* Activity History Modal */}
+      <HistoryModal
+        isOpen={isHistoryModalOpen}
+        onClose={() => setIsHistoryModalOpen(false)}
+        onSelectHistoryItem={(item: HistoryItem) => {
+          if (item.type === 'music' && item.data) {
+            handlePlayTrack(item.data);
+          } else if (item.type === 'watch' && item.data?.id) {
+            setSelectedMovieId(item.data.id);
+            handleNavigateTab('movies');
+          } else if (item.type === 'game' && item.data?.id) {
+            setSelectedGameId(item.data.id);
+            handleNavigateTab('games');
+          } else if (item.type === 'search') {
+            handleLaunchProxy(item.title);
+          }
+        }}
       />
 
       {/* Global Picture-in-Picture (PiP) Floating Video Player Overlay */}
@@ -1127,7 +846,7 @@ export default function App() {
         onClose={() => setPipVideo(null)}
         onExpand={(video) => {
           setPipInitialVideo(video);
-          setActiveTab('youtube');
+          handleNavigateTab('youtube');
           setPipVideo(null);
         }}
       />

@@ -78,17 +78,37 @@ body {
   background: #3f3f46;
 }
 
-/* Performance Mode for Reduced Compute */
+/* Performance Mode for Reduced Compute & Instant UI Response */
+.yuno-lite-active {
+  --bg-canvas: #09090b;
+  --bg-surface: #101014;
+  --bg-surface-elevated: #16161c;
+}
+
 .yuno-lite-active *,
 .yuno-lite-active *::before,
 .yuno-lite-active *::after {
   box-shadow: none !important;
   text-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   transition-duration: 0.05s !important;
+}
+
+.yuno-lite-active aside,
+.yuno-lite-active nav,
+.yuno-lite-active header,
+.yuno-lite-active div[class*="backdrop-blur"],
+.yuno-lite-active aside[class*="backdrop-blur"],
+.yuno-lite-active nav[class*="backdrop-blur"] {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background-color: #0c0c10 !important;
 }
 
 .yuno-lite-active .animate-pulse,
 .yuno-lite-active .animate-bounce,
-.yuno-lite-active .animate-spin {
+.yuno-lite-active .animate-spin,
+.yuno-lite-active .animate-ping {
   animation: none !important;
 }

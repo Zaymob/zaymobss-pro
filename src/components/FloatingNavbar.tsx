@@ -10,28 +10,39 @@ import {
   Robot,
   ChatCircleText,
   MusicNotes,
+  Handshake,
   Gear,
+  ClockCounterClockwise,
+  ShieldCheck,
+  User,
 } from '@phosphor-icons/react';
 
 interface FloatingNavbarProps {
   activeTab: NavTab;
   onNavigate: (tab: NavTab) => void;
+  onOpenHistory?: () => void;
+  onOpenProfile?: () => void;
+  isAdmin?: boolean;
+  onOpenAdminDashboard?: () => void;
 }
 
 export const FloatingNavbar: React.FC<FloatingNavbarProps> = ({
   activeTab,
   onNavigate,
+  onOpenHistory,
+  onOpenProfile,
+  isAdmin,
+  onOpenAdminDashboard,
 }) => {
   const navItems = [
     { id: 'home' as NavTab, icon: House, title: 'Home' },
-    { id: 'proxy' as NavTab, icon: Globe, title: 'Proxy' },
-    { id: 'links' as NavTab, icon: LinkSimple, title: 'Links' },
     { id: 'games' as NavTab, icon: GameController, title: 'Games' },
-    { id: 'movies' as NavTab, icon: FilmStrip, title: 'Media' },
-    { id: 'youtube' as NavTab, icon: Television, title: 'Videos' },
-    { id: 'ai' as NavTab, icon: Robot, title: "Jack's cough" },
+    { id: 'ai' as NavTab, icon: Robot, title: 'Dior Ai' },
+    { id: 'proxy' as NavTab, icon: Globe, title: 'Proxy' },
     { id: 'community' as NavTab, icon: ChatCircleText, title: 'Chat' },
+    { id: 'movies' as NavTab, icon: FilmStrip, title: 'Cinema' },
     { id: 'music' as NavTab, icon: MusicNotes, title: 'Music' },
+    { id: 'partners' as NavTab, icon: Handshake, title: 'Partners' },
     { id: 'settings' as NavTab, icon: Gear, title: 'Settings' },
   ];
 
@@ -43,12 +54,11 @@ export const FloatingNavbar: React.FC<FloatingNavbarProps> = ({
           onClick={() => onNavigate('home')}
           className="flex items-center space-x-2 text-left cursor-pointer flex-shrink-0"
         >
-          <span className="text-sm font-black text-white tracking-widest uppercase">YUNO</span>
-          <span className="px-1.5 py-0.5 text-[10px] font-mono bg-zinc-900 border border-zinc-800 text-zinc-400 rounded">HUB</span>
+          <span className="text-sm font-black text-white tracking-widest uppercase">DIOR</span>
         </button>
 
         {/* Tab Items Navigation */}
-        <nav className="flex items-center space-x-1 overflow-x-auto scrollbar-none py-1">
+        <nav className="flex items-center space-x-1 overflow-x-auto scrollbar-none py-1 flex-1 justify-center max-w-3xl">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -68,7 +78,43 @@ export const FloatingNavbar: React.FC<FloatingNavbarProps> = ({
             );
           })}
         </nav>
+
+        {/* Quick Utility Actions */}
+        <div className="flex items-center space-x-1.5 flex-shrink-0">
+          {onOpenHistory && (
+            <button
+              onClick={onOpenHistory}
+              className="p-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-800 transition-colors flex items-center space-x-1 text-xs"
+              title="Activity & Search / Watch History"
+            >
+              <ClockCounterClockwise className="w-3.5 h-3.5" />
+              <span className="hidden lg:inline">History</span>
+            </button>
+          )}
+
+          {isAdmin && onOpenAdminDashboard && (
+            <button
+              onClick={onOpenAdminDashboard}
+              className="px-2 py-1.5 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold transition-colors flex items-center space-x-1 text-xs"
+              title="Admin Moderation Terminal"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" weight="fill" />
+              <span className="hidden sm:inline">Admin</span>
+            </button>
+          )}
+
+          {onOpenProfile && (
+            <button
+              onClick={onOpenProfile}
+              className="p-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-800 transition-colors"
+              title="Edit Profile"
+            >
+              <User className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
       </div>
     </header>
   );
 };
+

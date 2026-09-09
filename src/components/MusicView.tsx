@@ -411,12 +411,9 @@ export const MusicView: React.FC<MusicViewProps> = ({
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <h1 className="text-lg sm:text-xl font-bold text-white tracking-tight">Music Library</h1>
-              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-zinc-800 text-zinc-400 border border-zinc-700">
-                HQ STREAM
-              </span>
+              <h1 className="text-lg sm:text-xl font-bold text-white tracking-tight">Music</h1>
             </div>
-            <p className="text-xs text-zinc-400">Stream catalog, custom vaults, and playlist queue</p>
+            <p className="text-xs text-zinc-400">Audio player</p>
           </div>
         </div>
 

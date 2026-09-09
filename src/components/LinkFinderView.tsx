@@ -33,13 +33,13 @@ export const LinkFinderView: React.FC<LinkFinderViewProps> = ({ onLaunchProxy })
   const [customSubdomain, setCustomSubdomain] = useState<string>('');
   const [customDomainSuffix, setCustomDomainSuffix] = useState<string>('default');
   const [generatedLink, setGeneratedLink] = useState<string>(() => {
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://yuno.app';
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://dior.app';
     return `${origin}/#pass=securly-x9f2a-8402`;
   });
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
   const [history, setHistory] = useState<string[]>([
-    `${typeof window !== 'undefined' ? window.location.origin : 'https://yuno.app'}/#pass=securly-x9f2a-8402`,
+    `${typeof window !== 'undefined' ? window.location.origin : 'https://dior.app'}/#pass=securly-x9f2a-8402`,
   ]);
 
   // Request School Blocker State
@@ -50,7 +50,7 @@ export const LinkFinderView: React.FC<LinkFinderViewProps> = ({ onLaunchProxy })
     setIsGenerating(true);
     setCopied(false);
     setTimeout(() => {
-      const origin = typeof window !== 'undefined' ? window.location.origin : 'https://yuno.app';
+      const origin = typeof window !== 'undefined' ? window.location.origin : 'https://dior.app';
       const cleanFilter = filterName.toLowerCase().replace(/[^a-z0-9]/g, '');
       const randomHash = Math.random().toString(36).substring(2, 8);
       const randomNum = Math.floor(1000 + Math.random() * 9000);
@@ -167,7 +167,7 @@ export const LinkFinderView: React.FC<LinkFinderViewProps> = ({ onLaunchProxy })
                 className="w-full bg-[#18181f] border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-zinc-200 focus:outline-none focus:border-amber-500/60 font-mono cursor-pointer"
               >
                 <option value="default">Current App Applet Host</option>
-                <option value="yunonet.org">yunonet.org</option>
+                <option value="diornet.org">diornet.org</option>
                 <option value="studyhub.edu">studyhub.edu</option>
                 <option value="classroom-notes.net">classroom-notes.net</option>
                 <option value="calc-app.org">calc-app.org</option>

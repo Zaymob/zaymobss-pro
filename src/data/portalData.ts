@@ -48,7 +48,7 @@ export const MOVIES: MovieItem[] = [];
 export const GAMES: GameItem[] = [
   {
     id: 'roblox-cloud',
-    title: 'Roblox Cloud Unblocked (Yuno-Web)',
+    title: 'Roblox Cloud Unblocked',
     category: 'Popular',
     image: 'https://images.unsplash.com/photo-1538481199705-c710c4e965fc?w=500&auto=format&fit=crop&q=80',
     description: 'Play Roblox Cloud unblocked directly in your browser.',
@@ -329,8 +329,15 @@ export const MUSIC_TRACKS: MusicTrack[] = [];
 
 export const WALLPAPERS: WallpaperOption[] = [
   {
+    id: 'constellation',
+    name: 'Interactive Connected Stars (Default)',
+    url: 'constellation',
+    thumbnail: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="120" viewBox="0 0 200 120"><rect width="200" height="120" fill="%2309090b"/><circle cx="40" cy="30" r="2" fill="%23fff" opacity="0.8"/><circle cx="100" cy="40" r="2" fill="%23fff" opacity="0.9"/><circle cx="160" cy="25" r="2" fill="%23fff" opacity="0.7"/><circle cx="70" cy="80" r="2" fill="%23fff" opacity="0.8"/><circle cx="130" cy="90" r="2" fill="%23fff" opacity="0.9"/><line x1="40" y1="30" x2="100" y2="40" stroke="%23fff" stroke-opacity="0.3" stroke-width="1"/><line x1="100" y1="40" x2="160" y2="25" stroke="%23fff" stroke-opacity="0.3" stroke-width="1"/><line x1="100" y1="40" x2="70" y2="80" stroke="%23fff" stroke-opacity="0.3" stroke-width="1"/><line x1="70" y1="80" x2="130" y2="90" stroke="%23fff" stroke-opacity="0.3" stroke-width="1"/></svg>',
+    type: 'image',
+  },
+  {
     id: 'autumn',
-    name: 'Autumn Park Golden Hour (Default)',
+    name: 'Autumn Park Golden Hour',
     url: autumnBg,
     thumbnail: autumnBg,
     type: 'image',

@@ -10,11 +10,11 @@ export interface WallpaperEffectSettings {
 }
 
 export const DEFAULT_EFFECT_SETTINGS: WallpaperEffectSettings = {
-  effect: 'rain',
+  effect: 'none',
   intensity: 50,
   speed: 50,
   blur: 0,
-  brightness: 80,
+  brightness: 90,
   vignette: false,
 };
 

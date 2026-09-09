@@ -124,7 +124,7 @@ export function applyTabMask(title: string, iconUrl: string) {
   if (typeof document === 'undefined') return;
 
   // Update Document Title
-  document.title = title || 'Yunø Hub';
+  document.title = title || 'Dior';
 
   // Update Favicons
   const head = document.head || document.getElementsByTagName('head')[0];
@@ -172,8 +172,8 @@ export function saveCloakSettings(settings: TabCloakSettings): void {
   try {
     localStorage.setItem('yuno_cloak_settings', JSON.stringify(settings));
 
-    let titleToApply = 'Yunø • The Unblocked Web Portal';
-    let iconToApply = '/favicon.ico';
+    let titleToApply = 'Dior';
+    let iconToApply = '/favicon.svg';
 
     if (settings.activeMaskId === 'custom') {
       titleToApply = settings.customTitle || 'Google';

@@ -165,7 +165,7 @@ export const ProxyTab: React.FC<ProxyTabProps> = ({ initialUrl = '', onNavigateH
       if (targetUrl.includes('.') && !targetUrl.includes(' ')) {
         targetUrl = 'https://' + targetUrl;
       } else {
-        targetUrl = `https://www.bing.com/search?q=${encodeURIComponent(targetUrl)}`;
+        targetUrl = formatProxyDestination(targetUrl);
       }
     }
 
@@ -524,37 +524,33 @@ export const ProxyTab: React.FC<ProxyTabProps> = ({ initialUrl = '', onNavigateH
               </div>
             </div>
 
-            {/* Colorful Google Logo */}
+            {/* DIOR Minimal Search Logo */}
             <div className="pt-6 pb-2">
-              <h1 className="text-6xl sm:text-7xl font-bold tracking-tight font-sans">
-                <span className="text-[#4285F4]">G</span>
-                <span className="text-[#EA4335]">o</span>
-                <span className="text-[#FBBC05]">o</span>
-                <span className="text-[#4285F4]">g</span>
-                <span className="text-[#34A853]">l</span>
-                <span className="text-[#EA4335]">e</span>
+              <h1 className="text-5xl sm:text-6xl font-extrabold tracking-widest text-white uppercase font-sans">
+                DIOR
               </h1>
+              <p className="text-xs text-zinc-400 font-mono mt-1">Web Proxy</p>
             </div>
 
-            {/* Google Search Bar */}
+            {/* Search Bar */}
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 navigateActiveTab(activeTab.inputUrl);
               }}
-              className="w-full max-w-2xl bg-[#202124] hover:bg-[#303134] focus-within:bg-[#303134] border border-zinc-700 focus-within:border-amber-500/60 rounded-full px-5 py-3 flex items-center space-x-3 shadow-xl transition-all"
+              className="w-full max-w-2xl bg-zinc-900 border border-zinc-700 focus-within:border-zinc-500 rounded-2xl px-4 py-3 flex items-center space-x-3 shadow-xl transition-all"
             >
-              <Search className="w-5 h-5 text-zinc-400 flex-shrink-0" />
+              <Search className="w-4 h-4 text-zinc-400 flex-shrink-0" />
               <input
                 type="text"
                 value={activeTab.inputUrl}
                 onChange={(e) => updateActiveTab({ inputUrl: e.target.value })}
-                placeholder="Search Google or type a URL..."
-                className="flex-1 bg-transparent text-sm text-white placeholder-zinc-400 focus:outline-none"
+                placeholder="Search or enter URL..."
+                className="flex-1 bg-transparent text-sm text-white placeholder-zinc-500 focus:outline-none"
               />
               <button
                 type="submit"
-                className="px-5 py-2 rounded-full bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs shadow-md transition-all flex-shrink-0"
+                className="px-4 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-medium text-xs border border-zinc-700 transition-all flex-shrink-0 cursor-pointer"
               >
                 Search
               </button>

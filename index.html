@@ -3,14 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Dior</title>
+    <title>Yuno</title>
     
     <!-- Primary Metadata -->
-    <meta name="description" content="Dior" />
-    <meta name="keywords" content="dior, games, proxy, cinema, music, chat, ai" />
-    <meta name="author" content="Dior" />
+    <meta name="description" content="Yuno" />
+    <meta name="keywords" content="yuno, games, proxy, cinema, music, web" />
+    <meta name="author" content="Yuno" />
     <meta name="robots" content="index, follow" />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#07040a" />
 
     <!-- Security & Header Policies -->
     <meta http-equiv="X-Content-Type-Options" content="nosniff" />
@@ -18,30 +18,57 @@
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Dior" />
-    <meta property="og:description" content="Dior" />
-    <meta property="og:image" content="/favicon.svg" />
-    <meta property="og:site_name" content="Dior" />
+    <meta property="og:title" content="Yuno" />
+    <meta property="og:description" content="Yuno" />
+    <meta property="og:image" content="/yuno-logo.jpg" />
+    <meta property="og:site_name" content="Yuno" />
 
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/jpeg" href="/yuno-logo.jpg" id="yuno-favicon-link" />
+    <link rel="apple-touch-icon" href="/yuno-logo.jpg" />
+    <script>
+      (function() {
+        try {
+          var raw = localStorage.getItem('yuno_cloak_settings');
+          if (raw) {
+            var s = JSON.parse(raw);
+            if (s && s.activeMaskId && s.activeMaskId !== 'default') {
+              var presets = {
+                drive: { title: 'Google Drive - My Drive', icon: 'https://ssl.gstatic.com/docs/doclist/images/drive_2022q3_32dp.png' },
+                classroom: { title: 'Classes', icon: 'https://ssl.gstatic.com/classroom/favicon.png' },
+                canvas: { title: 'Dashboard', icon: 'https://du11hjcvx0uqb.cloudfront.net/dist/images/favicon-e10d657a73.ico' },
+                'canva-site': { title: 'Design Project - Canva', icon: 'https://static.canva.com/static/images/favicon-1.ico' },
+                docs: { title: 'Untitled document - Google Docs', icon: 'https://ssl.gstatic.com/docs/documents/images/kix-favicon7.ico' },
+                slides: { title: 'Untitled presentation - Google Slides', icon: 'https://ssl.gstatic.com/docs/presentations/images/favicon5.ico' },
+                desmos: { title: 'Desmos | Graphing Calculator', icon: 'https://www.desmos.com/favicon.ico' },
+                khan: { title: 'Dashboard | Khan Academy', icon: 'https://www.khanacademy.org/favicon.ico' },
+                wikipedia: { title: 'Wikipedia, the free encyclopedia', icon: 'https://en.wikipedia.org/static/favicon/wikipedia.ico' },
+                google: { title: 'Google', icon: 'https://www.google.com/favicon.ico' },
+                edpuzzle: { title: 'Edpuzzle', icon: 'https://edpuzzle.imgix.net/favicons/favicon-32.png' },
+                quizlet: { title: 'Flashcards, learning tools and textbook solutions | Quizlet', icon: 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://quizlet.com&size=128' },
+                kahoot: { title: 'Play Kahoot! - Enter game PIN here!', icon: 'https://kahoot.it/favicon.ico' }
+              };
+              var p = s.activeMaskId === 'custom' ? { title: s.customTitle || 'Google', icon: s.customIcon } : presets[s.activeMaskId];
+              if (p) {
+                if (p.title) document.title = p.title;
+                if (p.icon) {
+                  var link = document.getElementById('yuno-favicon-link');
+                  if (link) link.href = p.icon;
+                }
+              }
+            }
+          }
+        } catch (e) {}
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..900;1,6..96,400..900&family=Cinzel:wght@400;500;600;700;800;900&family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Mojangles and Minecraft Font Support -->
+    <link href="https://fonts.cdnfonts.com/css/mojangles" rel="stylesheet">
+    <link href="https://fonts.cdnfonts.com/css/minecraft-4" rel="stylesheet">
   </head>
-  <body class="bg-black text-[#f4f4f5] antialiased">
-    <div id="root">
-      <div class="min-h-screen flex flex-col bg-black text-zinc-100 font-sans">
-        <header class="h-12 border-b border-zinc-800 px-5 flex items-center justify-between bg-black">
-          <div class="flex items-center space-x-2">
-            <span class="font-extrabold text-sm tracking-widest uppercase text-white">DIØR</span>
-          </div>
-        </header>
-        <main class="flex-1 max-w-5xl w-full mx-auto px-4 py-8">
-          <h1 class="text-xl font-bold text-white tracking-tight mb-2">DIØR</h1>
-        </main>
-      </div>
-    </div>
-
+  <body class="bg-[#07040a] text-[#f4f4f5] antialiased">
+    <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

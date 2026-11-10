@@ -4,7 +4,8 @@ import fs from "fs";
 import https from "node:https";
 import http from "node:http";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
+import { spawn } from "node:child_process";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -58,7 +59,10 @@ async function fetchIgnoreCert(url: string, options: any = {}): Promise<Response
 }
 
 const app = express();
-const PORT = 3000;
+const isCloudRun = !!(process.env.K_SERVICE || process.env.CLOUD_RUN_JOB);
+const hasDistIndex = fs.existsSync(path.join(process.cwd(), "dist", "index.html"));
+const isProduction = process.env.NODE_ENV === "production" && hasDistIndex;
+const PORT = Number(process.env.PORT) || 3000;
 
 // Security, Policy, and No-Cache Headers
 app.use((req, res, next) => {
@@ -227,7 +231,9 @@ const userReportsList: ServerReport[] = [];
 const bugReportsList: ServerBugReport[] = [];
 const friendRequestsList: ServerFriendRequest[] = [];
 const userFriendsMap = new Map<string, Set<string>>();
+const userTimeouts = new Map<string, number>(); // username -> expiry timestamp
 const userTimeoutDetails = new Map<string, { reason: string; adminName: string; durationMinutes: number }>();
+const userStreaks = new Map<string, { count: number; lastDate: string }>();
 
 function savePersistedData() {
   try {
@@ -246,6 +252,9 @@ function savePersistedData() {
       userFriends: Array.from(userFriendsMap.entries()).map(([k, set]) => [k, Array.from(set)]),
       banAppeals,
       customAdminPasscode,
+      userTimeouts: Array.from(userTimeouts.entries()),
+      userTimeoutDetails: Array.from(userTimeoutDetails.entries()),
+      userStreaks: Array.from(userStreaks.entries()),
     };
     fs.writeFileSync(PERSIST_FILE_PATH, JSON.stringify(dataToSave, null, 2), "utf-8");
   } catch (err) {
@@ -264,9 +273,10 @@ function loadPersistedData() {
     if (fileToLoad) {
       const raw = fs.readFileSync(fileToLoad, "utf-8");
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed.systemAnnouncements) && parsed.systemAnnouncements.length > 0) {
+      if (Array.isArray(parsed.systemAnnouncements)) {
         systemAnnouncements.length = 0;
-        systemAnnouncements.push(...parsed.systemAnnouncements);
+        const filteredAnn = parsed.systemAnnouncements.filter((a: any) => a && a.id !== 'ann-1' && a.id !== 'ann-2');
+        systemAnnouncements.push(...filteredAnn);
       }
       if (Array.isArray(parsed.systemPartners)) {
         systemPartners.length = 0;
@@ -275,9 +285,10 @@ function loadPersistedData() {
         );
         systemPartners.push(...filteredPartners);
       }
-      if (Array.isArray(parsed.globalAnnouncements) && parsed.globalAnnouncements.length > 0) {
+      if (Array.isArray(parsed.globalAnnouncements)) {
         globalAnnouncements.length = 0;
-        globalAnnouncements.push(...parsed.globalAnnouncements);
+        const filteredGlob = parsed.globalAnnouncements.filter((a: any) => a && a.id !== 'ann-1' && a.id !== 'ann-2');
+        globalAnnouncements.push(...filteredGlob);
       }
       if (Array.isArray(parsed.customGroupsList)) {
         customGroupsList.length = 0;
@@ -347,6 +358,24 @@ function loadPersistedData() {
         });
         communityMessages.push(...loaded);
       }
+      if (Array.isArray(parsed.userTimeouts)) {
+        userTimeouts.clear();
+        for (const [k, v] of parsed.userTimeouts) {
+          if (k && typeof v === 'number') userTimeouts.set(k, v);
+        }
+      }
+      if (Array.isArray(parsed.userTimeoutDetails)) {
+        userTimeoutDetails.clear();
+        for (const [k, v] of parsed.userTimeoutDetails) {
+          if (k && v) userTimeoutDetails.set(k, v);
+        }
+      }
+      if (Array.isArray(parsed.userStreaks)) {
+        userStreaks.clear();
+        for (const [k, v] of parsed.userStreaks) {
+          if (k && v) userStreaks.set(k, v);
+        }
+      }
     }
   } catch (err) {
     console.warn("Failed to load persisted data from file:", err);
@@ -369,7 +398,7 @@ interface ChatMessage {
     content: string;
   };
   attachment?: {
-    type: 'image' | 'audio' | 'link' | 'file';
+    type: 'image' | 'audio' | 'voice' | 'link' | 'file';
     url: string;
     fileName?: string;
     duration?: number;
@@ -378,6 +407,7 @@ interface ChatMessage {
   reactions?: Array<{ emoji: string; count: number; users: string[] }>;
   hasProfanity?: boolean;
   isUpsideDown?: boolean;
+  streak?: number;
 }
 
 interface UserProfile {
@@ -415,7 +445,6 @@ const userProfiles: Record<string, UserProfile> = {
 // Admin & Security Security State
 const claimedAdminUsers = new Map<string, string>(); // username (normalized) -> clientKey
 const bannedUsers = new Set<string>();
-const userTimeouts = new Map<string, number>(); // username -> expiry timestamp
 
 interface BanAppeal {
   id: string;
@@ -464,37 +493,11 @@ interface ServerPartner {
   addedAt?: string;
 }
 
-const systemAnnouncements: ServerAnnouncement[] = [
-  {
-    id: 'ann-1',
-    iconEmoji: '🚀',
-    title: 'v2.0 System Update:',
-    description: 'Upgraded desktop interface and smooth animations.',
-    content: 'v2.0 System Update: Upgraded desktop interface and smooth animations.',
-    badge: 'SYSTEM',
-    createdAt: 'Today',
-    author: 'System Admin',
-  },
-  {
-    id: 'ann-2',
-    iconEmoji: '⚡',
-    title: 'Performance Improvements:',
-    description: 'Faster loading times and better window management.',
-    content: 'Performance Improvements: Faster loading times and better window management.',
-    badge: 'OPTIMIZATION',
-    createdAt: 'Today',
-    author: 'System Admin',
-  },
-];
+const systemAnnouncements: ServerAnnouncement[] = [];
 
 const systemPartners: ServerPartner[] = [];
 
-const globalAnnouncements: Array<{ id: string; content: string; createdAt: string; author: string }> = systemAnnouncements.map((a) => ({
-  id: a.id,
-  content: a.content || `${a.title || ''} ${a.description || ''}`.trim(),
-  createdAt: a.createdAt || 'Today',
-  author: a.author || 'System Admin',
-}));
+const globalAnnouncements: Array<{ id: string; content: string; createdAt: string; author: string }> = [];
 
 interface CustomGroupServer {
   id: string;
@@ -543,6 +546,7 @@ interface CallParticipantInfo {
   isMuted: boolean;
   isCameraOn: boolean;
   isScreenSharing: boolean;
+  isSpeaking?: boolean;
   lastSeen: number;
 }
 
@@ -607,8 +611,11 @@ app.get("/api/health", (req, res) => {
 // TMDB Movies & TV Proxy Routes
 app.get("/api/tmdb/trending", async (req, res) => {
   try {
+    const page = (req.query.page as string) || "1";
+    const time = (req.query.time as string) === "week" ? "week" : "day";
+    const mediaType = (req.query.mediaType as string) || "all";
     const response = await fetch(
-      `https://api.themoviedb.org/3/trending/all/day?api_key=${TMDB_API_KEY}`
+      `https://api.themoviedb.org/3/trending/${mediaType}/${time}?api_key=${TMDB_API_KEY}&page=${page}`
     );
     const data = await response.json();
     res.json(data);
@@ -620,14 +627,48 @@ app.get("/api/tmdb/trending", async (req, res) => {
 
 app.get("/api/tmdb/search", async (req, res) => {
   try {
-    const query = req.query.query as string;
+    const query = ((req.query.query as string) || "").trim();
+    const type = ((req.query.type as string) || "multi").toLowerCase();
+    const page = (req.query.page as string) || "1";
     if (!query) return res.json({ results: [] });
+
+    if (type === "anime") {
+      // Strictly search Japanese Animation only
+      const [tvRes, movieRes] = await Promise.allSettled([
+        fetch(`https://api.themoviedb.org/3/search/tv?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&page=${page}`),
+        fetch(`https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&page=${page}`),
+      ]);
+
+      const tvMatches = tvRes.status === "fulfilled" && tvRes.value.ok ? ((await tvRes.value.json()).results || []).map((i: any) => ({ ...i, media_type: "tv" })) : [];
+      const movieMatches = movieRes.status === "fulfilled" && movieRes.value.ok ? ((await movieRes.value.json()).results || []).map((i: any) => ({ ...i, media_type: "movie" })) : [];
+
+      // Strict anime criteria: Japanese language ('ja') and Animation genre (16)
+      const isAnimeItem = (item: any) => {
+        const lang = (item.original_language || "").toLowerCase();
+        const genres: number[] = Array.isArray(item.genre_ids) ? item.genre_ids : [];
+        const isJapanese = lang === "ja" || lang === "japanese";
+        const isAnimation = genres.includes(16);
+        return isJapanese && isAnimation;
+      };
+
+      const strictAnime = [...tvMatches, ...movieMatches].filter(isAnimeItem);
+      return res.json({ results: strictAnime });
+    }
+
+    let endpoint = "search/multi";
+    if (type === "movie") endpoint = "search/movie";
+    else if (type === "tv" || type === "shows") endpoint = "search/tv";
+
     const response = await fetch(
-      `https://api.themoviedb.org/3/search/multi?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(
-        query
-      )}`
+      `https://api.themoviedb.org/3/${endpoint}?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&page=${page}`
     );
     const data = await response.json();
+    if (Array.isArray(data?.results)) {
+      data.results = data.results.map((i: any) => ({
+        ...i,
+        media_type: i.media_type || (type === "tv" || type === "shows" ? "tv" : type === "movie" ? "movie" : (i.first_air_date ? "tv" : "movie")),
+      }));
+    }
     res.json(data);
   } catch (error: any) {
     console.error("TMDB Search Fetch Error:", error);
@@ -654,8 +695,9 @@ app.get("/api/tmdb/details", async (req, res) => {
 
 app.get("/api/tmdb/popular_movies", async (req, res) => {
   try {
+    const page = (req.query.page as string) || "1";
     const response = await fetch(
-      `https://api.themoviedb.org/3/movie/popular?api_key=${TMDB_API_KEY}`
+      `https://api.themoviedb.org/3/movie/popular?api_key=${TMDB_API_KEY}&page=${page}`
     );
     const data = await response.json();
     res.json(data);
@@ -667,8 +709,9 @@ app.get("/api/tmdb/popular_movies", async (req, res) => {
 
 app.get("/api/tmdb/popular_tv", async (req, res) => {
   try {
+    const page = (req.query.page as string) || "1";
     const response = await fetch(
-      `https://api.themoviedb.org/3/tv/popular?api_key=${TMDB_API_KEY}`
+      `https://api.themoviedb.org/3/tv/popular?api_key=${TMDB_API_KEY}&page=${page}`
     );
     const data = await response.json();
     res.json(data);
@@ -680,8 +723,9 @@ app.get("/api/tmdb/popular_tv", async (req, res) => {
 
 app.get("/api/tmdb/top_rated", async (req, res) => {
   try {
+    const page = (req.query.page as string) || "1";
     const response = await fetch(
-      `https://api.themoviedb.org/3/movie/top_rated?api_key=${TMDB_API_KEY}`
+      `https://api.themoviedb.org/3/movie/top_rated?api_key=${TMDB_API_KEY}&page=${page}`
     );
     const data = await response.json();
     res.json(data);
@@ -695,15 +739,114 @@ app.get("/api/tmdb/discover", async (req, res) => {
   try {
     const genre = req.query.genre as string;
     const mediaType = (req.query.mediaType as string) || "movie";
+    const page = (req.query.page as string) || "1";
     const url = genre
-      ? `https://api.themoviedb.org/3/discover/${mediaType}?api_key=${TMDB_API_KEY}&with_genres=${genre}&sort_by=popularity.desc`
-      : `https://api.themoviedb.org/3/discover/${mediaType}?api_key=${TMDB_API_KEY}&sort_by=popularity.desc`;
+      ? `https://api.themoviedb.org/3/discover/${mediaType}?api_key=${TMDB_API_KEY}&with_genres=${genre}&sort_by=popularity.desc&page=${page}`
+      : `https://api.themoviedb.org/3/discover/${mediaType}?api_key=${TMDB_API_KEY}&sort_by=popularity.desc&page=${page}`;
     const response = await fetch(url);
     const data = await response.json();
     res.json(data);
   } catch (error: any) {
     console.error("TMDB Discover Error:", error);
     res.status(500).json({ error: "Failed to discover TMDB content" });
+  }
+});
+
+app.get(["/api/tmdb/anime", "/api/tmdb/discover/anime"], async (req, res) => {
+  try {
+    const page = (req.query.page as string) || "1";
+    const [tvRes, movieRes] = await Promise.allSettled([
+      fetch(`https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_API_KEY}&with_genres=16&with_original_language=ja&sort_by=popularity.desc&page=${page}`),
+      fetch(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&with_genres=16&with_original_language=ja&sort_by=popularity.desc&page=${page}`),
+    ]);
+
+    const tvResults = tvRes.status === "fulfilled" && tvRes.value.ok ? ((await tvRes.value.json()).results || []).map((i: any) => ({ ...i, media_type: "tv" })) : [];
+    const movieResults = movieRes.status === "fulfilled" && movieRes.value.ok ? ((await movieRes.value.json()).results || []).map((i: any) => ({ ...i, media_type: "movie" })) : [];
+
+    const combined = [...tvResults, ...movieResults].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+    res.json({ results: combined });
+  } catch (error: any) {
+    console.error("TMDB Anime Error:", error);
+    res.status(500).json({ error: "Failed to discover anime content" });
+  }
+});
+
+app.get(["/api/tmdb/anime/mature", "/api/tmdb/anime/18"], async (req, res) => {
+  try {
+    const page = (req.query.page as string) || "1";
+    const [tvRes, movieRes, curatedRes] = await Promise.allSettled([
+      fetch(`https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_API_KEY}&with_genres=16&with_original_language=ja&certification_country=US&certification=TV-MA&sort_by=popularity.desc&page=${page}`),
+      fetch(`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&with_genres=16&with_original_language=ja&certification_country=US&certification=R&sort_by=popularity.desc&page=${page}`),
+      Promise.allSettled([
+        fetch(`https://api.themoviedb.org/3/tv/45950?api_key=${TMDB_API_KEY}`),  // High School DxD
+        fetch(`https://api.themoviedb.org/3/tv/96444?api_key=${TMDB_API_KEY}`),  // Interspecies Reviewers
+        fetch(`https://api.themoviedb.org/3/tv/64706?api_key=${TMDB_API_KEY}`),  // Prison School
+        fetch(`https://api.themoviedb.org/3/tv/63187?api_key=${TMDB_API_KEY}`),  // Monster Musume
+        fetch(`https://api.themoviedb.org/3/tv/34742?api_key=${TMDB_API_KEY}`),  // To Love Ru
+        fetch(`https://api.themoviedb.org/3/tv/64163?api_key=${TMDB_API_KEY}`),  // The Testament of Sister New Devil
+        fetch(`https://api.themoviedb.org/3/tv/83103?api_key=${TMDB_API_KEY}`),  // Domestic Girlfriend
+        fetch(`https://api.themoviedb.org/3/tv/236338?api_key=${TMDB_API_KEY}`), // Gushing Over Magical Girls
+        fetch(`https://api.themoviedb.org/3/tv/63323?api_key=${TMDB_API_KEY}`),  // Shimoneta
+        fetch(`https://api.themoviedb.org/3/tv/99071?api_key=${TMDB_API_KEY}`),  // Redo of Healer
+        fetch(`https://api.themoviedb.org/3/tv/103409?api_key=${TMDB_API_KEY}`), // World's End Harem
+        fetch(`https://api.themoviedb.org/3/tv/114477?api_key=${TMDB_API_KEY}`), // Harem in the Labyrinth of Another World
+        fetch(`https://api.themoviedb.org/3/tv/66926?api_key=${TMDB_API_KEY}`),  // Valkyrie Drive: Mermaid
+        fetch(`https://api.themoviedb.org/3/tv/68005?api_key=${TMDB_API_KEY}`),  // Yosuga no Sora
+        fetch(`https://api.themoviedb.org/3/tv/69292?api_key=${TMDB_API_KEY}`),  // Scum's Wish
+        fetch(`https://api.themoviedb.org/3/tv/62273?api_key=${TMDB_API_KEY}`),  // Food Wars! Shokugeki no Soma
+      ])
+    ]);
+
+    const tvResults = tvRes.status === "fulfilled" && tvRes.value.ok ? ((await tvRes.value.json()).results || []).map((i: any) => ({ ...i, media_type: "tv" })) : [];
+    const movieResults = movieRes.status === "fulfilled" && movieRes.value.ok ? ((await movieRes.value.json()).results || []).map((i: any) => ({ ...i, media_type: "movie" })) : [];
+
+    let curatedItems: any[] = [];
+    if (curatedRes.status === "fulfilled") {
+      const parsed = await Promise.all(
+        curatedRes.value.map(async (r) => {
+          if (r.status === "fulfilled" && r.value.ok) {
+            try {
+              const json = await r.value.json();
+              return { ...json, media_type: json.name ? 'tv' : 'movie' };
+            } catch {
+              return null;
+            }
+          }
+          return null;
+        })
+      );
+      curatedItems = parsed.filter(Boolean);
+    }
+
+    const seen = new Set<number>();
+    const combined: any[] = [];
+
+    // Prioritize curated 18+ titles first
+    for (const item of [...curatedItems, ...tvResults, ...movieResults]) {
+      if (item && item.id && !seen.has(item.id)) {
+        seen.add(item.id);
+        combined.push(item);
+      }
+    }
+
+    res.json({ results: combined });
+  } catch (error: any) {
+    console.error("TMDB Mature Anime Error:", error);
+    res.status(500).json({ error: "Failed to discover mature anime content" });
+  }
+});
+
+app.get("/api/tmdb/movie/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const response = await fetch(
+      `https://api.themoviedb.org/3/movie/${id}?api_key=${TMDB_API_KEY}&append_to_response=videos,credits,similar,recommendations`
+    );
+    const data = await response.json();
+    res.json(data);
+  } catch (error: any) {
+    console.error("TMDB Movie Details Error:", error);
+    res.status(500).json({ error: "Failed to fetch movie details" });
   }
 });
 
@@ -736,20 +879,204 @@ app.get("/api/tmdb/trailer", async (req, res) => {
     if (response.ok) {
       const data = await response.json();
       if (data.results && Array.isArray(data.results) && data.results.length > 0) {
+        const ytList = data.results.filter((v: any) => v.site === "YouTube");
         const trailer =
-          data.results.find((v: any) => v.site === "YouTube" && v.type === "Trailer") ||
-          data.results.find((v: any) => v.site === "YouTube" && v.type === "Teaser") ||
-          data.results.find((v: any) => v.site === "YouTube" && v.type === "Clip") ||
-          data.results.find((v: any) => v.site === "YouTube");
-        if (trailer && trailer.key) {
-          return res.json({ success: true, key: trailer.key, name: trailer.name });
-        }
+          ytList.find((v: any) => v.type === "Trailer") ||
+          ytList.find((v: any) => v.type === "Teaser") ||
+          ytList.find((v: any) => v.type === "Clip") ||
+          ytList[0];
+        return res.json({
+          success: true,
+          key: trailer ? trailer.key : null,
+          name: trailer ? trailer.name : null,
+          videos: ytList.map((v: any) => ({
+            id: v.id,
+            key: v.key,
+            name: v.name,
+            type: v.type,
+            published_at: v.published_at,
+          })),
+        });
       }
     }
-    res.json({ success: false, key: null });
+    res.json({ success: false, key: null, videos: [] });
   } catch (error: any) {
     console.error("TMDB Trailer Fetch Error:", error);
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ==============================================================================
+// WATCHMODE STREAMING SOURCES API (BUDGET-OPTIMIZED 24H CACHE)
+// ==============================================================================
+const WATCHMODE_API_KEY = process.env.WATCHMODE_API_KEY || "WwpQCFqxLUL2S0d0Gc0vLZIacAoSlkwVs1PzF0o9";
+const watchmodeSourcesCache = new Map<string, { timestamp: number; data: any }>();
+const WATCHMODE_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours to protect 2,500 monthly credits
+
+const WATCHMODE_PROVIDER_LOGOS: Record<string, string> = {
+  "Netflix": "https://cdn.watchmode.com/provider_logos/netflix_100px.png",
+  "Amazon Prime Video": "https://cdn.watchmode.com/provider_logos/prime_video_100px.png",
+  "Disney+": "https://cdn.watchmode.com/provider_logos/disneyPlus_100px.png",
+  "HBO Max": "https://cdn.watchmode.com/provider_logos/max_100px.png",
+  "Max": "https://cdn.watchmode.com/provider_logos/max_100px.png",
+  "Hulu": "https://cdn.watchmode.com/provider_logos/hulu_100px.png",
+  "Apple TV+": "https://cdn.watchmode.com/provider_logos/appleTvPlus_100px.png",
+  "Apple TV": "https://cdn.watchmode.com/provider_logos/appleTv_100px.png",
+  "Paramount+": "https://cdn.watchmode.com/provider_logos/paramountPlus_100px.png",
+  "Peacock": "https://cdn.watchmode.com/provider_logos/peacock_100px.png",
+  "Peacock Premium": "https://cdn.watchmode.com/provider_logos/peacock_100px.png",
+  "Crunchyroll": "https://cdn.watchmode.com/provider_logos/crunchyroll_100px.png",
+  "MGM+": "https://cdn.watchmode.com/provider_logos/mgmPlus_100px.png",
+  "Starz": "https://cdn.watchmode.com/provider_logos/starz_100px.png",
+  "Showtime": "https://cdn.watchmode.com/provider_logos/showtime_100px.png",
+  "Tubi": "https://cdn.watchmode.com/provider_logos/tubi_100px.png",
+  "Pluto TV": "https://cdn.watchmode.com/provider_logos/plutoTv_100px.png",
+};
+
+app.get("/api/watchmode/sources", async (req, res) => {
+  try {
+    const query = ((req.query.query as string) || (req.query.title as string) || "").trim();
+    const tmdbId = req.query.tmdbId as string;
+    const mediaType = (req.query.mediaType as string) || "movie";
+
+    if (!query && !tmdbId) {
+      return res.status(400).json({ error: "Missing query or tmdbId" });
+    }
+
+    const cacheKey = `${tmdbId || ""}:${mediaType}:${query.toLowerCase()}`;
+    const cached = watchmodeSourcesCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < WATCHMODE_CACHE_TTL) {
+      return res.json(cached.data);
+    }
+
+    // Step A: Search Title ID
+    let watchmodeId: number | null = null;
+    let officialTitle = query;
+
+    // 1. Try tmdb_movie_id or tmdb_tv_id for exact match without credit waste
+    if (tmdbId) {
+      const field = mediaType === "tv" ? "tmdb_tv_id" : "tmdb_movie_id";
+      try {
+        const sRes = await fetch(
+          `https://api.watchmode.com/v1/search/?apiKey=${WATCHMODE_API_KEY}&search_field=${field}&search_value=${tmdbId}`
+        );
+        if (sRes.ok) {
+          const sData = await sRes.json();
+          if (Array.isArray(sData.title_results) && sData.title_results.length > 0) {
+            watchmodeId = sData.title_results[0].id;
+            officialTitle = sData.title_results[0].name || query;
+          }
+        }
+      } catch (err) {
+        console.warn("Watchmode TMDB ID search notice:", err);
+      }
+    }
+
+    // 2. Fallback to search_field=name if needed
+    if (!watchmodeId && query) {
+      try {
+        const sRes = await fetch(
+          `https://api.watchmode.com/v1/search/?apiKey=${WATCHMODE_API_KEY}&search_field=name&search_value=${encodeURIComponent(query)}`
+        );
+        if (sRes.ok) {
+          const sData = await sRes.json();
+          if (Array.isArray(sData.title_results) && sData.title_results.length > 0) {
+            watchmodeId = sData.title_results[0].id;
+            officialTitle = sData.title_results[0].name || query;
+          }
+        }
+      } catch (err) {
+        console.warn("Watchmode name search notice:", err);
+      }
+    }
+
+    if (!watchmodeId) {
+      const emptyResult = { success: true, watchmodeId: null, title: query, sources: [] };
+      watchmodeSourcesCache.set(cacheKey, { timestamp: Date.now(), data: emptyResult });
+      return res.json(emptyResult);
+    }
+
+    // Step B: Fetch Streaming Sources
+    const sourcesRes = await fetch(
+      `https://api.watchmode.com/v1/title/${watchmodeId}/sources/?apiKey=${WATCHMODE_API_KEY}`
+    );
+
+    if (!sourcesRes.ok) {
+      const emptyResult = { success: true, watchmodeId, title: officialTitle, sources: [] };
+      watchmodeSourcesCache.set(cacheKey, { timestamp: Date.now(), data: emptyResult });
+      return res.json(emptyResult);
+    }
+
+    const rawSources = await sourcesRes.json();
+    if (!Array.isArray(rawSources)) {
+      const emptyResult = { success: true, watchmodeId, title: officialTitle, sources: [] };
+      watchmodeSourcesCache.set(cacheKey, { timestamp: Date.now(), data: emptyResult });
+      return res.json(emptyResult);
+    }
+
+    // Step C: Filter type === 'sub' and de-duplicate by source.name
+    const seenNames = new Set<string>();
+    const filteredSources: Array<{ name: string; web_url: string; logo_url: string }> = [];
+
+    for (const src of rawSources) {
+      if (src.type !== "sub") continue;
+      if (!src.name) continue;
+      if (seenNames.has(src.name)) continue;
+      seenNames.add(src.name);
+
+      filteredSources.push({
+        name: src.name,
+        web_url: src.web_url || `https://www.google.com/search?q=${encodeURIComponent(officialTitle + " watch on " + src.name)}`,
+        logo_url:
+          src.logo_100px ||
+          WATCHMODE_PROVIDER_LOGOS[src.name] ||
+          `https://cdn.watchmode.com/provider_logos/${src.name.toLowerCase().replace(/[^a-z0-9]/g, "")}_100px.png`,
+      });
+    }
+
+    const finalResult = {
+      success: true,
+      watchmodeId,
+      title: officialTitle,
+      sources: filteredSources,
+    };
+
+    // Cache the result to preserve free tier credit limit
+    watchmodeSourcesCache.set(cacheKey, { timestamp: Date.now(), data: finalResult });
+    res.json(finalResult);
+  } catch (error: any) {
+    console.error("Watchmode sources error:", error);
+    res.status(500).json({ error: "Failed to fetch Watchmode sources", sources: [] });
+  }
+});
+
+// TMDB Now Playing and Streaming Provider Catalogs
+app.get("/api/tmdb/now_playing", async (_req, res) => {
+  try {
+    const response = await fetch(
+      `https://api.themoviedb.org/3/movie/now_playing?api_key=${TMDB_API_KEY}&page=1`
+    );
+    const data = await response.json();
+    res.json(data);
+  } catch (error: any) {
+    console.error("TMDB Now Playing Error:", error);
+    res.status(500).json({ error: "Failed to fetch now playing" });
+  }
+});
+
+app.get("/api/tmdb/by_provider", async (req, res) => {
+  try {
+    const providerId = (req.query.provider_id as string) || "8"; // 8 = Netflix
+    const mediaType = (req.query.media_type as string) || "movie";
+    const page = (req.query.page as string) || "1";
+
+    const url = `https://api.themoviedb.org/3/discover/${mediaType}?api_key=${TMDB_API_KEY}&with_watch_providers=${providerId}&watch_region=US&sort_by=popularity.desc&page=${page}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    res.json(data);
+  } catch (error: any) {
+    console.error("TMDB Provider Discover Error:", error);
+    res.status(500).json({ error: "Failed to discover provider content" });
   }
 });
 
@@ -780,37 +1107,198 @@ function isLanguageMismatch(lyricsText: string, songTitle: string, songArtist: s
   return false;
 }
 
-// JOOX Audio Stream Proxy Endpoint (Redirects directly to JOOX high quality MP3 stream)
-app.get("/api/music/joox_stream", async (req, res) => {
+// ==============================================================================
+// X8MUSIC (Cherri-v3 Port) Music API Service Integration
+// Primary Sources: YouTube Music (YTM) for audio streaming + Tidal (HiFi) for catalogue
+// ==============================================================================
+
+const MUSIC_MAIN_PORT = 2010;
+const MUSIC_MAIN_URL = `http://127.0.0.1:${MUSIC_MAIN_PORT}`;
+let musicBackendProcess: any = null;
+
+function ensureMusicBackend() {
+  fetch(`${MUSIC_MAIN_URL}/api/music/source`, { signal: AbortSignal.timeout(2000) })
+    .then((r) => {
+      if (r.ok) {
+        // music-main is healthy
+      }
+    })
+    .catch(() => {
+      if (musicBackendProcess) return;
+      console.log(`[MusicBackend] Spawning music-main on port ${MUSIC_MAIN_PORT}...`);
+      const musicDir = path.join(process.cwd(), "music-main");
+      try {
+        const bunBin = fs.existsSync("/usr/local/bin/bun") ? "/usr/local/bin/bun" : "bun";
+        musicBackendProcess = spawn(bunBin, ["run", "index.ts"], {
+          cwd: musicDir,
+          env: {
+            ...process.env,
+            PATH: `/usr/local/bin:/usr/bin:/bin:${process.env.PATH || ""}`,
+            MUSIC_PORT: String(MUSIC_MAIN_PORT),
+            YTM_BASE: "https://music.youtube.com",
+            YT_DLP_PATH: fs.existsSync(path.join(musicDir, "bin", "yt-dlp")) ? path.join(musicDir, "bin", "yt-dlp") : "/usr/local/bin/yt-dlp",
+            YTM_PARK_MS: "15000",
+            YTM_DOWNLOAD_TIMEOUT_MS: "30000",
+            YTM_PLAYER_CLIENTS: "default,web_embedded,mweb,ios,tv_embedded",
+            TIDAL_CLIENT_ID: "txNoH4kkV41MfH25",
+            TIDAL_CLIENT_SECRET: "dQjy0MinCEvxi1O4UmxvxWnDjt4cgHBPw8ll6nYBk98=",
+            TIDAL_COUNTRY: "US",
+          },
+          stdio: "pipe",
+        });
+
+        musicBackendProcess.stdout?.on("data", (d: any) => {
+          const s = d.toString().trim();
+          if (s) console.log(`[music-main] ${s}`);
+        });
+
+        musicBackendProcess.stderr?.on("data", (d: any) => {
+          const s = d.toString().trim();
+          if (s && !s.includes("experimental") && !s.includes("Deprecated")) console.log(`[music-main:err] ${s}`);
+        });
+
+        musicBackendProcess.on("exit", (code: number) => {
+          console.log(`[music-main] exited with code ${code}`);
+          musicBackendProcess = null;
+        });
+
+        musicBackendProcess.on("error", (err: any) => {
+          console.log(`[music-main] process error:`, err?.message || err);
+          musicBackendProcess = null;
+        });
+      } catch (err: any) {
+        console.log("[MusicBackend] Failed to spawn music-main:", err?.message || err);
+      }
+    });
+}
+
+// Keep music-main daemon alive
+setInterval(() => {
+  ensureMusicBackend();
+}, 25000);
+
+// Ensure background music-main daemon is running
+ensureMusicBackend();
+
+// ==============================================================================
+// MOVIES STREAMING SERVICE (movies-main) Integration
+// Direct multi-provider stream scraper (VidSrc, CineSrc, pstream) + HLS proxy
+// ==============================================================================
+
+const MOVIES_MAIN_PORT = 2020;
+const MOVIES_MAIN_URL = `http://127.0.0.1:${MOVIES_MAIN_PORT}`;
+let moviesBackendProcess: any = null;
+
+function ensureMoviesBackend() {
+  fetch(`${MOVIES_MAIN_URL}/health`, { signal: AbortSignal.timeout(2000) })
+    .then((r) => {
+      if (r.ok) {
+        // movies-main is healthy
+      }
+    })
+    .catch(() => {
+      if (moviesBackendProcess) return;
+      console.log(`[MoviesBackend] Spawning movies-main on port ${MOVIES_MAIN_PORT}...`);
+      const moviesDir = path.join(process.cwd(), "movies-main");
+      try {
+        const execBin = fs.existsSync("/usr/local/bin/bun") ? "/usr/local/bin/bun" : (fs.existsSync("/usr/local/bin/node") ? "/usr/local/bin/node" : "node");
+        moviesBackendProcess = spawn(execBin, ["src/index.js"], {
+          cwd: moviesDir,
+          env: {
+            ...process.env,
+            PATH: `/usr/local/bin:/usr/bin:/bin:${process.env.PATH || ""}`,
+            MOVIES_PORT: String(MOVIES_MAIN_PORT),
+            PORT: String(MOVIES_MAIN_PORT),
+            TMDB_API_KEY: "34bbddc5ab8b0debc3c3ba1bf6ffe884",
+          },
+          stdio: "pipe",
+        });
+
+        moviesBackendProcess.stdout?.on("data", (d: any) => {
+          const s = d.toString().trim();
+          if (s && !s.includes("error:") && !s.includes("api 403")) {
+            console.log(`[movies-main] ${s}`);
+          }
+        });
+
+        moviesBackendProcess.stderr?.on("data", (d: any) => {
+          const s = d.toString().trim();
+          if (s && !s.includes("experimental") && !s.includes("Deprecated") && !s.includes("error:") && !s.includes("api 403")) {
+            console.log(`[movies-main:err] ${s}`);
+          }
+        });
+
+        moviesBackendProcess.on("exit", (code: number) => {
+          console.log(`[movies-main] exited with code ${code}`);
+          moviesBackendProcess = null;
+        });
+
+        moviesBackendProcess.on("error", (err: any) => {
+          console.log(`[movies-main] process error:`, err?.message || err);
+          moviesBackendProcess = null;
+        });
+      } catch (err: any) {
+        console.log("[MoviesBackend] Failed to spawn movies-main:", err?.message || err);
+      }
+    });
+}
+
+// Keep movies-main daemon alive
+setInterval(() => {
+  ensureMoviesBackend();
+}, 25000);
+
+// Ensure background movies-main daemon is running
+ensureMoviesBackend();
+
+// Proxy all /api/movies requests to movies-main service
+app.use("/api/movies", async (req, res) => {
+  ensureMoviesBackend();
   try {
-    const msg =
-      (req.query.msg as string) ||
-      (req.query.query as string) ||
-      (req.query.q as string) ||
-      "Kanye West";
-    const n = req.query.n ? String(req.query.n) : "1";
-    const jooxUrl = `https://apicx.asia/api/joox_music?msg=${encodeURIComponent(msg)}&n=${encodeURIComponent(n)}&token=f84ao9lMF_q7husBWRfgUw`;
+    const forwardPath = req.originalUrl.replace(/^\/api\/movies/, "/api");
+    const targetUrl = `${MOVIES_MAIN_URL}${forwardPath}`;
+    
+    const headers: Record<string, string> = {};
+    if (req.headers["user-agent"]) headers["user-agent"] = req.headers["user-agent"] as string;
+    if (req.headers["range"]) headers["range"] = req.headers["range"] as string;
+    if (req.headers["accept"]) headers["accept"] = req.headers["accept"] as string;
 
-    const response = await fetchIgnoreCert(jooxUrl, { signal: AbortSignal.timeout(5000) });
-    if (response.ok) {
-      const json: any = await response.json();
-      const playLinks = json.data?.["播放链接"] || {};
-      const mp3Url =
-        playLinks["MP3 320"] ||
-        playLinks["MP3 128"] ||
-        playLinks["AAC 192"] ||
-        playLinks["AAC 96"] ||
-        playLinks["无损FLAC"] ||
-        playLinks["OGG 320"];
+    const forwardRes = await fetch(targetUrl, {
+      method: req.method,
+      headers,
+      signal: AbortSignal.timeout(35000),
+    });
 
-      if (mp3Url) {
-        return res.redirect(302, mp3Url);
+    res.status(forwardRes.status);
+    forwardRes.headers.forEach((val, key) => {
+      const lower = key.toLowerCase();
+      if (lower !== "content-encoding" && lower !== "transfer-encoding") {
+        res.setHeader(key, val);
+      }
+    });
+
+    if (forwardPath.startsWith("/api/stream/")) {
+      const json = await forwardRes.json().catch(() => null);
+      if (json && Array.isArray(json.streams)) {
+        json.streams = json.streams.filter(
+          (s: any) =>
+            s &&
+            typeof s.url === "string" &&
+            !s.url.includes("invalid") &&
+            !s.url.includes("mismatched") &&
+            !s.url.includes("<")
+        );
+        return res.json(json);
       }
     }
-    res.status(404).json({ error: "Stream not found" });
+
+    const buf = Buffer.from(await forwardRes.arrayBuffer());
+    res.send(buf);
   } catch (err: any) {
-    console.error("JOOX Stream error:", err);
-    res.status(500).json({ error: "Failed to stream audio" });
+    console.error(`[api/movies] Proxy error:`, err.message);
+    if (!res.headersSent) {
+      res.status(502).json({ error: "Movies backend unavailable", message: err.message });
+    }
   }
 });
 
@@ -866,7 +1354,7 @@ function streamAudioWithRedirect(targetUrl: string, clientReq: any, clientRes: a
     });
 
     upstreamReq.on("error", (err) => {
-      console.warn("Audio stream request error:", err?.message);
+      console.log("[Stream] Audio stream notice:", err?.message);
       if (!clientRes.headersSent) {
         clientRes.status(500).send("Audio stream error");
       }
@@ -881,187 +1369,740 @@ function streamAudioWithRedirect(targetUrl: string, clientReq: any, clientRes: a
   }
 }
 
-// Meting Audio Stream Proxy Endpoint (Proxies MP3 stream with range & CORS support)
-app.get("/api/music/meting_stream", (req, res) => {
-  const rawUrl = req.query.url as string;
-  const server = (req.query.server as string) || "netease";
-  const id = req.query.id as string;
-
-  let targetUrl = rawUrl;
-  if (!targetUrl && id) {
-    targetUrl = `https://api.qijieya.cn/meting/?server=${encodeURIComponent(server)}&type=url&id=${encodeURIComponent(id)}`;
-  }
-
-  if (!targetUrl) {
-    return res.status(400).json({ error: "Missing url or id parameter" });
-  }
-
-  streamAudioWithRedirect(targetUrl, req, res);
+// 1. Source Status & Ping Endpoints
+app.get("/api/music/source", async (_req, res) => {
+  try {
+    const upstream = await fetch(`${MUSIC_MAIN_URL}/api/music/source`, { signal: AbortSignal.timeout(4000) });
+    if (upstream.ok) {
+      const json = await upstream.json();
+      return res.json(json);
+    }
+  } catch (e) {}
+  res.json({
+    current: "ytm",
+    latencies: { ytm: 120, tidal: 250 },
+    lastPing: Date.now(),
+    configured: { tidal: true, ytm: true, r2: false },
+  });
 });
 
-// Multi-Source Music Search API (Meting Primary + JOOX + iTunes)
+app.post("/api/music/ping", async (_req, res) => {
+  try {
+    const upstream = await fetch(`${MUSIC_MAIN_URL}/api/music/ping`, { method: "POST", signal: AbortSignal.timeout(5000) });
+    if (upstream.ok) {
+      const json = await upstream.json();
+      return res.json(json);
+    }
+  } catch (e) {}
+  res.json({ success: true });
+});
+
+// 2. Music Search Endpoint (Powered by music-main with YTM + Tidal sources)
 app.get("/api/music/search", async (req, res) => {
   try {
-    const query =
+    const query = (
       (req.query.query as string) ||
       (req.query.q as string) ||
       (req.query.name as string) ||
       (req.query.id as string) ||
-      "Kanye West";
+      "Kendrick Lamar"
+    ).trim();
 
-    const allTracks: any[] = [];
-    const seenIds = new Set<string>();
+    const requestLimit = (req.query.limit as string) || "30";
+    const requestedSource = (req.query.source as string) || "ytm";
 
-    const requestLimit = (req.query.limit as string) || (req.query.requestLimit as string) || "30";
-
-    // 1. Primary Source: Meting Music API (api.qijieya.cn) - Direct audio streams, HD covers & synced LRC
+    let fetchedData: any = null;
     try {
-      const metingSearchUrl = `https://api.qijieya.cn/meting/?type=search&id=${encodeURIComponent(query)}&limit=${encodeURIComponent(requestLimit)}&server=netease`;
-      const metingRes = await fetchIgnoreCert(metingSearchUrl, { signal: AbortSignal.timeout(6000) });
-      if (metingRes.ok) {
-        const json: any = await metingRes.json();
-        if (Array.isArray(json)) {
-          for (const item of json) {
-            const rawTitle = item.name || "Untitled Track";
-            const rawArtist = item.artist || "Unknown Artist";
-
-            // Extract numeric ID from lrc or url if available
-            let songId = "";
-            if (item.url) {
-              const match = item.url.match(/id=([a-zA-Z0-9]+)/);
-              if (match) songId = match[1];
-            }
-            if (!songId) songId = String(Math.random());
-
-            if (seenIds.has(songId)) continue;
-            seenIds.add(songId);
-
-            const cleanTitle = rawTitle.replace(/\s*\(Explicit\)/gi, "").trim();
-            const cleanArtist = rawArtist.replace(/\s*\([\u4e00-\u9fa5\s]+\)/g, "").trim();
-
-            const cover = item.pic || "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80";
-            const audioUrl = item.url ? `/api/music/meting_stream?url=${encodeURIComponent(item.url)}` : "";
-            const lrcUrl = item.lrc;
-
-            allTracks.push({
-              id: `meting-${songId}`,
-              songId,
-              title: cleanTitle,
-              artist: cleanArtist,
-              album: "Single",
-              duration: 210,
-              cover,
-              audioUrl,
-              lrcUrl,
-            });
-          }
-        }
+      const url = `${MUSIC_MAIN_URL}/api/music/search?q=${encodeURIComponent(query)}&limit=${encodeURIComponent(requestLimit)}&source=${encodeURIComponent(requestedSource)}`;
+      const upstream = await fetch(url, { signal: AbortSignal.timeout(7000) });
+      if (upstream.ok) {
+        fetchedData = await upstream.json();
       }
-    } catch (e) {
-      console.warn("Meting search failed:", e);
+    } catch (err: any) {
+      console.log("[MusicBackend] music-main search notice, fallback:", err?.message || err);
     }
 
-    // 2. Secondary Source: JOOX Music API (apicx.asia)
-    try {
-      const jooxUrl = `https://apicx.asia/api/joox_music?msg=${encodeURIComponent(query)}&token=f84ao9lMF_q7husBWRfgUw`;
-      const jooxRes = await fetchIgnoreCert(jooxUrl, { signal: AbortSignal.timeout(5000) });
-      if (jooxRes.ok) {
-        const json: any = await jooxRes.json();
-        const songs = Array.isArray(json.data?.songs) ? json.data.songs : [];
+    const allTracks: any[] = [];
+    const allArtists: any[] = [];
+    const allAlbums: any[] = [];
 
-        for (const item of songs) {
-          const songId = String(item["歌曲ID"] || item["songmid"] || Math.random());
-          if (seenIds.has(songId)) continue;
-          seenIds.add(songId);
+    if (fetchedData && Array.isArray(fetchedData.items)) {
+      for (const item of fetchedData.items) {
+        const title = item.title || "Untitled Track";
+        const artist = item.artist || "Unknown Artist";
+        const cover = item.artwork || "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80";
+        const duration = Number(item.duration) || 210;
+        const source = item.source || requestedSource;
 
-          const rawTitle = item["歌曲名称"] || "Untitled Track";
-          const rawArtist = item["歌手"] || "Unknown Artist";
-          const rawAlbum = item["专辑"] || "Single";
-          const index = item["序号"] || 1;
+        const streamUrl = `/api/music/stream?id=${encodeURIComponent(item.id)}&source=${encodeURIComponent(source)}&title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}&duration=${duration}`;
 
-          let durationSec = 210;
-          if (typeof item["时长"] === "string" && item["时长"].includes(":")) {
-            const parts = item["时长"].split(":");
-            durationSec = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+        allTracks.push({
+          id: String(item.id),
+          songId: String(item.id),
+          title,
+          artist,
+          album: item.album || "Single",
+          duration,
+          cover,
+          coverUrl: cover,
+          audioUrl: streamUrl,
+          streamUrl,
+          source,
+          genre: "Music",
+        });
+      }
+    }
+
+    if (fetchedData && Array.isArray(fetchedData.artists)) {
+      for (const a of fetchedData.artists) {
+        allArtists.push({
+          id: String(a.id),
+          name: a.name || "Unknown Artist",
+          picture: a.picture || "",
+        });
+      }
+    }
+
+    if (fetchedData && Array.isArray(fetchedData.albums)) {
+      for (const alb of fetchedData.albums) {
+        allAlbums.push({
+          id: String(alb.id),
+          collectionId: alb.id,
+          title: alb.title || "Untitled Album",
+          artist: alb.artist?.name || alb.artist || query,
+          cover: alb.cover || "",
+          year: alb.releaseDate ? new Date(alb.releaseDate).getFullYear() : 2024,
+          trackCount: alb.numberOfTracks || 10,
+          genre: "Music",
+        });
+      }
+    }
+
+    // Supplement Artists and Albums if music-main returned none (common with YTM search)
+    if (allAlbums.length === 0 || allArtists.length === 0) {
+      try {
+        const itunesAlbumsUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=album&limit=15`;
+        const aRes = await fetch(itunesAlbumsUrl, { signal: AbortSignal.timeout(4000) });
+        if (aRes.ok) {
+          const aData: any = await aRes.json();
+          if (Array.isArray(aData.results)) {
+            const seenAlbums = new Set<string>();
+            const seenArtists = new Set<string>();
+
+            for (const alb of aData.results) {
+              const albTitle = alb.collectionName || "Untitled Album";
+              const albArtist = alb.artistName || query;
+              const albCover = alb.artworkUrl100
+                ? alb.artworkUrl100.replace("100x100bb", "600x600bb")
+                : "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80";
+              const year = alb.releaseDate ? new Date(alb.releaseDate).getFullYear() : 2024;
+
+              if (allAlbums.length < 15 && !seenAlbums.has(albTitle.toLowerCase())) {
+                seenAlbums.add(albTitle.toLowerCase());
+                allAlbums.push({
+                  id: String(alb.collectionId),
+                  collectionId: alb.collectionId,
+                  title: albTitle,
+                  artist: albArtist,
+                  cover: albCover,
+                  year,
+                  trackCount: alb.trackCount || 10,
+                  genre: alb.primaryGenreName || "Music",
+                });
+              }
+
+              if (allArtists.length < 5 && !seenArtists.has(albArtist.toLowerCase())) {
+                seenArtists.add(albArtist.toLowerCase());
+                allArtists.push({
+                  id: String(alb.artistId || albArtist),
+                  name: albArtist,
+                  picture: albCover,
+                });
+              }
+            }
           }
+        }
+      } catch (e) {}
+    }
 
-          const cleanTitle = rawTitle.replace(/\s*\(Explicit\)/gi, "").trim();
-          const cleanArtist = rawArtist.replace(/\s*\([\u4e00-\u9fa5\s]+\)/g, "").trim();
+    // Resilient fallback if music-main returned no tracks
+    if (allTracks.length === 0) {
+      try {
+        const itunesUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=25`;
+        const itunesRes = await fetch(itunesUrl, { signal: AbortSignal.timeout(4000) });
+        if (itunesRes.ok) {
+          const json: any = await itunesRes.json();
+          if (Array.isArray(json.results)) {
+            for (const item of json.results) {
+              const cleanTitle = (item.trackName || "Untitled Track").trim();
+              const cleanArtist = item.artistName || "Unknown Artist";
+              const coverUrl = item.artworkUrl100
+                ? item.artworkUrl100.replace("100x100bb", "600x600bb")
+                : "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80";
 
-          const audioUrl = `/api/music/joox_stream?msg=${encodeURIComponent(query)}&n=${index}`;
-          const lrcUrl = `/api/music/lyrics?title=${encodeURIComponent(cleanTitle)}&artist=${encodeURIComponent(cleanArtist)}&jooxMsg=${encodeURIComponent(query)}&jooxN=${index}`;
+              const streamUrl = `/api/music/stream?id=${encodeURIComponent(item.trackId || cleanTitle)}&source=itunes&title=${encodeURIComponent(cleanTitle)}&artist=${encodeURIComponent(cleanArtist)}&duration=${Math.round((item.trackTimeMillis || 210000) / 1000)}`;
 
-          allTracks.push({
-            id: `joox-${songId}`,
-            songId,
-            title: cleanTitle,
-            artist: cleanArtist,
-            album: rawAlbum,
-            duration: durationSec,
-            cover: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80",
-            audioUrl,
-            lrcUrl,
-            jooxMsg: query,
-            jooxN: index,
+              allTracks.push({
+                id: `itunes-${item.trackId || Math.random()}`,
+                songId: String(item.trackId || Math.random()),
+                title: cleanTitle,
+                artist: cleanArtist,
+                album: item.collectionName || "Single",
+                duration: Math.round((item.trackTimeMillis || 210000) / 1000),
+                cover: coverUrl,
+                coverUrl,
+                audioUrl: item.previewUrl || streamUrl,
+                streamUrl,
+                genre: item.primaryGenreName || "Music",
+              });
+            }
+          }
+        }
+      } catch (e) {}
+    }
+
+    res.json({
+      tracks: allTracks,
+      artists: allArtists,
+      albums: allAlbums,
+      source: fetchedData?.source || requestedSource,
+    });
+  } catch (error: any) {
+    console.error("Music Search Route Error:", error);
+    res.json({ tracks: [], artists: [], albums: [] });
+  }
+});
+
+// 3. Browse / Charts Endpoint (Pulls real curated Tidal rows from music-main)
+let cachedBrowseSections: any[] | null = null;
+let lastBrowseCacheTime = 0;
+
+app.get("/api/music/charts", async (_req, res) => {
+  try {
+    if (cachedBrowseSections && Date.now() - lastBrowseCacheTime < 1000 * 60 * 20) {
+      return res.json({ sections: cachedBrowseSections });
+    }
+
+    let browseData: any = null;
+    try {
+      const upstream = await fetch(`${MUSIC_MAIN_URL}/api/music/browse`, { signal: AbortSignal.timeout(6000) });
+      if (upstream.ok) {
+        browseData = await upstream.json();
+      }
+    } catch (e: any) {
+      // music-main might still be binding port 2010 during dev server boot; retry once
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 600));
+        const retry = await fetch(`${MUSIC_MAIN_URL}/api/music/browse`, { signal: AbortSignal.timeout(4000) });
+        if (retry.ok) {
+          browseData = await retry.json();
+        }
+      } catch (retryErr) {
+        // Quiet fallback to cached or built-in sections
+      }
+    }
+
+    const categoryMap: { key: string; id: number; title: string; icon: string }[] = [
+      { key: "hits", id: 0, title: "Top Hits", icon: "Flame" },
+      { key: "pop", id: 1, title: "Pop", icon: "Sparkles" },
+      { key: "hiphop", id: 2, title: "Hip-Hop & Rap", icon: "Zap" },
+      { key: "rnb", id: 3, title: "R&B & Soul", icon: "Moon" },
+      { key: "rock", id: 4, title: "Rock & Alternative", icon: "Disc" },
+      { key: "indie", id: 5, title: "Indie", icon: "Radio" },
+      { key: "chill", id: 6, title: "Chill Vibes", icon: "Moon" },
+    ];
+
+    const sections: any[] = [];
+
+    if (browseData && browseData.rows) {
+      for (const cat of categoryMap) {
+        const rawTracks = browseData.rows[cat.key];
+        if (Array.isArray(rawTracks) && rawTracks.length > 0) {
+          const tracks = rawTracks.map((item: any) => {
+            const title = item.title || "Untitled Track";
+            const artist = item.artist || "Unknown Artist";
+            const cover = item.artwork || "";
+            const duration = Number(item.duration) || 210;
+            const streamUrl = `/api/music/stream?id=${encodeURIComponent(item.id)}&source=tidal&title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}&duration=${duration}`;
+            return {
+              id: `chart-${item.id}`,
+              songId: String(item.id),
+              title,
+              artist,
+              album: item.album || "Single",
+              cover,
+              coverUrl: cover,
+              duration,
+              audioUrl: streamUrl,
+              streamUrl,
+              genre: cat.title,
+            };
+          });
+          sections.push({
+            id: cat.id,
+            title: cat.title,
+            icon: cat.icon,
+            tracks,
           });
         }
       }
-    } catch (e) {
-      console.warn("JOOX search failed:", e);
     }
 
-    // 3. Tertiary Source: iTunes Search API (High quality artwork & global tracks)
+    if (sections.length > 0) {
+      cachedBrowseSections = sections;
+      lastBrowseCacheTime = Date.now();
+      return res.json({ sections });
+    }
+
+    // Fallback if browse is empty
+    return res.json({ sections: cachedBrowseSections || [] });
+  } catch (err) {
+    res.json({ sections: cachedBrowseSections || [] });
+  }
+});
+
+// 4. Browse Direct Endpoint
+app.get("/api/music/browse", async (_req, res) => {
+  try {
+    const upstream = await fetch(`${MUSIC_MAIN_URL}/api/music/browse`, { signal: AbortSignal.timeout(6000) });
+    if (upstream.ok) {
+      const json = await upstream.json();
+      return res.json(json);
+    }
+  } catch (e) {}
+  res.json({ rows: {}, albums: [] });
+});
+
+// 5. Audio Streaming Endpoint with Range Support & Fallback
+app.get("/api/music/stream", async (req, res) => {
+  const { id, source, title, artist, duration, quality } = req.query as Record<string, string>;
+  if (!id && !title) {
+    return res.status(400).json({ error: "Missing id or title parameter" });
+  }
+
+  // Ensure music backend process is active
+  ensureMusicBackend();
+
+  // If track has a valid YouTube or Tidal ID, forward range request to music-main
+  const isLikelyValidId = id && (/^[A-Za-z0-9_-]{11}$/.test(id) || /^\d+$/.test(id));
+  if (isLikelyValidId) {
     try {
-      const iTunesUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=20`;
-      const iTunesRes = await fetch(iTunesUrl, { signal: AbortSignal.timeout(4000) });
-      if (iTunesRes.ok) {
-        const iTunesData: any = await iTunesRes.json();
-        if (Array.isArray(iTunesData.results)) {
-          for (const item of iTunesData.results) {
-            const songId = String(item.trackId || Math.random());
-            const coverUrl = item.artworkUrl100
-              ? item.artworkUrl100.replace("100x100bb", "600x600bb")
-              : "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80";
+      const queryParams = new URLSearchParams({
+        id: id || "track",
+        source: source || "ytm",
+        title: title || "",
+        artist: artist || "",
+        duration: duration || "210",
+        quality: quality || "",
+      });
 
-            const trackTitleLower = (item.trackName || "").toLowerCase();
-            const existingTrack = allTracks.find(
-              (t) =>
-                t.title.toLowerCase().includes(trackTitleLower) ||
-                trackTitleLower.includes(t.title.toLowerCase())
-            );
-            if (existingTrack) {
-              // Update artwork if default placeholder
-              if (!existingTrack.cover || existingTrack.cover.includes("unsplash")) {
-                existingTrack.cover = coverUrl;
-              }
-              continue;
+      const streamUrl = `${MUSIC_MAIN_URL}/api/music/stream?${queryParams.toString()}`;
+      const headers: Record<string, string> = {};
+      if (req.headers.range) {
+        headers["range"] = req.headers.range as string;
+      }
+
+      const abortCtrl = new AbortController();
+      const timeoutId = setTimeout(() => abortCtrl.abort(), 25000);
+      req.on("close", () => {
+        clearTimeout(timeoutId);
+        abortCtrl.abort();
+      });
+
+      const upstream = await fetch(streamUrl, {
+        headers,
+        signal: abortCtrl.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (upstream.ok || upstream.status === 206) {
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        res.setHeader("Accept-Ranges", "bytes");
+        res.setHeader("Content-Type", upstream.headers.get("content-type") || "audio/mp4");
+        const cr = upstream.headers.get("content-range");
+        if (cr) res.setHeader("Content-Range", cr);
+        const cl = upstream.headers.get("content-length");
+        if (cl) res.setHeader("Content-Length", cl);
+
+        res.status(upstream.status);
+        if (upstream.body) {
+          const reader = upstream.body.getReader();
+          const pump = async () => {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              res.write(value);
             }
+            res.end();
+          };
+          req.on("close", () => reader.cancel().catch(() => {}));
+          return pump();
+        }
+      }
+    } catch (err: any) {
+      console.log(`[Stream] music-main bypassed/falling back:`, err?.message || err);
+    }
+  }
 
-            if (seenIds.has(songId)) continue;
-            seenIds.add(songId);
+  // Graceful High-Bitrate Fallback: JOOX 320 / iTunes / Deezer stream
+  const cleanTitle = (title || "").trim();
+  const cleanArtist = (artist || "").trim();
+  const query = `${cleanArtist} ${cleanTitle}`.trim() || "Kendrick Lamar";
 
-            allTracks.push({
-              id: `itunes-${songId}`,
-              songId,
-              title: item.trackName || "Untitled Track",
-              artist: item.artistName || "Unknown Artist",
-              album: item.collectionName || "Single",
-              duration: Math.round((item.trackTimeMillis || 210000) / 1000),
-              cover: coverUrl,
-              audioUrl: item.previewUrl || `/api/music/joox_stream?msg=${encodeURIComponent(item.artistName + " " + item.trackName)}&n=1`,
-              lrcUrl: `/api/music/lyrics?title=${encodeURIComponent(item.trackName || "")}&artist=${encodeURIComponent(item.artistName || "")}`,
+  try {
+    const jooxUrl = `https://apicx.asia/api/joox_music?msg=${encodeURIComponent(query)}&n=1&token=f84ao9lMF_q7husBWRfgUw`;
+    const response = await fetchIgnoreCert(jooxUrl, { signal: AbortSignal.timeout(4000) });
+    if (response.ok) {
+      const json: any = await response.json();
+      const playLinks = json.data?.["播放链接"] || {};
+      const mp3Url =
+        playLinks["MP3 320"] ||
+        playLinks["MP3 128"] ||
+        playLinks["AAC 192"] ||
+        playLinks["无损FLAC"];
+      if (mp3Url) {
+        return streamAudioWithRedirect(mp3Url, req, res);
+      }
+    }
+  } catch (e) {}
+
+  // Last resort iTunes preview
+  try {
+    const iTunesUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=1`;
+    const itunesRes = await fetch(iTunesUrl, { signal: AbortSignal.timeout(3000) });
+    if (itunesRes.ok) {
+      const itunesData: any = await itunesRes.json();
+      const preview = itunesData.results?.[0]?.previewUrl;
+      if (preview) {
+        return streamAudioWithRedirect(preview, req, res);
+      }
+    }
+  } catch (e) {}
+
+  res.status(404).json({ error: "Stream unavailable" });
+});
+
+// 6. Album Details Endpoint (Forwarded from music-main with iTunes fallback)
+app.get(["/api/music/album/:id", "/api/music/album_details"], async (req, res) => {
+  const id = ((req.params.id as string) || (req.query.id as string) || "").trim();
+  const title = ((req.query.title as string) || "").trim();
+  const artist = ((req.query.artist as string) || "").trim();
+
+  // 1. Try music-main if id is provided
+  if (id && !title) {
+    try {
+      const upstream = await fetch(`${MUSIC_MAIN_URL}/api/music/album/${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(4000) });
+      if (upstream.ok) {
+        const json = await upstream.json();
+        if (json && (json.items || json.tracks)) {
+          return res.json(json);
+        }
+      }
+    } catch (e) {}
+  }
+
+  // 2. High-Fidelity iTunes Lookup & Search Fallback
+  let tracks: any[] = [];
+  let albumMeta: any = {
+    id: id || title,
+    title: title || "Album",
+    artist: artist || "Unknown Artist",
+    cover: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80",
+    year: 2024,
+    genre: "Music",
+  };
+
+  if (id && /^\d+$/.test(id)) {
+    try {
+      const lookupUrl = `https://itunes.apple.com/lookup?id=${id}&entity=song`;
+      const lRes = await fetch(lookupUrl, { signal: AbortSignal.timeout(5000) });
+      if (lRes.ok) {
+        const json: any = await lRes.json();
+        if (Array.isArray(json.results) && json.results.length > 0) {
+          for (const item of json.results) {
+            if (item.wrapperType === "collection") {
+              albumMeta.title = item.collectionName || albumMeta.title;
+              albumMeta.artist = item.artistName || albumMeta.artist;
+              albumMeta.cover = item.artworkUrl100 ? item.artworkUrl100.replace("100x100bb", "600x600bb") : albumMeta.cover;
+              albumMeta.year = item.releaseDate ? new Date(item.releaseDate).getFullYear() : albumMeta.year;
+              albumMeta.genre = item.primaryGenreName || albumMeta.genre;
+            } else if (item.wrapperType === "track") {
+              const trkTitle = item.trackName || "Untitled Track";
+              const trkArtist = item.artistName || albumMeta.artist;
+              const trkCover = item.artworkUrl100 ? item.artworkUrl100.replace("100x100bb", "600x600bb") : albumMeta.cover;
+              const duration = Math.round((item.trackTimeMillis || 210000) / 1000);
+              const streamUrl = `/api/music/stream?id=track&title=${encodeURIComponent(trkTitle)}&artist=${encodeURIComponent(trkArtist)}&duration=${duration}`;
+              tracks.push({
+                id: String(item.trackId || trkTitle),
+                songId: String(item.trackId || trkTitle),
+                title: trkTitle,
+                artist: trkArtist,
+                album: item.collectionName || albumMeta.title,
+                duration,
+                cover: trkCover,
+                coverUrl: trkCover,
+                audioUrl: streamUrl,
+                streamUrl,
+                genre: item.primaryGenreName || albumMeta.genre,
+                trackNumber: item.trackNumber || (tracks.length + 1),
+              });
+            }
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  // Fallback search if lookup had no tracks
+  if (tracks.length === 0 && (title || artist || id)) {
+    try {
+      const searchTerm = `${artist} ${title || id}`.trim();
+      const sUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(searchTerm)}&entity=song&limit=30`;
+      const sRes = await fetch(sUrl, { signal: AbortSignal.timeout(5000) });
+      if (sRes.ok) {
+        const json: any = await sRes.json();
+        if (Array.isArray(json.results)) {
+          for (const item of json.results) {
+            const trkTitle = item.trackName || "Untitled Track";
+            const trkArtist = item.artistName || artist || "Artist";
+            const trkCover = item.artworkUrl100 ? item.artworkUrl100.replace("100x100bb", "600x600bb") : albumMeta.cover;
+            if (!albumMeta.cover || albumMeta.cover.includes("unsplash")) {
+              albumMeta.cover = trkCover;
+              albumMeta.title = item.collectionName || albumMeta.title;
+              albumMeta.artist = trkArtist;
+            }
+            const duration = Math.round((item.trackTimeMillis || 210000) / 1000);
+            const streamUrl = `/api/music/stream?id=track&title=${encodeURIComponent(trkTitle)}&artist=${encodeURIComponent(trkArtist)}&duration=${duration}`;
+            tracks.push({
+              id: String(item.trackId || trkTitle),
+              songId: String(item.trackId || trkTitle),
+              title: trkTitle,
+              artist: trkArtist,
+              album: item.collectionName || title || "Album",
+              duration,
+              cover: trkCover,
+              coverUrl: trkCover,
+              audioUrl: streamUrl,
+              streamUrl,
+              genre: item.primaryGenreName || "Music",
+              trackNumber: item.trackNumber || (tracks.length + 1),
             });
           }
         }
       }
-    } catch (e) {
-      console.warn("iTunes Music Search failed:", e);
-    }
+    } catch (e) {}
+  }
 
-    res.json({ tracks: allTracks });
-  } catch (error: any) {
-    console.error("Music Search Route Error:", error);
-    res.json({ tracks: [] });
+  res.json({
+    album: albumMeta,
+    tracks,
+  });
+});
+
+// 7. Artist Details Endpoint (Forwarded from music-main with iTunes top songs & discography)
+app.get(["/api/music/artist/:id", "/api/music/artist_details"], async (req, res) => {
+  const id = ((req.params.id as string) || (req.query.id as string) || "").trim();
+  const name = ((req.query.name as string) || "").trim();
+  const query = name || id;
+  if (!query) {
+    return res.status(400).json({ error: "Missing artist name or id" });
+  }
+
+  // Preserve target artist name strictly so it NEVER flips to another artist (e.g. Drake -> Majid Jordan, Future -> Taylor Swift)
+  const targetArtist = name || (isNaN(Number(id)) ? id : "");
+  let topSongs: any[] = [];
+  let albums: any[] = [];
+  let picture = "";
+
+  // 1. Fetch top songs from iTunes API
+  try {
+    const itunesSongsUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=40`;
+    const sRes = await fetch(itunesSongsUrl, { signal: AbortSignal.timeout(5000) });
+    if (sRes.ok) {
+      const data: any = await sRes.json();
+      if (Array.isArray(data.results)) {
+        const seenSongs = new Set<string>();
+        for (const item of data.results) {
+          const title = item.trackName || "Untitled";
+          const rawArtist = (item.artistName || "").trim();
+          const lowerRaw = rawArtist.toLowerCase();
+          const targetLower = targetArtist.toLowerCase();
+
+          // If target artist is known, ensure the track is genuinely by or co-performed by this artist
+          if (targetArtist && targetLower.length > 1) {
+            const trackTitleLower = (item.trackName || '').toLowerCase();
+            const isByArtist =
+              lowerRaw === targetLower ||
+              lowerRaw.startsWith(targetLower + ' &') ||
+              lowerRaw.startsWith(targetLower + ' and') ||
+              lowerRaw.startsWith(targetLower + ',') ||
+              lowerRaw.endsWith('& ' + targetLower) ||
+              lowerRaw.includes(targetLower);
+            const isFeatured =
+              trackTitleLower.includes(`feat. ${targetLower}`) ||
+              trackTitleLower.includes(`featuring ${targetLower}`) ||
+              trackTitleLower.includes(`with ${targetLower}`) ||
+              trackTitleLower.includes(`ft. ${targetLower}`);
+            if (!isByArtist && !isFeatured) continue;
+          }
+
+          const songKey = `${title.toLowerCase()}-${rawArtist.toLowerCase()}`;
+          if (seenSongs.has(songKey)) continue;
+          seenSongs.add(songKey);
+
+          const cover = item.artworkUrl100 ? item.artworkUrl100.replace("100x100bb", "600x600bb") : "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80";
+          const duration = Math.round((item.trackTimeMillis || 210000) / 1000);
+          if (!picture && cover && (lowerRaw === targetLower || lowerRaw.startsWith(targetLower))) {
+            picture = cover;
+          }
+
+          const streamUrl = `/api/music/stream?id=track&title=${encodeURIComponent(title)}&artist=${encodeURIComponent(rawArtist || targetArtist)}&duration=${duration}`;
+          topSongs.push({
+            id: String(item.trackId || title),
+            songId: String(item.trackId || title),
+            title,
+            artist: rawArtist || targetArtist,
+            album: item.collectionName || "Single",
+            duration,
+            cover,
+            coverUrl: cover,
+            audioUrl: streamUrl,
+            streamUrl,
+            genre: item.primaryGenreName || "Music",
+            isExactMatch: lowerRaw === targetLower,
+          });
+        }
+        // Prioritize exact matches at the top of Top Songs
+        topSongs.sort((a, b) => (b.isExactMatch ? 1 : 0) - (a.isExactMatch ? 1 : 0));
+      }
+    }
+  } catch (e) {}
+
+  // 2. Fetch albums & discography from iTunes API
+  try {
+    const itunesAlbumsUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=album&limit=40`;
+    const aRes = await fetch(itunesAlbumsUrl, { signal: AbortSignal.timeout(5000) });
+    if (aRes.ok) {
+      const data: any = await aRes.json();
+      if (Array.isArray(data.results)) {
+        const seenAlbums = new Set<string>();
+        for (const alb of data.results) {
+          const albTitle = (alb.collectionName || "Untitled Album").trim();
+          const albArtist = (alb.artistName || "").trim();
+          const trackCount = alb.trackCount || 0;
+          const albArtistLower = albArtist.toLowerCase();
+          const targetLower = targetArtist.toLowerCase();
+
+          // 1. Strictly filter out albums that the artist DID NOT make (reject features on other artists' albums)
+          if (targetArtist && targetLower.length > 1) {
+            const isArtistAlbum =
+              albArtistLower === targetLower ||
+              albArtistLower.startsWith(targetLower + ' &') ||
+              albArtistLower.startsWith(targetLower + ' and') ||
+              albArtistLower.startsWith(targetLower + ',') ||
+              albArtistLower.endsWith('& ' + targetLower);
+            if (!isArtistAlbum) continue;
+          }
+
+          // 2. Filter out 1-song singles disguised as albums
+          const isSingle =
+            trackCount <= 2 ||
+            albTitle.toLowerCase().endsWith(' - single') ||
+            albTitle.toLowerCase().endsWith(' [single]') ||
+            (albTitle.toLowerCase().endsWith(' - ep') && trackCount <= 2);
+          if (isSingle) continue;
+
+          const normalized = albTitle.toLowerCase().trim();
+          if (seenAlbums.has(normalized)) continue;
+          seenAlbums.add(normalized);
+
+          const albCover = alb.artworkUrl100 ? alb.artworkUrl100.replace("100x100bb", "600x600bb") : "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80";
+          const year = alb.releaseDate ? new Date(alb.releaseDate).getFullYear() : 2024;
+          if (!picture && albCover && albArtistLower === targetLower) picture = albCover;
+
+          albums.push({
+            id: String(alb.collectionId),
+            collectionId: alb.collectionId,
+            title: albTitle,
+            artist: albArtist || targetArtist,
+            cover: albCover,
+            year,
+            trackCount: trackCount || 10,
+            genre: alb.primaryGenreName || "Music",
+          });
+        }
+      }
+    }
+  } catch (e) {}
+
+  res.json({
+    artist: {
+      id: id || targetArtist || query,
+      name: targetArtist || query,
+      picture: picture || "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&auto=format&fit=crop&q=80",
+    },
+    topSongs,
+    albums,
+  });
+});
+
+// 8. Cached Art Proxy (Forwarded from music-main)
+app.get("/api/music/art", async (req, res) => {
+  const u = req.query.u as string;
+  if (!u) return res.status(400).send("Missing u parameter");
+  try {
+    const upstream = await fetch(`${MUSIC_MAIN_URL}/api/music/art?u=${encodeURIComponent(u)}`, { signal: AbortSignal.timeout(5000) });
+    if (upstream.ok) {
+      res.setHeader("Content-Type", upstream.headers.get("content-type") || "image/jpeg");
+      res.setHeader("Cache-Control", "public, max-age=604800, immutable");
+      const buf = await upstream.arrayBuffer();
+      return res.send(Buffer.from(buf));
+    }
+  } catch (e) {}
+  res.redirect(u);
+});
+
+// 9. Artist Albums Endpoint
+app.get("/api/music/albums", async (req, res) => {
+  try {
+    const artist = ((req.query.artist as string) || (req.query.query as string) || "").trim();
+    if (!artist) return res.json({ albums: [] });
+
+    const searchUpstream = await fetch(`${MUSIC_MAIN_URL}/api/music/search?q=${encodeURIComponent(artist)}&limit=15`, { signal: AbortSignal.timeout(5000) });
+    if (searchUpstream.ok) {
+      const data: any = await searchUpstream.json();
+      if (Array.isArray(data.albums) && data.albums.length > 0) {
+        return res.json({ albums: data.albums });
+      }
+    }
+  } catch (e) {}
+  res.json({ albums: [] });
+});
+
+// 10. Music Cover Image Proxy to guarantee images always load past CORS / hotlink / school firewalls
+app.get("/api/music/cover_proxy", async (req, res) => {
+  const targetUrl = (req.query.url as string) || "";
+  if (!targetUrl || !targetUrl.startsWith("http")) {
+    return res.redirect("https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80");
+  }
+  try {
+    const upstream = await fetch(targetUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+      },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!upstream.ok) {
+      return res.redirect("https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80");
+    }
+    const contentType = upstream.headers.get("content-type") || "image/jpeg";
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Cache-Control", "public, max-age=604800, immutable");
+    const arrayBuffer = await upstream.arrayBuffer();
+    return res.send(Buffer.from(arrayBuffer));
+  } catch (e) {
+    return res.redirect("https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80");
   }
 });
 
@@ -1461,16 +2502,78 @@ app.get("/api/proxy-game", async (req, res) => {
     let html = await response.text();
     const baseUrl = gameUrl.substring(0, gameUrl.lastIndexOf('/') + 1);
 
-    // Only inject <base> if one is not already present in the HTML
+    const host = req.get("x-forwarded-host") || req.get("host") || "localhost:3000";
+    const proto = req.get("x-forwarded-proto") || req.protocol || "http";
+    const appOrigin = `${proto}://${host}`;
+
+    // Clean up non-standard wrapper tags if present (e.g. <Module> in some raw game files)
+    html = html.replace(/^\s*<Module>\s*/i, '').replace(/<\/Module>\s*$/i, '');
+
+    // Rewrite any child iframes and frames pointing to relative or direct html files so they go through /api/proxy-game with full absolute app origin
+    html = html.replace(/<(iframe|frame)\b([^>]*?)\bsrc=(["\'])([^"\']+)\3([^>]*)>/gi, (match, tag, before, quote, src, after) => {
+      if (src.includes("/api/proxy-game") || src.startsWith("data:") || src.startsWith("blob:") || src.startsWith("javascript:")) {
+        return match;
+      }
+      try {
+        const fullUrl = new URL(src, baseUrl).href;
+        const proxied = `${appOrigin}/api/proxy-game?url=` + encodeURIComponent(fullUrl);
+        return `<${tag}${before}src=${quote}${proxied}${quote}${after}>`;
+      } catch {
+        return match;
+      }
+    });
+
+    const interceptScript = `
+<script>
+(function() {
+  function proxyUrl(u) {
+    if (!u || typeof u !== 'string') return u;
+    if (u.indexOf('/api/proxy-game') !== -1 || u.startsWith('data:') || u.startsWith('blob:') || u.startsWith('javascript:')) return u;
+    try {
+      var resolved = new URL(u, ${JSON.stringify(baseUrl)}).href;
+      return window.location.origin + '/api/proxy-game?url=' + encodeURIComponent(resolved);
+    } catch(e) { return u; }
+  }
+  var origSetAttribute = Element.prototype.setAttribute;
+  Element.prototype.setAttribute = function(name, val) {
+    if (this && this.tagName === 'IFRAME' && typeof name === 'string' && name.toLowerCase() === 'src' && typeof val === 'string') {
+      val = proxyUrl(val);
+    }
+    return origSetAttribute.call(this, name, val);
+  };
+  var propDesc = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'src');
+  if (propDesc && propDesc.set) {
+    var origSet = propDesc.set;
+    Object.defineProperty(HTMLIFrameElement.prototype, 'src', {
+      set: function(val) {
+        return origSet.call(this, proxyUrl(val));
+      },
+      get: propDesc.get,
+      configurable: true
+    });
+  }
+})();
+</script>
+`;
+
+    // Inject <base> and interceptor script so all asset references and dynamic frames resolve properly
     if (!html.includes('<base ') && !html.includes('<base>') && !html.includes('<BASE ') && !html.includes('<BASE>')) {
       if (html.includes('<head>')) {
-        html = html.replace('<head>', `<head><base href="${baseUrl}">`);
+        html = html.replace('<head>', `<head><base href="${baseUrl}">${interceptScript}`);
       } else if (html.includes('<HEAD>')) {
-        html = html.replace('<HEAD>', `<HEAD><base href="${baseUrl}">`);
+        html = html.replace('<HEAD>', `<HEAD><base href="${baseUrl}">${interceptScript}`);
       } else if (html.includes('<html>')) {
-        html = html.replace('<html>', `<html><head><base href="${baseUrl}"></head>`);
+        html = html.replace('<html>', `<html><head><base href="${baseUrl}">${interceptScript}</head>`);
       } else {
-        html = `<base href="${baseUrl}">\n` + html;
+        html = `<base href="${baseUrl}">${interceptScript}\n` + html;
+      }
+    } else {
+      if (html.includes('<head>')) {
+        html = html.replace('<head>', `<head>${interceptScript}`);
+      } else if (html.includes('<html>')) {
+        html = html.replace('<html>', `<html><head>${interceptScript}</head>`);
+      } else {
+        html = interceptScript + '\n' + html;
       }
     }
 
@@ -1629,7 +2732,7 @@ app.get("/api/ai/models/info", (req, res) => {
     total_models: 5,
     models: [
       {
-        name: "Google Gemini 2.5 / 3.6 Flash",
+        name: "Google Gemini 2.5 Flash",
         provider: "Google AI",
         api_endpoint: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
         sdk_package: "@google/genai",
@@ -1672,12 +2775,83 @@ app.get("/api/ai/models/info", (req, res) => {
   });
 });
 
+// DIOR AI CHAT ENDPOINT
+app.post("/api/ai/chat", async (req, res) => {
+  const { prompt, messages, model } = req.body || {};
+  const query = (prompt || (Array.isArray(messages) && messages.length > 0 ? messages[messages.length - 1].content : "") || "").trim();
+
+  if (!query) {
+    return res.status(400).json({ error: "Prompt or message content is required." });
+  }
+
+  const selectedModel = model || "gemini-2.5-flash";
+
+  // Try generating with Gemini if available
+  try {
+    const ai = getGenAI();
+    // System instruction for Dior AI Assistant
+    const systemInstruction = "You are DIOR AI, a sophisticated, precise, and helpful assistant embedded within the Dior Browser. Provide clear, accurate, well-formatted, and concise responses. Use markdown when appropriate for code blocks, bullet points, and clarity. Avoid conversational fluff.";
+
+    let historyText = "";
+    if (Array.isArray(messages) && messages.length > 1) {
+      historyText = messages.slice(-6, -1).map((m: any) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join("\n") + "\n";
+    }
+
+    const fullPrompt = `${systemInstruction}\n\n${historyText}User: ${query}\nAssistant:`;
+
+    const result = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: fullPrompt,
+    });
+
+    const responseText = result?.text?.trim() || "";
+    if (responseText) {
+      return res.json({
+        response: responseText,
+        model: selectedModel,
+        provider: "Google Gemini",
+      });
+    }
+  } catch (err: any) {
+    console.warn("Yuno AI Gemini call notice, using smart engine:", err?.message || err);
+  }
+
+  // Resilient response fallback
+  let fallbackResponse = "";
+  const lower = query.toLowerCase();
+
+  if (lower.includes("hello") || lower.includes("hi") || lower.includes("hey")) {
+    fallbackResponse = "Hello! I am Yuno AI, your portal assistant. How can I assist you today? You can ask me to write code, summarize text, explain concepts, or find information.";
+  } else if (lower.includes("who are you") || lower.includes("what is yuno")) {
+    fallbackResponse = "I am Yuno AI, the integrated assistant within the Yuno portal. I help with research, coding, writing, problem-solving, and web navigation.";
+  } else if (lower.includes("code") || lower.includes("python") || lower.includes("javascript") || lower.includes("react")) {
+    fallbackResponse = "Here is a clean implementation example based on your query:\n\n```typescript\n// Yuno utility module\nexport function formatYunoProtocol(path: string): string {\n  const clean = path.replace(/^yuno:\\/\\//, '').trim();\n  return `yuno://${clean}`;\n}\n```\n\nLet me know if you need specific logic, unit tests, or optimizations.";
+  } else {
+    fallbackResponse = `Regarding your inquiry on "${query}":\n\n1. **Core Concept**: Efficiently analyzing requirements and executing standard best practices.\n2. **Recommendation**: Structure your workflow modularly, verify edge cases, and keep interfaces uncluttered.\n3. **Next Steps**: Feel free to provide more context or ask follow-up questions for deeper analysis.`;
+  }
+
+  return res.json({
+    response: fallbackResponse,
+    model: selectedModel,
+    provider: "Yuno Smart Engine",
+  });
+});
+
 // IN-MEMORY CACHE FOR GAME CATALOGS
 let cachedHydraGames: any[] | null = null;
 let hydraCacheTime = 0;
 let cachedNoahhGames: any[] | null = null;
 let noahhCacheTime = 0;
 const GAME_CACHE_TTL = 1000 * 60 * 60 * 2; // 2 hours
+
+// UNIFIED / CATALOG ROUTE
+app.get("/api/games/catalog", async (req, res) => {
+  const source = (req.query.source as string) || "hydra";
+  if (source === "hydra" || source === "all") {
+    return res.redirect(307, "/api/games/hydra");
+  }
+  return res.redirect(307, "/api/games/hydra");
+});
 
 // HYDRA NETWORK GAME SOURCE ENDPOINT
 app.get("/api/games/hydra", async (req, res) => {
@@ -1755,17 +2929,14 @@ app.get("/api/games/hydra", async (req, res) => {
 
 // NOAH'S SOURCE GAME ENDPOINT
 app.get("/api/games/noahh", async (req, res) => {
-  const BASE_CDN_NOAHH = "https://cdn.jsdelivr.net/gh/NoahsAmazingTutoringHelp/Noahs-Calculus-Tutor@master/games/";
-  const FALLBACK_IMG = "https://images.unsplash.com/photo-1579373903781-fd5c0c30c4cd?w=500&auto=format&fit=crop&q=80";
-
   // Check in-memory cache first
   if (cachedNoahhGames && cachedNoahhGames.length > 0 && Date.now() - noahhCacheTime < GAME_CACHE_TTL) {
     return res.json({ games: cachedNoahhGames, cached: true });
   }
 
   try {
-    const r = await fetch("https://cdn.jsdelivr.net/gh/NoahsAmazingTutoringHelp/Noahs-Calculus-Tutor@master/games.js", {
-      signal: AbortSignal.timeout(7000),
+    const r = await fetch("https://noahs-calculus-tutor.pages.dev/games.js", {
+      signal: AbortSignal.timeout(8000),
       headers: { "User-Agent": "Mozilla/5.0" },
     });
     if (!r.ok) throw new Error("Failed to fetch Noah's games.js");
@@ -1792,8 +2963,8 @@ app.get("/api/games/noahh", async (req, res) => {
         if (!g) return null;
         const title = g.title || g.name || g.label;
         const description = g.description || g.desc || g.summary || "Noah's Unblocked Arcade Game";
-        let rawPath = g.url || g.link || g.path || g.file || "";
-        let rawImg = g.image || g.img || g.thumbnail || g.icon || FALLBACK_IMG;
+        const rawPath = g.url || g.link || g.path || g.file || "";
+        const rawImg = g.image || g.img || g.thumbnail || g.icon || "";
 
         if (!title || !rawPath) return null;
 
@@ -1802,38 +2973,7 @@ app.get("/api/games/noahh", async (req, res) => {
         if (seenTitles.has(lowerKey)) return null;
         seenTitles.add(lowerKey);
 
-        let fileName = String(rawPath)
-          .replace(/^file:\/\/\/?/i, "")
-          .replace(/^.*[\/\\]view=games[\/\\]?/i, "")
-          .replace(/^.*[\/\\]games[\/\\]?/i, "")
-          .replace(/^\/+/, "")
-          .trim();
-
-        if (fileName && !fileName.endsWith(".html") && !fileName.includes(".")) {
-          fileName += ".html";
-        }
-
-        const rawCdnUrl = `${BASE_CDN_NOAHH}${fileName}`;
-        // Convert any raw.githubusercontent.com URLs to jsdelivr CDN for fast, reliable loading without rate limits
-        if (typeof rawImg === "string") {
-          if (rawImg.includes("raw.githubusercontent.com/NoahsAmazingTutoringHelp/Noahs-Calculus-Tutor/")) {
-            rawImg = rawImg.replace(
-              /https:\/\/raw\.githubusercontent\.com\/NoahsAmazingTutoringHelp\/Noahs-Calculus-Tutor\/(refs\/heads\/|tree\/)?master\//g,
-              "https://cdn.jsdelivr.net/gh/NoahsAmazingTutoringHelp/Noahs-Calculus-Tutor@master/"
-            );
-          } else if (rawImg !== FALLBACK_IMG && !rawImg.startsWith("http") && !rawImg.startsWith("data:")) {
-            rawImg = `https://cdn.jsdelivr.net/gh/NoahsAmazingTutoringHelp/Noahs-Calculus-Tutor@master/${rawImg.replace(/^\/+/, "")}`;
-          }
-        }
-
-        if (typeof rawPath === "string" && rawPath.includes("raw.githubusercontent.com/NoahsAmazingTutoringHelp/Noahs-Calculus-Tutor/")) {
-          rawPath = rawPath.replace(
-            /https:\/\/raw\.githubusercontent\.com\/NoahsAmazingTutoringHelp\/Noahs-Calculus-Tutor\/(refs\/heads\/|tree\/)?master\//g,
-            "https://cdn.jsdelivr.net/gh/NoahsAmazingTutoringHelp/Noahs-Calculus-Tutor@master/"
-          );
-        }
-
-        const proxiedUrl = `/api/proxy-game?url=${encodeURIComponent(rawCdnUrl)}`;
+        const proxiedUrl = `/api/proxy-game?url=${encodeURIComponent(rawPath)}`;
 
         return {
           id: `noahh-${idx}-${encodeURIComponent(cleanTitle)}`,
@@ -1842,7 +2982,7 @@ app.get("/api/games/noahh", async (req, res) => {
           image: rawImg,
           url: proxiedUrl,
           source: "noahh",
-          category: "Noah's Source",
+          category: "Noah's Vault",
           rating: 4.8,
           plays: "1.9M",
         };
@@ -1859,6 +2999,264 @@ app.get("/api/games/noahh", async (req, res) => {
     console.warn("Noahh games fetch warning:", e.message);
     res.json({ games: cachedNoahhGames || [], cached: true, error: e.message });
   }
+});
+
+// GMSHELF GAME REPOSITORIES (truffled, seraph, ugs, ckv)
+interface GmshelfGameCache {
+  truffled: { games: any[]; time: number };
+  seraph: { games: any[]; time: number };
+  ugs: { games: any[]; time: number };
+  ckv: { games: any[]; time: number };
+}
+
+const gmshelfCache: GmshelfGameCache = {
+  truffled: { games: [], time: 0 },
+  seraph: { games: [], time: 0 },
+  ugs: { games: [], time: 0 },
+  ckv: { games: [], time: 0 },
+};
+
+// GMSHELF COVERS RESOLUTION (From official GitHub repos: gmshelf/seraph, gmshelf/truffled, gmshelf/ckv)
+let gmshelfCoversIndex: {
+  seraph: string[];
+  truffled: string[];
+  ckv: string[];
+} = { seraph: [], truffled: [], ckv: [] };
+
+try {
+  const localCoversPath = path.join(process.cwd(), "src", "data", "gmshelfCovers.json");
+  const dataCoversPath = path.join(process.cwd(), ".data", "gmshelf_covers_cache.json");
+  const pathToLoad = fs.existsSync(localCoversPath) ? localCoversPath : dataCoversPath;
+  if (fs.existsSync(pathToLoad)) {
+    const raw = fs.readFileSync(pathToLoad, "utf-8");
+    gmshelfCoversIndex = JSON.parse(raw);
+  }
+} catch (e) {
+  console.warn("Failed to load initial gmshelf covers cache:", e);
+}
+
+// Build fast lookup indices
+interface CoverItem {
+  repo: 'seraph' | 'truffled' | 'ckv';
+  filename: string;
+}
+
+const gmshelfSlugMap = new Map<string, CoverItem>();
+const gmshelfWordMap = new Map<string, CoverItem>();
+const gmshelfOwnSlugMap = {
+  seraph: new Map<string, string>(),
+  truffled: new Map<string, string>(),
+  ckv: new Map<string, string>(),
+};
+
+function indexGmshelfCovers() {
+  gmshelfSlugMap.clear();
+  gmshelfWordMap.clear();
+  gmshelfOwnSlugMap.seraph.clear();
+  gmshelfOwnSlugMap.truffled.clear();
+  gmshelfOwnSlugMap.ckv.clear();
+
+  const registerRepoCovers = (files: string[], repo: 'seraph' | 'truffled' | 'ckv') => {
+    for (const f of files) {
+      const lower = f.toLowerCase();
+      const base = lower.replace(/\.(webp|jpg|jpeg|png)$/, '');
+      const clean = base.replace(/[^a-z0-9]/g, '');
+
+      gmshelfOwnSlugMap[repo].set(clean, f);
+      gmshelfOwnSlugMap[repo].set(base, f);
+
+      if (!gmshelfSlugMap.has(clean)) {
+        gmshelfSlugMap.set(clean, { repo, filename: f });
+      }
+      if (!gmshelfSlugMap.has(base)) {
+        gmshelfSlugMap.set(base, { repo, filename: f });
+      }
+      if (clean.length >= 4 && !gmshelfWordMap.has(clean)) {
+        gmshelfWordMap.set(clean, { repo, filename: f });
+      }
+    }
+  };
+
+  registerRepoCovers(gmshelfCoversIndex.seraph || [], 'seraph');
+  registerRepoCovers(gmshelfCoversIndex.truffled || [], 'truffled');
+  registerRepoCovers(gmshelfCoversIndex.ckv || [], 'ckv');
+}
+indexGmshelfCovers();
+
+function resolveGmshelfCover(
+  repo: 'truffled' | 'seraph' | 'ugs' | 'ckv',
+  name: string,
+  rawImg: string,
+  url: string
+): string {
+  // 1. If game already has explicit cover image in repo (like in ckv.json which defines /covers/...)
+  if (rawImg && !rawImg.includes('placeholder.png')) {
+    const cleanImg = rawImg.startsWith('/') ? rawImg : '/' + rawImg;
+    return cleanImg.startsWith('http')
+      ? cleanImg
+      : `https://raw.githubusercontent.com/gmshelf/${repo}/main${cleanImg}`;
+  }
+
+  const cleanTitle = (name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const pathParts = (url || '').split('/').filter(Boolean);
+  const folder = (pathParts[1] || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const file = (pathParts[pathParts.length - 1] || '')
+    .replace('.html', '')
+    .replace(/^cl/, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+
+  const candidates = [cleanTitle, folder, file].filter(Boolean);
+
+  // 2. Check own repo covers first
+  if (repo === 'seraph' || repo === 'truffled' || repo === 'ckv') {
+    const ownMap = gmshelfOwnSlugMap[repo];
+    for (const cand of candidates) {
+      if (ownMap.has(cand)) {
+        const fn = ownMap.get(cand)!;
+        return `https://raw.githubusercontent.com/gmshelf/${repo}/main/covers/${fn}`;
+      }
+    }
+  }
+
+  // 3. Cross-repo exact slug match from other gmshelf repositories
+  for (const cand of candidates) {
+    if (gmshelfSlugMap.has(cand)) {
+      const match = gmshelfSlugMap.get(cand)!;
+      return `https://raw.githubusercontent.com/gmshelf/${match.repo}/main/covers/${match.filename}`;
+    }
+  }
+
+  // 4. Keyword / prefix match for composite names
+  for (const cand of candidates) {
+    if (cand.length >= 4) {
+      for (const [key, match] of gmshelfWordMap.entries()) {
+        if (key.length >= 4 && (cand === key || cand.startsWith(key) || key.startsWith(cand))) {
+          return `https://raw.githubusercontent.com/gmshelf/${match.repo}/main/covers/${match.filename}`;
+        }
+      }
+    }
+  }
+
+  return '';
+}
+
+async function fetchGmshelfRepo(repo: 'truffled' | 'seraph' | 'ugs' | 'ckv'): Promise<any[]> {
+  const cached = gmshelfCache[repo];
+  if (cached && cached.games.length > 0 && Date.now() - cached.time < GAME_CACHE_TTL) {
+    return cached.games;
+  }
+
+  const jsonUrl = `https://cdn.jsdelivr.net/gh/gmshelf/${repo}/${repo}.json`;
+  const baseCdn = `https://cdn.jsdelivr.net/gh/gmshelf/${repo}`;
+
+  try {
+    const res = await fetch(jsonUrl, {
+      signal: AbortSignal.timeout(9000),
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${repo}.json`);
+    const data = await res.json();
+    const rawList: any[] = Array.isArray(data) ? data : Array.isArray(data?.games) ? data.games : [];
+
+    const seen = new Set<string>();
+    const categoryLabels: Record<string, string> = {
+      truffled: 'Truffled',
+      seraph: 'Seraph',
+      ugs: 'UGS',
+      ckv: 'CKV',
+    };
+
+    const games = rawList
+      .map((item: any, idx: number) => {
+        if (!item || typeof item !== 'object') return null;
+        const name = (item.name || item.title || '').trim();
+        const rawPath = item.url || item.link || item.path || '';
+        if (!name || !rawPath) return null;
+
+        const lowerName = name.toLowerCase();
+        if (seen.has(lowerName)) return null;
+        seen.add(lowerName);
+
+        const cleanPath = String(rawPath).startsWith('/') ? String(rawPath) : '/' + String(rawPath);
+        const fullGameUrl = cleanPath.startsWith('http') ? cleanPath : `${baseCdn}${cleanPath}`;
+        const proxiedUrl = `/api/proxy-game?url=${encodeURIComponent(fullGameUrl)}`;
+
+        // Resolve Cover Image directly from GitHub repo covers
+        const rawImg = item.img || item.image || item.cover || '';
+        const coverUrl = resolveGmshelfCover(repo, name, rawImg, rawPath);
+
+        return {
+          id: `${repo}-${idx}-${encodeURIComponent(name)}`,
+          title: name,
+          description: `${name} (${categoryLabels[repo]} Unblocked)`,
+          image: coverUrl,
+          url: proxiedUrl,
+          source: repo,
+          category: categoryLabels[repo],
+          rating: Number((4.7 + ((idx * 7) % 30) / 100).toFixed(1)),
+          plays: `${(1.2 + ((idx * 13) % 45) / 10).toFixed(1)}M`,
+        };
+      })
+      .filter(Boolean);
+
+    if (games.length > 0) {
+      gmshelfCache[repo] = { games, time: Date.now() };
+    }
+    return games;
+  } catch (err: any) {
+    console.warn(`gmshelf ${repo} fetch error:`, err?.message || err);
+    return gmshelfCache[repo]?.games || [];
+  }
+}
+
+app.get("/api/games/gmshelf", async (req, res) => {
+  const repo = (req.query.repo as string) || "all";
+  if (repo === "truffled" || repo === "seraph" || repo === "ugs" || repo === "ckv") {
+    const list = await fetchGmshelfRepo(repo);
+    return res.json({ games: list, source: repo, count: list.length });
+  }
+
+  // All gmshelf repos combined
+  const [truffled, seraph, ugs, ckv] = await Promise.all([
+    fetchGmshelfRepo('truffled'),
+    fetchGmshelfRepo('seraph'),
+    fetchGmshelfRepo('ugs'),
+    fetchGmshelfRepo('ckv'),
+  ]);
+
+  const all = [...truffled, ...seraph, ...ugs, ...ckv];
+  res.json({
+    games: all,
+    source: 'gmshelf',
+    counts: {
+      truffled: truffled.length,
+      seraph: seraph.length,
+      ugs: ugs.length,
+      ckv: ckv.length,
+      total: all.length,
+    },
+  });
+});
+
+app.get("/api/games/truffled", async (_req, res) => {
+  const games = await fetchGmshelfRepo("truffled");
+  res.json({ games });
+});
+
+app.get("/api/games/seraph", async (_req, res) => {
+  const games = await fetchGmshelfRepo("seraph");
+  res.json({ games });
+});
+
+app.get("/api/games/ugs", async (_req, res) => {
+  const games = await fetchGmshelfRepo("ugs");
+  res.json({ games });
+});
+
+app.get("/api/games/ckv", async (_req, res) => {
+  const games = await fetchGmshelfRepo("ckv");
+  res.json({ games });
 });
 
 // ANIME CATALOG ENDPOINTS (Resilient Kitsu + Curated Fallback Engine)
@@ -2074,96 +3472,181 @@ const CURATED_ANIME_LIST = [
   },
 ];
 
-function mapKitsuItemToAnime(item: any) {
-  const attrs = item.attributes || {};
-  const titles = attrs.titles || {};
-  const title = attrs.canonicalTitle || titles.en || titles.en_jp || 'Untitled Anime';
-  const lowerTitle = title.toLowerCase();
+// ==========================================
+// ANILIST GRAPHQL CLIENT & CACHING
+// ==========================================
+const ANILIST_GRAPHQL_URL = "https://graphql.anilist.co";
 
-  let resolvedAnilistId = parseInt(item.id, 10);
-  for (const [key, id] of Object.entries(KNOWN_ANILIST_IDS)) {
-    if (lowerTitle.includes(key)) {
-      resolvedAnilistId = id;
-      break;
+const ANILIST_TRENDING_QUERY = `
+query ($page: Int, $perPage: Int) {
+  Page(page: $page, perPage: $perPage) {
+    media(type: ANIME, sort: [TRENDING_DESC, POPULARITY_DESC], isAdult: false) {
+      id
+      idMal
+      title {
+        english
+        romaji
+        userPreferred
+      }
+      coverImage {
+        extraLarge
+        large
+        medium
+      }
+      bannerImage
+      description
+      episodes
+      seasonYear
+      startDate {
+        year
+      }
+      genres
+      averageScore
     }
   }
-
-  const rating = attrs.averageRating ? Math.round((parseFloat(attrs.averageRating) / 10) * 10) / 10 : 8.4;
-  const year = attrs.startDate ? parseInt(attrs.startDate.slice(0, 4), 10) : 2024;
-  const poster = attrs.posterImage?.large || attrs.posterImage?.medium || attrs.posterImage?.original || '';
-  const cover = attrs.coverImage?.large || attrs.coverImage?.original || poster;
-  const episodes = attrs.episodeCount || 24;
-
-  return {
-    id: `anilist-${resolvedAnilistId}`,
-    anilistId: resolvedAnilistId,
-    mediaType: 'anime',
-    title,
-    year,
-    rating,
-    category: 'anime',
-    image: poster,
-    backdrop: cover,
-    description: (attrs.synopsis || attrs.description || 'Popular anime series.').replace(/<[^>]*>?/gm, '').slice(0, 300),
-    genres: ['Anime', 'Action'],
-    duration: `${episodes} Episodes`,
-    episodesCount: episodes,
-  };
 }
+`;
 
-app.get("/api/anime/trending", async (req, res) => {
+const ANILIST_SEARCH_QUERY = `
+query ($search: String, $page: Int, $perPage: Int) {
+  Page(page: $page, perPage: $perPage) {
+    media(type: ANIME, search: $search, sort: POPULARITY_DESC, isAdult: false) {
+      id
+      idMal
+      title {
+        english
+        romaji
+        userPreferred
+      }
+      coverImage {
+        extraLarge
+        large
+        medium
+      }
+      bannerImage
+      description
+      episodes
+      seasonYear
+      startDate {
+        year
+      }
+      genres
+      averageScore
+    }
+  }
+}
+`;
+
+async function fetchAniListGraphQL(query: string, variables: any = {}, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000);
-
-    const apiRes = await fetch("https://kitsu.io/api/edge/trending/anime?page[limit]=24", {
-      headers: { Accept: "application/vnd.api+json", "Content-Type": "application/vnd.api+json" },
+    const response = await fetch(ANILIST_GRAPHQL_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Yuno/2.0",
+      },
+      body: JSON.stringify({ query, variables }),
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
-
-    if (apiRes.ok) {
-      const data = await apiRes.json();
-      const mediaList = data?.data || [];
-      if (Array.isArray(mediaList) && mediaList.length > 0) {
-        const anime = mediaList.map(mapKitsuItemToAnime);
-        return res.json({ anime });
-      }
+    if (!response.ok) {
+      throw new Error(`AniList returned HTTP ${response.status}`);
     }
-    // Graceful fallback if upstream response was empty
+    return await response.json();
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    throw err;
+  }
+}
+
+function mapAniListMediaToAnime(media: any) {
+  const anilistId = media.id;
+  const title =
+    media.title?.english ||
+    media.title?.userPreferred ||
+    media.title?.romaji ||
+    "Untitled Anime";
+  const rating = media.averageScore
+    ? Math.round((media.averageScore / 10) * 10) / 10
+    : 8.5;
+  const year = media.seasonYear || media.startDate?.year || 2024;
+  const image =
+    media.coverImage?.extraLarge ||
+    media.coverImage?.large ||
+    media.coverImage?.medium ||
+    "";
+  const backdrop = media.bannerImage || image;
+  const rawDesc = media.description || "Popular anime series.";
+  const description = rawDesc.replace(/<[^>]*>?/gm, "").slice(0, 300);
+  const episodes = media.episodes || 12;
+
+  return {
+    id: `anilist-${anilistId}`,
+    tmdbId: anilistId,
+    anilistId,
+    idMal: media.idMal,
+    mediaType: "anime" as const,
+    title,
+    year,
+    rating,
+    category: "anime" as const,
+    image,
+    backdrop,
+    posterUrl: image,
+    backdropUrl: backdrop,
+    poster_path: image,
+    backdrop_path: backdrop,
+    description,
+    genres: Array.isArray(media.genres) && media.genres.length > 0 ? media.genres : ["Anime", "Action"],
+    duration: `${episodes} Episodes`,
+    episodesCount: episodes,
+    seasonsCount: 1,
+  };
+}
+
+// In-memory cache for trending anime (15 mins)
+let cachedAniListTrending: any[] = [];
+let cachedAniListTrendingTime = 0;
+
+app.get("/api/anime/trending", async (req, res) => {
+  const now = Date.now();
+  if (cachedAniListTrending.length > 0 && now - cachedAniListTrendingTime < 15 * 60 * 1000) {
+    return res.json({ anime: cachedAniListTrending });
+  }
+
+  try {
+    const data = await fetchAniListGraphQL(ANILIST_TRENDING_QUERY, { page: 1, perPage: 30 }, 15000);
+    const mediaList = data?.data?.Page?.media || [];
+    if (Array.isArray(mediaList) && mediaList.length > 0) {
+      const anime = mediaList.map(mapAniListMediaToAnime);
+      cachedAniListTrending = anime;
+      cachedAniListTrendingTime = now;
+      return res.json({ anime });
+    }
     res.json({ anime: CURATED_ANIME_LIST });
   } catch (err: any) {
-    // Return curated list silently without crashing or logging error
-    res.json({ anime: CURATED_ANIME_LIST });
+    // If upstream timed out or was aborted, silently return cached or curated list
+    res.json({ anime: cachedAniListTrending.length > 0 ? cachedAniListTrending : CURATED_ANIME_LIST });
   }
 });
 
 app.get("/api/anime/search", async (req, res) => {
   const searchStr = (req.query.query as string || "").trim();
   if (!searchStr) {
-    return res.json({ anime: CURATED_ANIME_LIST });
+    return res.json({ anime: cachedAniListTrending.length > 0 ? cachedAniListTrending : CURATED_ANIME_LIST });
   }
 
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000);
-
-    const apiRes = await fetch(`https://kitsu.io/api/edge/anime?filter[text]=${encodeURIComponent(searchStr)}&page[limit]=20`, {
-      headers: { Accept: "application/vnd.api+json", "Content-Type": "application/vnd.api+json" },
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-
-    if (apiRes.ok) {
-      const data = await apiRes.json();
-      const mediaList = data?.data || [];
-      if (Array.isArray(mediaList) && mediaList.length > 0) {
-        const anime = mediaList.map(mapKitsuItemToAnime);
-        return res.json({ anime });
-      }
+    const data = await fetchAniListGraphQL(ANILIST_SEARCH_QUERY, { search: searchStr, page: 1, perPage: 25 }, 12000);
+    const mediaList = data?.data?.Page?.media || [];
+    if (Array.isArray(mediaList) && mediaList.length > 0) {
+      const anime = mediaList.map(mapAniListMediaToAnime);
+      return res.json({ anime });
     }
 
-    // Filter curated list if external search returned 0 items
     const lower = searchStr.toLowerCase();
     const filtered = CURATED_ANIME_LIST.filter((a) => a.title.toLowerCase().includes(lower));
     res.json({ anime: filtered.length > 0 ? filtered : CURATED_ANIME_LIST.slice(0, 10) });
@@ -2171,6 +3654,20 @@ app.get("/api/anime/search", async (req, res) => {
     const lower = searchStr.toLowerCase();
     const filtered = CURATED_ANIME_LIST.filter((a) => a.title.toLowerCase().includes(lower));
     res.json({ anime: filtered.length > 0 ? filtered : CURATED_ANIME_LIST.slice(0, 10) });
+  }
+});
+
+// Direct GraphQL proxy to AniList for custom queries
+app.post("/api/anilist/graphql", async (req, res) => {
+  try {
+    const { query, variables } = req.body || {};
+    if (!query) {
+      return res.status(400).json({ error: "Missing GraphQL query" });
+    }
+    const result = await fetchAniListGraphQL(query, variables);
+    res.json(result);
+  } catch (err: any) {
+    res.status(502).json({ error: "Failed to query AniList GraphQL", message: err?.message });
   }
 });
 
@@ -2919,6 +4416,7 @@ app.post("/api/webrtc/signal", (req, res) => {
     isMuted,
     isCameraOn,
     isScreenSharing,
+    isSpeaking,
     signal,
     signalData,
     action,
@@ -2955,6 +4453,7 @@ app.post("/api/webrtc/signal", (req, res) => {
         isMuted: !!isMuted,
         isCameraOn: !!isCameraOn,
         isScreenSharing: !!isScreenSharing,
+        isSpeaking: !!isSpeaking,
         lastSeen: now,
       });
     } else if (action === "leave") {
@@ -3414,6 +4913,27 @@ app.get("/api/chat/messages", (req, res) => {
     messages: filtered,
     announcements: globalAnnouncements,
     profanityConfig: profanityFilterConfig,
+    streaks: Object.fromEntries(userStreaks),
+  });
+});
+
+// User status & chat ban check endpoint
+app.get("/api/chat/user-status", (req, res) => {
+  const username = ((req.query.username as string) || "").trim();
+  if (!username) return res.json({ banned: false, streak: 0 });
+
+  const isBanned = bannedUsers.has(username);
+  const timeoutExpiry = userTimeouts.get(username);
+  const isTimedOut = timeoutExpiry ? timeoutExpiry > Date.now() : false;
+  const hoursLeft = timeoutExpiry && isTimedOut ? Math.ceil((timeoutExpiry - Date.now()) / (1000 * 60 * 60)) : 0;
+  const streakObj = userStreaks.get(username.toLowerCase());
+
+  res.json({
+    banned: isBanned || isTimedOut,
+    isPermanent: isBanned,
+    bannedUntil: timeoutExpiry,
+    hoursLeft,
+    streak: streakObj ? streakObj.count : 0,
   });
 });
 
@@ -3507,6 +5027,8 @@ app.post("/api/chat/dms", (req, res) => {
 
   userDMs.get(k1)!.add(u2);
   userDMs.get(k2)!.add(u1);
+
+  savePersistedData();
 
   const channelId = `dm_${[k1, k2].sort().join('_')}`;
   res.json({ success: true, channelId, targetUsername: u2 });
@@ -3620,11 +5142,60 @@ app.post("/api/chat/messages", (req, res) => {
   // Timeout check
   const timeoutExpiry = userTimeouts.get(user);
   if (timeoutExpiry && timeoutExpiry > Date.now()) {
-    const minsLeft = Math.ceil((timeoutExpiry - Date.now()) / 60000);
-    return res.status(403).json({ error: `You are timed out from chatting for ${minsLeft} more minute(s).` });
+    const hoursLeft = Math.ceil((timeoutExpiry - Date.now()) / (1000 * 60 * 60));
+    return res.status(403).json({
+      error: `You are chat banned for ${hoursLeft} more hour(s).`,
+      bannedUntil: timeoutExpiry,
+    });
   }
 
   let finalContent = content.trim();
+
+  // Automated 72-Hour Ban for Hate Slurs (N-word ending with r, Chinese slur, LGBTQ slur)
+  const normClean = finalContent
+    .toLowerCase()
+    .replace(/[\s\-_.*$#@!]/g, '')
+    .replace(/0/g, 'o')
+    .replace(/1/g, 'i')
+    .replace(/!/g, 'i')
+    .replace(/3/g, 'e')
+    .replace(/@/g, 'a')
+    .replace(/4/g, 'a')
+    .replace(/5/g, 's')
+    .replace(/7/g, 't')
+    .replace(/8/g, 'b');
+
+  const isNWordSlur =
+    /n+[i!|l1]+[gq9]+[gq9]+[e3]+r+s?/i.test(finalContent) ||
+    /n+[i!|l1]+[gq9]+[gq9]+[e3]+r+s?/i.test(normClean) ||
+    /nigger/i.test(normClean);
+
+  const isChineseSlur =
+    /c+h+[i!|l1]+n+k+s?/i.test(finalContent) ||
+    /c+h+[i!|l1]+n+k+y?/i.test(finalContent) ||
+    /chink/i.test(normClean);
+
+  const isLgbtqSlur =
+    /f+[a@4]+[gq9]+[gq9]+[o0]+t+s?/i.test(finalContent) ||
+    /\bf+[a@4]+[gq9]+s?\b/i.test(finalContent) ||
+    /faggot/i.test(normClean);
+
+  if (isNWordSlur || isChineseSlur || isLgbtqSlur) {
+    const banDurationMs = 72 * 60 * 60 * 1000; // 72 hours
+    const expiry = Date.now() + banDurationMs;
+    userTimeouts.set(user, expiry);
+    userTimeoutDetails.set(user, {
+      reason: "Automated 72-hour chat ban for hate speech / slur violation",
+      adminName: "AutoMod",
+      durationMinutes: 72 * 60,
+    });
+    savePersistedData();
+    return res.status(403).json({
+      error: "You have been automatically banned from chat for 72 hours for hate speech/slur violation.",
+      bannedUntil: expiry,
+      isSlurBan: true,
+    });
+  }
 
   // Check upside-down troll effect
   const userTroll = trollEffects.get(user);
@@ -3657,6 +5228,29 @@ app.post("/api/chat/messages", (req, res) => {
   const rawChannel = channelId || "general";
   const targetChannel = (rawChannel === "global-chat" || rawChannel === "global") ? "general" : rawChannel;
 
+  // Calculate Chat Streak
+  const todayStr = new Date().toISOString().split('T')[0];
+  const yesterdayDate = new Date(Date.now() - 86400000);
+  const yesterdayStr = yesterdayDate.toISOString().split('T')[0];
+  const streakKey = targetChannel.startsWith('dm_') ? targetChannel : user.toLowerCase();
+  const currentStreakObj = userStreaks.get(streakKey);
+  let streakCount = 1;
+
+  if (currentStreakObj) {
+    if (currentStreakObj.lastDate === todayStr) {
+      streakCount = currentStreakObj.count;
+    } else if (currentStreakObj.lastDate === yesterdayStr) {
+      streakCount = currentStreakObj.count + 1;
+      userStreaks.set(streakKey, { count: streakCount, lastDate: todayStr });
+    } else {
+      streakCount = 1;
+      userStreaks.set(streakKey, { count: 1, lastDate: todayStr });
+    }
+  } else {
+    streakCount = 1;
+    userStreaks.set(streakKey, { count: 1, lastDate: todayStr });
+  }
+
   const now = Date.now();
   const newMessage: ChatMessage = {
     id: `${now}-${Math.floor(Math.random() * 10000)}`,
@@ -3670,6 +5264,7 @@ app.post("/api/chat/messages", (req, res) => {
     replyTo: replyTo || undefined,
     attachment: attachment || undefined,
     hasProfanity,
+    streak: streakCount,
   };
 
   communityMessages.push(newMessage);
@@ -3805,6 +5400,356 @@ app.delete("/api/chat/messages/:id", (req, res) => {
   });
 
   res.json({ success: true, messageId: id });
+});
+
+// Chat Typing Indicators (3 grey dots)
+const chatTypingMap = new Map<string, Map<string, number>>();
+
+app.post("/api/chat/typing", (req, res) => {
+  const { channelId, username, isTyping } = req.body;
+  if (!channelId || !username) return res.status(400).json({ error: "channelId and username required" });
+
+  const rawChannel = channelId === "global-chat" ? "general" : channelId;
+  if (!chatTypingMap.has(rawChannel)) {
+    chatTypingMap.set(rawChannel, new Map());
+  }
+  const channelMap = chatTypingMap.get(rawChannel)!;
+
+  if (isTyping) {
+    channelMap.set(username, Date.now());
+  } else {
+    channelMap.delete(username);
+  }
+
+  broadcastRealtime({
+    type: 'CHAT_TYPING',
+    channelId: rawChannel,
+    from: username,
+    data: { username, isTyping: !!isTyping },
+  });
+
+  res.json({ success: true });
+});
+
+app.get("/api/chat/typing", (req, res) => {
+  const channelId = (req.query.channelId as string) || "general";
+  const excludeUser = ((req.query.excludeUser as string) || "").toLowerCase();
+  const rawChannel = channelId === "global-chat" ? "general" : channelId;
+
+  const channelMap = chatTypingMap.get(rawChannel);
+  const activeTypers: string[] = [];
+  const now = Date.now();
+
+  if (channelMap) {
+    for (const [user, ts] of channelMap.entries()) {
+      if (now - ts < 4000) {
+        if (user.toLowerCase() !== excludeUser) {
+          activeTypers.push(user);
+        }
+      } else {
+        channelMap.delete(user);
+      }
+    }
+  }
+
+  res.json({ channelId: rawChannel, typingUsers: activeTypers });
+});
+
+// Vivi AI Chat & Capabilities Endpoint
+app.post("/api/vivi/chat", async (req, res) => {
+  try {
+    const { prompt, history, attachments, enableSearch, memories, userCallSign } = req.body;
+
+    if (!prompt && (!attachments || attachments.length === 0)) {
+      return res.status(400).json({ error: "Prompt or attachment is required" });
+    }
+
+    const effectivePrompt = (prompt || "").trim() || "Please analyze the attached image or file.";
+
+    // Parse attachments for inlineData
+    const currentParts: any[] = [];
+    if (Array.isArray(attachments) && attachments.length > 0) {
+      for (const att of attachments) {
+        if (att.isImage || (att.type && att.type.startsWith("image/")) || (typeof att.dataUrl === "string" && att.dataUrl.startsWith("data:image/"))) {
+          let base64Data = att.data || att.dataUrl || "";
+          let mimeType = att.type || "image/png";
+          if (base64Data.includes(",")) {
+            const splitArr = base64Data.split(",");
+            const header = splitArr[0];
+            base64Data = splitArr[1];
+            const match = header.match(/data:([^;]+);base64/);
+            if (match) {
+              mimeType = match[1];
+            }
+          }
+          if (base64Data) {
+            currentParts.push({
+              inlineData: {
+                mimeType,
+                data: base64Data,
+              },
+            });
+          }
+        } else {
+          const fileText = att.textContent || att.data || att.dataUrl || "";
+          currentParts.push({
+            text: `\n[Attached File: ${att.name || "Document"}]\n\`\`\`\n${fileText.slice(0, 40000)}\n\`\`\``,
+          });
+        }
+      }
+    }
+    currentParts.push({ text: effectivePrompt });
+
+    // Format memories
+    let memoryBlock = "";
+    if (Array.isArray(memories) && memories.length > 0) {
+      memoryBlock = `\n\nCross-Chat Persistent Memories about the user:\n` + memories.map((m: string) => `- ${m}`).join("\n");
+    }
+
+    const viviSystemInstruction =
+      `You are Vivi, an extraordinarily capable, perceptive, and helpful personal AI assistant integrated into Yuno. ` +
+      `Your tone is sharp, intelligent, concise, warm, and authentic. Never sound robotic, preachy, or like generic corporate AI slop. ` +
+      `You excel in all academic and practical domains, especially:\n` +
+      `- Mathematics & STEM: Always provide step-by-step reasoning, clean derivations, and exact unicode math notation (e.g. ², ³, ⁴, ⁿ, √, ∛, ±, ×, ÷, ·, ≤, ≥, ≠, ≈, π, θ, ∑, ∫, ∂, ∞, ∈, ∉, ⊂, ∪, ∩, →, ⇒, ⇔) and formatted fractions.\n` +
+      `- Schoolwork, Coding & Essays: Detailed help with homework, problem sets, programming (clean syntactically correct code blocks with language tags), essay outlines, and revision.\n` +
+      `- Vision & Image Analysis: When images or screenshots of math equations, diagrams, UI, or photos are provided, read and dissect every detail precisely.\n` +
+      `- Web Research: When web search results are enabled, synthesize findings with exact facts.\n` +
+      (userCallSign ? `Refer to the user as "${userCallSign}" when appropriate. ` : "") +
+      memoryBlock;
+
+    const rawApiKey = (process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "").trim();
+
+    if (!rawApiKey) {
+      const fallback = generateOfflineAiResponse(effectivePrompt, attachments);
+      return res.json({
+        text: fallback,
+        modelUsed: "vivi-offline",
+        citations: [],
+      });
+    }
+
+    const ai = getGenAI();
+
+    // Format conversation history strictly as Content objects
+    let contents: any = [{ role: "user", parts: currentParts }];
+    if (history && Array.isArray(history) && history.length > 0) {
+      const validTurns: Array<{ role: "user" | "model"; parts: any[] }> = [];
+      for (const turn of history) {
+        if (!turn || !turn.content || typeof turn.content !== "string" || !turn.content.trim()) continue;
+        const role: "user" | "model" = turn.role === "model" ? "model" : "user";
+        if (validTurns.length > 0 && validTurns[validTurns.length - 1].role === role) {
+          validTurns[validTurns.length - 1].parts[0].text += `\n\n${turn.content.trim()}`;
+        } else {
+          validTurns.push({
+            role,
+            parts: [{ text: turn.content.trim() }],
+          });
+        }
+      }
+
+      while (validTurns.length > 0 && validTurns[0].role !== "user") {
+        validTurns.shift();
+      }
+      if (validTurns.length > 0 && validTurns[validTurns.length - 1].role === "user") {
+        validTurns.pop();
+      }
+
+      validTurns.push({
+        role: "user",
+        parts: currentParts,
+      });
+      contents = validTurns;
+    }
+
+    // Fast-path for simple greetings to respond instantly without network stall
+    const lowerPrompt = effectivePrompt.toLowerCase().trim();
+    const isSimpleGreeting = /^(yo|hi|hey|hello|sup|what'?s up|howdy|good (morning|afternoon|evening)|hola)(\s*!*)?$/i.test(lowerPrompt) && (!attachments || attachments.length === 0);
+    if (isSimpleGreeting) {
+      const greetingReplies = [
+        "Yo! What are we working on today?",
+        "Hey! Ready to dive in. Need help with math, code, or a project?",
+        "Yo! Vivi at your service. What's on your mind?",
+        "Hey there! Ready when you are.",
+      ];
+      const reply = greetingReplies[Math.floor(Math.random() * greetingReplies.length)];
+      return res.json({
+        text: reply,
+        modelUsed: "vivi-instant",
+        citations: [],
+      });
+    }
+
+    // Auto-detect if user wants an image generated
+    const isImageIntent = /(create|generate|make|draw)\s+(an?\s+)?(image|picture|drawing|illustration|photo|artwork)\b/i.test(lowerPrompt);
+    if (isImageIntent && (!attachments || attachments.length === 0)) {
+      try {
+        const cleanImgPrompt = effectivePrompt
+          .replace(/^(can you|please|vivi)?\s*(create|generate|make|draw)\s+(an?\s+)?(image|picture|drawing|illustration|photo|artwork)\s*(of|about|depicting)?/i, '')
+          .trim() || effectivePrompt;
+
+        const rawApiKey = (process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "").trim();
+        let genImgUrl = "";
+
+        if (rawApiKey) {
+          try {
+            const ai = getGenAI();
+            const imgResp = await ai.models.generateContent({
+              model: "gemini-3.1-flash-lite-image",
+              contents: { parts: [{ text: cleanImgPrompt }] },
+              config: { imageConfig: { aspectRatio: "1:1" } },
+            });
+            for (const part of imgResp.candidates?.[0]?.content?.parts ?? []) {
+              if (part.inlineData?.data) {
+                const mime = part.inlineData.mimeType || "image/png";
+                genImgUrl = `data:${mime};base64,${part.inlineData.data}`;
+                break;
+              }
+            }
+          } catch (e: any) {
+            console.warn("Auto image generation via Gemini failed, falling back:", e?.message);
+          }
+        }
+
+        if (!genImgUrl) {
+          const seed = Math.floor(Math.random() * 1000000);
+          genImgUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanImgPrompt)}?width=1024&height=1024&seed=${seed}&nologo=true`;
+        }
+
+        return res.json({
+          text: `Here is the image you requested for **"${cleanImgPrompt}"**:`,
+          generatedImageUrl: genImgUrl,
+          modelUsed: "vivi-image",
+          citations: [],
+        });
+      } catch (imgErr) {
+        console.warn("Image intent failed, continuing to chat:", imgErr);
+      }
+    }
+
+    // Auto-detect web search need
+    const needsSearch = enableSearch || /\b(search|latest|news|today|current|yesterday|score|weather|who won|release date)\b/i.test(lowerPrompt);
+
+    const targetModel = "gemini-3.8-flash";
+    const config: any = {
+      systemInstruction: viviSystemInstruction,
+      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+    };
+
+    if (needsSearch) {
+      config.tools = [{ googleSearch: {} }];
+    }
+
+    let generatedText = "";
+    let citations: Array<{ title: string; url: string }> = [];
+
+    try {
+      const response = await ai.models.generateContent({
+        model: targetModel,
+        contents,
+        config,
+      });
+
+      generatedText = response.text || response.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+      // Extract search citations if any
+      const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+      if (Array.isArray(chunks)) {
+        for (const chunk of chunks) {
+          if (chunk?.web?.uri) {
+            citations.push({
+              title: chunk.web.title || new URL(chunk.web.uri).hostname,
+              url: chunk.web.uri,
+            });
+          }
+        }
+      }
+    } catch (_err: any) {
+      // Fallback to fast flash-lite model if primary hits quota or encounters error
+      try {
+        const fallbackResp = await ai.models.generateContent({
+          model: "gemini-3.1-flash-lite",
+          contents: [{ role: "user", parts: currentParts }],
+          config: { systemInstruction: viviSystemInstruction },
+        });
+        generatedText = fallbackResp.text || fallbackResp.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      } catch (_err2: any) {
+        // Handled cleanly by offline generator below
+      }
+    }
+
+    if (!generatedText || !generatedText.trim()) {
+      generatedText = generateOfflineAiResponse(effectivePrompt, attachments);
+    }
+
+    res.json({
+      text: generatedText,
+      modelUsed: targetModel,
+      citations,
+    });
+  } catch (error: any) {
+    console.error("Vivi API Error:", error);
+    const fallback = generateOfflineAiResponse(req.body?.prompt || "Hello", req.body?.attachments);
+    res.json({
+      text: fallback,
+      modelUsed: "vivi-offline",
+      citations: [],
+    });
+  }
+});
+
+// Vivi Image Generation Endpoint
+app.post("/api/vivi/generate-image", async (req, res) => {
+  try {
+    const { prompt, aspectRatio = "1:1" } = req.body;
+    if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
+      return res.status(400).json({ error: "Prompt is required" });
+    }
+
+    const cleanPrompt = prompt.trim();
+    const rawApiKey = (process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "").trim();
+
+    if (rawApiKey) {
+      try {
+        const ai = getGenAI();
+        const response = await ai.models.generateContent({
+          model: "gemini-3.1-flash-lite-image",
+          contents: {
+            parts: [{ text: cleanPrompt }],
+          },
+          config: {
+            imageConfig: {
+              aspectRatio: aspectRatio as any,
+            },
+          },
+        });
+
+        for (const part of response.candidates?.[0]?.content?.parts ?? []) {
+          if (part.inlineData?.data) {
+            const mime = part.inlineData.mimeType || "image/png";
+            return res.json({
+              imageUrl: `data:${mime};base64,${part.inlineData.data}`,
+              prompt: cleanPrompt,
+              source: "gemini-image",
+            });
+          }
+        }
+      } catch (err: any) {
+        console.warn("Gemini image generation failed, falling back:", err?.message || err);
+      }
+    }
+
+    // High quality fallback generation URL
+    const seed = Math.floor(Math.random() * 1000000);
+    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt)}?width=1024&height=1024&seed=${seed}&nologo=true`;
+    return res.json({
+      imageUrl: pollinationsUrl,
+      prompt: cleanPrompt,
+      source: "pollinations",
+    });
+  } catch (error: any) {
+    console.error("Vivi image generation error:", error);
+    res.status(500).json({ error: "Failed to generate image" });
+  }
 });
 
 // Gemini AI Proxy Endpoint
@@ -4926,22 +6871,56 @@ app.all("/api/proxy/flipgrid", (req, res) => handleWebProxyRequest(req, res, 'fl
 app.all("/api/proxy", (req, res) => handleWebProxyRequest(req, res, 'scramjet'));
 
 async function startServer() {
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
+  const distPath = path.join(process.cwd(), "dist");
+  const distIndexHtml = path.join(distPath, "index.html");
+  const hasDist = fs.existsSync(distIndexHtml);
+
+  if (process.env.NODE_ENV === "production" && hasDist) {
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+      res.sendFile(distIndexHtml, (err) => {
+        if (err && !res.headersSent) {
+          res.status(500).send("Error loading page");
+        }
+      });
     });
+  } else {
+    try {
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } catch (e: any) {
+      console.warn("Vite middleware failed, falling back to static files:", e.message);
+      if (fs.existsSync(distIndexHtml)) {
+        app.use(express.static(distPath));
+        app.get("*", (req, res) => {
+          res.sendFile(distIndexHtml, (err) => {
+            if (err && !res.headersSent) {
+              res.status(500).send("Error loading page");
+            }
+          });
+        });
+      } else {
+        const rootHtml = path.join(process.cwd(), "index.html");
+        app.get("*", (req, res) => {
+          if (fs.existsSync(rootHtml)) {
+            res.sendFile(rootHtml, (err) => {
+              if (err && !res.headersSent) {
+                res.status(500).send("Server initialization error");
+              }
+            });
+          } else {
+            res.status(503).send("Server starting...");
+          }
+        });
+      }
+    }
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Yunø server running on http://0.0.0.0:${PORT}`);
+    console.log(`Yunø server running on http://0.0.0.0:${PORT} (mode: ${hasDist && process.env.NODE_ENV === 'production' ? 'production' : 'development'})`);
   });
 }
 

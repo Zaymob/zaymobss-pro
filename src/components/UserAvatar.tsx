@@ -66,7 +66,7 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
 
       {/* Talking Indicator Sound Bars */}
       {isTalking && (
-        <span className="absolute -top-1 -right-1 flex items-center space-x-0.5 bg-emerald-600 px-1 py-0.5 rounded text-[8px] font-mono text-white font-bold leading-none shadow-sm animate-pulse z-10">
+        <span className="absolute -top-1 -right-1 flex items-center space-x-0.5 bg-purple-600 px-1 py-0.5 rounded text-[8px] font-mono text-white font-bold leading-none shadow-sm z-10">
           <span className="w-0.5 h-2 bg-white rounded-full animate-bounce inline-block" />
           <span className="w-0.5 h-3 bg-white rounded-full animate-bounce [animation-delay:0.15s] inline-block" />
           <span className="w-0.5 h-1.5 bg-white rounded-full animate-bounce [animation-delay:0.3s] inline-block" />

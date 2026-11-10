@@ -37,12 +37,9 @@ export const BootScreen: React.FC<BootScreenProps> = ({ onComplete }) => {
       className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black text-white select-none overflow-hidden"
       style={{ backgroundColor: '#000000' }}
     >
-      {/* Ambient subtle vignette aura behind DIOR */}
+      {/* Ambient subtle aura behind DIOR */}
       <div
-        className="absolute w-[500px] h-[300px] rounded-full pointer-events-none opacity-20 blur-[100px]"
-        style={{
-          background: 'radial-gradient(circle, rgba(255,255,255,0.4) 0%, rgba(0,0,0,0) 70%)',
-        }}
+        className="absolute w-[500px] h-[300px] rounded-full pointer-events-none opacity-20 blur-[100px] bg-zinc-800"
       />
 
       <motion.div
@@ -51,18 +48,18 @@ export const BootScreen: React.FC<BootScreenProps> = ({ onComplete }) => {
         transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
         className="relative flex flex-col items-center justify-center px-4"
       >
-        {/* DIOR Luxury Roman Serif Wordmark */}
-        <div className="relative flex items-center justify-center mb-6 sm:mb-8">
+        {/* YUNO Wordmark & Icon */}
+        <div className="relative flex flex-col items-center justify-center mb-6 sm:mb-8 space-y-4">
+          <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden border border-[#2b1746] bg-[#0c0714] shadow-2xl">
+            <img src="/yuno-logo.jpg" alt="Yuno Logo" className="w-full h-full object-cover" />
+          </div>
           <h1
-            className="text-7xl sm:text-8xl md:text-9xl lg:text-[10.5rem] font-normal tracking-[0.14em] sm:tracking-[0.16em] leading-none uppercase select-none text-center"
+            className="text-5xl sm:text-6xl md:text-7xl font-black tracking-[0.2em] leading-none uppercase select-none text-center text-white"
             style={{
-              fontFamily: "'Bodoni Moda', 'Cinzel', 'Cormorant Garamond', 'Didot', 'Playfair Display', Georgia, serif",
-              color: '#ffffff',
-              textShadow: '0 0 25px rgba(255, 255, 255, 0.55), 0 0 60px rgba(255, 255, 255, 0.25), 0 0 100px rgba(255, 255, 255, 0.1)',
-              letterSpacing: '0.15em',
+              textShadow: '0 0 25px rgba(168, 85, 247, 0.4), 0 0 60px rgba(168, 85, 247, 0.2)',
             }}
           >
-            DIOR
+            YUNO
           </h1>
         </div>
 

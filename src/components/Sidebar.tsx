@@ -2,25 +2,24 @@ import React from 'react';
 import { NavTab } from '../types';
 import { YunoLogo } from './YunoLogo';
 import {
-  House,
+  Home as House,
   Globe,
-  FilmStrip,
-  GameController,
-  Television,
-  Robot,
-  ChatCircleText,
-  MusicNotes,
-  Handshake,
-  Gear,
-  CaretLeft,
-  CaretRight,
+  Film as FilmStrip,
+  Gamepad2 as GameController,
+  Tv as Television,
+  Bot as Robot,
+  MessageSquare as ChatCircleText,
+  Music as MusicNotes,
+  Settings as Gear,
+  ChevronLeft as CaretLeft,
+  ChevronRight as CaretRight,
   X,
-  SidebarSimple,
+  PanelLeftClose as SidebarSimple,
   ShieldCheck,
-  Sparkle,
-  ArrowClockwise,
+  Sparkles as Sparkle,
+  RefreshCw as ArrowClockwise,
   User,
-} from '@phosphor-icons/react';
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface SidebarProps {
@@ -51,13 +50,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const navItems = [
     { id: 'home' as NavTab, label: 'Home', icon: House },
     { id: 'proxy' as NavTab, label: 'Proxy Browser', icon: Globe },
-    { id: 'movies' as NavTab, label: 'Movies & TV', icon: FilmStrip },
+    { id: 'movies' as NavTab, label: 'Cinema', icon: FilmStrip },
     { id: 'games' as NavTab, label: 'Arcade Games', icon: GameController },
     { id: 'youtube' as NavTab, label: 'Yunø Tube', icon: Television },
     { id: 'ai' as NavTab, label: 'DIØR AI', icon: Robot },
-    { id: 'community' as NavTab, label: 'Community Chat', icon: ChatCircleText },
     { id: 'music' as NavTab, label: 'Music', icon: MusicNotes },
-    { id: 'partners' as NavTab, label: 'Partners', icon: Handshake },
     { id: 'settings' as NavTab, label: 'Settings', icon: Gear },
   ];
 

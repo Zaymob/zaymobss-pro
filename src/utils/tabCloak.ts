@@ -3,11 +3,11 @@ import { TabMaskPreset, TabCloakSettings } from '../types';
 export const TAB_MASK_PRESETS: TabMaskPreset[] = [
   {
     id: 'default',
-    name: 'Yunø Hub (Default)',
-    title: 'Yunø • The Unblocked Web Portal',
-    icon: '/favicon.ico',
+    name: 'Yuno (Default)',
+    title: 'Yuno',
+    icon: '/yuno-logo.jpg',
     category: 'Custom',
-    description: 'Default Yunø logo & title',
+    description: 'Default Yuno logo & title',
   },
   {
     id: 'drive',
@@ -32,6 +32,14 @@ export const TAB_MASK_PRESETS: TabMaskPreset[] = [
     icon: 'https://du11hjcvx0uqb.cloudfront.net/dist/images/favicon-e10d657a73.ico',
     category: 'School',
     description: 'Disguises as Canvas Student Course portal',
+  },
+  {
+    id: 'canva-site',
+    name: 'Canva Website (my.canva.site)',
+    title: 'Design Project - Canva',
+    icon: 'https://static.canva.com/static/images/favicon-1.ico',
+    category: 'School',
+    description: 'Disguises as a student Canva presentation site (my.canva.site)',
   },
   {
     id: 'docs',
@@ -85,7 +93,7 @@ export const TAB_MASK_PRESETS: TabMaskPreset[] = [
     id: 'quizlet',
     name: 'Quizlet',
     title: 'Flashcards, learning tools and textbook solutions | Quizlet',
-    icon: 'https://quizlet.com/favicon.ico',
+    icon: 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://quizlet.com&size=128',
     category: 'School',
     description: 'Disguises as Quizlet Study Flashcards',
   },
@@ -118,34 +126,53 @@ export const DEFAULT_CLOAK_SETTINGS: TabCloakSettings = {
 };
 
 /**
- * Applies tab title and favicon in document head
+ * Applies tab title and favicon in document head reliably across all browsers
  */
 export function applyTabMask(title: string, iconUrl: string) {
   if (typeof document === 'undefined') return;
 
-  // Update Document Title
-  document.title = title || 'Dior';
+  // 1. Update Document Title
+  document.title = title || 'Yuno';
 
-  // Update Favicons
-  const head = document.head || document.getElementsByTagName('head')[0];
-  let link = document.querySelector("link[rel*='icon']") as HTMLLinkElement | null;
-
-  if (!link) {
-    link = document.createElement('link');
-    link.type = 'image/x-icon';
-    link.rel = 'shortcut icon';
-    head.appendChild(link);
-  }
-
-  if (iconUrl) {
-    link.href = iconUrl;
-  }
-
-  // Also update any Apple Touch Icons or alternate icons
-  const alternateIcons = document.querySelectorAll("link[rel='apple-touch-icon']");
-  alternateIcons.forEach((el) => {
-    (el as HTMLLinkElement).href = iconUrl;
+  // 2. Remove ALL existing icon and apple-touch-icon links from <head>
+  // This is required because Chrome/Edge will ignore dynamically changed icon hrefs
+  // if an SVG or older link tag remains in the DOM.
+  const existingIcons = document.querySelectorAll(
+    "link[rel*='icon'], link[rel='apple-touch-icon'], link[rel='shortcut icon']"
+  );
+  existingIcons.forEach((el) => {
+    el.parentNode?.removeChild(el);
   });
+
+  const head = document.head || document.getElementsByTagName('head')[0];
+  if (!head) return;
+
+  const resolvedIcon = iconUrl || '/yuno-logo.jpg';
+
+  // 3. Append clean primary favicon
+  const mainIcon = document.createElement('link');
+  mainIcon.rel = 'icon';
+  mainIcon.type = resolvedIcon.endsWith('.ico')
+    ? 'image/x-icon'
+    : resolvedIcon.endsWith('.png')
+    ? 'image/png'
+    : resolvedIcon.endsWith('.svg')
+    ? 'image/svg+xml'
+    : 'image/jpeg';
+  mainIcon.href = resolvedIcon;
+  head.appendChild(mainIcon);
+
+  // 4. Append shortcut icon for older engines
+  const shortcutIcon = document.createElement('link');
+  shortcutIcon.rel = 'shortcut icon';
+  shortcutIcon.href = resolvedIcon;
+  head.appendChild(shortcutIcon);
+
+  // 5. Append apple-touch-icon
+  const appleIcon = document.createElement('link');
+  appleIcon.rel = 'apple-touch-icon';
+  appleIcon.href = resolvedIcon;
+  head.appendChild(appleIcon);
 }
 
 /**
@@ -172,8 +199,8 @@ export function saveCloakSettings(settings: TabCloakSettings): void {
   try {
     localStorage.setItem('yuno_cloak_settings', JSON.stringify(settings));
 
-    let titleToApply = 'Dior';
-    let iconToApply = '/favicon.svg';
+    let titleToApply = 'Yuno';
+    let iconToApply = '/yuno-logo.jpg';
 
     if (settings.activeMaskId === 'custom') {
       titleToApply = settings.customTitle || 'Google';

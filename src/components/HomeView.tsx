@@ -1,25 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { NavTab } from '../types';
-import {
-  MagnifyingGlass as Search,
-  ArrowSquareOut as ExternalLink,
-  GameController,
-  Sparkle,
-  Globe,
-  FilmStrip,
-  MusicNotes,
-  ChatCircleText,
-  ShieldCheck,
-  Lightning,
-  X,
-  Compass,
-} from '@phosphor-icons/react';
-import { addHistoryItem } from './HistoryModal';
+import React, { useState, useEffect, useRef } from 'react';
 
 interface HomeViewProps {
   currentWallpaper?: string;
-  onNavigate: (tab: NavTab) => void;
-  onLaunchProxy?: (urlOrQuery: string) => void;
+  onNavigate?: (tab: any) => void;
+  onLaunchProxy?: (url: string) => void;
   onSelectMovie?: (id: string) => void;
   onSelectGame?: (id: string) => void;
   onPlayTrack?: (track: any) => void;
@@ -27,172 +11,210 @@ interface HomeViewProps {
   isPlaying?: boolean;
 }
 
-export const HomeView: React.FC<HomeViewProps> = ({
-  onNavigate,
-  onLaunchProxy,
-}) => {
-  const [query, setQuery] = useState('');
-  const [searchEngine, setSearchEngine] = useState<'proxy' | 'google' | 'duckduckgo' | 'youtube' | 'bing'>('proxy');
-  const [currentTimeStr, setCurrentTimeStr] = useState<string>('');
+type PhraseItem =
+  | { type: 'counter' }
+  | { type: 'discord' }
+  | { type: 'text'; text: string; delay?: number; speed?: number };
+
+const BASE_PHRASES: PhraseItem[] = [
+  { type: 'counter' },
+  { type: 'text', text: 'share this around', delay: 1500, speed: 55 },
+  { type: 'text', text: 'vibe with me', delay: 1500, speed: 55 },
+  { type: 'discord' },
+  { type: 'text', text: 'baboo bap bap baboo', delay: 1500, speed: 55 },
+  { type: 'text', text: "guess who's back, back again. Tell a friend🙏.", delay: 1800, speed: 50 },
+  { type: 'text', text: "how much can you see with that sharigan of your's.", delay: 1800, speed: 50 },
+  { type: 'text', text: 'welcome to yuno', delay: 1800, speed: 55 },
+  // 5 Bible Verses
+  { type: 'text', text: '"I can do all things through Christ who strengthens me." - Philippians 4:13', delay: 2200, speed: 45 },
+  { type: 'text', text: '"The Lord is my shepherd; I shall not want." - Psalm 23:1', delay: 2200, speed: 45 },
+  { type: 'text', text: '"For I know the plans I have for you, declares the Lord." - Jeremiah 29:11', delay: 2200, speed: 45 },
+  { type: 'text', text: '"Be strong and courageous. Do not be afraid; do not be discouraged." - Joshua 1:9', delay: 2200, speed: 45 },
+  { type: 'text', text: '"Trust in the Lord with all your heart." - Proverbs 3:5', delay: 2200, speed: 45 },
+];
+
+const shuffleArray = <T,>(array: T[]): T[] => {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+};
+
+export const HomeView: React.FC<HomeViewProps> = () => {
+  const [displayText, setDisplayText] = useState('');
+  const [isDiscordBlinking, setIsDiscordBlinking] = useState(false);
+  const secretTriggeredRef = useRef<boolean>(false);
 
   useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      setCurrentTimeStr(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    let isCancelled = false;
+
+    // Listen for custom trigger from proxy input "rare-secret.lol"
+    const handleSecretEvent = () => {
+      secretTriggeredRef.current = true;
     };
-    updateTime();
-    const interval = setInterval(updateTime, 10000);
-    return () => clearInterval(interval);
+    window.addEventListener('yuno-secret-triggered', handleSecretEvent);
+
+    const sleep = (ms: number) =>
+      new Promise((resolve) => setTimeout(resolve, ms));
+
+    const typeOut = async (text: string, speed = 50) => {
+      for (let i = 0; i <= text.length; i++) {
+        if (isCancelled) return;
+        setDisplayText(text.slice(0, i));
+        await sleep(speed);
+      }
+    };
+
+    const backspace = async (speed = 30) => {
+      while (!isCancelled) {
+        if (isCancelled) return;
+        let done = false;
+        setDisplayText((prev) => {
+          if (prev.length <= 1) {
+            done = true;
+            return '';
+          }
+          return prev.slice(0, -1);
+        });
+        if (done) break;
+        await sleep(speed);
+      }
+      await sleep(250);
+    };
+
+    const runAnimationLoop = async () => {
+      while (!isCancelled) {
+        // Randomize the phrase queue for every full cycle so it's never in the same order
+        const shuffledQueue = shuffleArray(BASE_PHRASES);
+
+        for (const item of shuffledQueue) {
+          if (isCancelled) return;
+
+          // Check for Super Rare Secret Phrase trigger (from proxy "rare-secret.lol" or 0.8% rare natural chance)
+          const hasForcedSecret =
+            secretTriggeredRef.current ||
+            localStorage.getItem('yuno_force_rare_secret') === 'true';
+          const isNaturalRare = Math.random() < 0.008; // Keep rare phrase rare
+
+          if (hasForcedSecret || isNaturalRare) {
+            secretTriggeredRef.current = false;
+            try {
+              localStorage.removeItem('yuno_force_rare_secret');
+            } catch {}
+
+            // Rare Phrase: "if you're seeing this screen shot and send it to me btw."
+            const rarePhrase = "if you're seeing this screen shot and send it to me btw.";
+            await typeOut(rarePhrase, 45);
+            if (isCancelled) return;
+
+            // Stays for 15 full seconds
+            await sleep(15000);
+            if (isCancelled) return;
+
+            await backspace(30);
+            if (isCancelled) return;
+          }
+
+          if (item.type === 'counter') {
+            // Count from 1 to 2000+ games
+            const countMilestones = [
+              1, 4, 12, 38, 85, 160, 290, 520, 840, 1250, 1680, 1950, 2000,
+            ];
+            for (const num of countMilestones) {
+              if (isCancelled) return;
+              const label = num >= 2000 ? '2000+ games' : `${num} games`;
+              setDisplayText(label);
+              await sleep(65);
+            }
+            await sleep(1500);
+            if (isCancelled) return;
+            await backspace(35);
+            if (isCancelled) return;
+          } else if (item.type === 'discord') {
+            // "join the discord @ https://discord.gg/N8Mdrx9GC" with link blink 3 times
+            const discordPhrase = 'join the discord @ https://discord.gg/N8Mdrx9GC';
+            await typeOut(discordPhrase, 45);
+            if (isCancelled) return;
+
+            for (let b = 0; b < 3; b++) {
+              if (isCancelled) return;
+              setIsDiscordBlinking(true);
+              await sleep(220);
+              if (isCancelled) return;
+              setIsDiscordBlinking(false);
+              await sleep(220);
+            }
+
+            await sleep(1800);
+            if (isCancelled) return;
+            await backspace(30);
+            if (isCancelled) return;
+          } else {
+            // General phrase or Bible verse
+            await typeOut(item.text, item.speed || 50);
+            if (isCancelled) return;
+            await sleep(item.delay || 1800);
+            if (isCancelled) return;
+            await backspace(35);
+            if (isCancelled) return;
+          }
+        }
+      }
+    };
+
+    runAnimationLoop();
+
+    return () => {
+      isCancelled = true;
+      window.removeEventListener('yuno-secret-triggered', handleSecretEvent);
+    };
   }, []);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    const clean = query.trim();
-    if (!clean) return;
-
-    let target = clean;
-    if (searchEngine === 'google' && !clean.startsWith('http://') && !clean.startsWith('https://')) {
-      target = `https://www.google.com/search?q=${encodeURIComponent(clean)}`;
-    } else if (searchEngine === 'duckduckgo' && !clean.startsWith('http://') && !clean.startsWith('https://')) {
-      target = `https://duckduckgo.com/?q=${encodeURIComponent(clean)}`;
-    } else if (searchEngine === 'youtube' && !clean.startsWith('http://') && !clean.startsWith('https://')) {
-      target = `https://www.youtube.com/results?search_query=${encodeURIComponent(clean)}`;
-    } else if (searchEngine === 'bing' && !clean.startsWith('http://') && !clean.startsWith('https://')) {
-      target = `https://www.bing.com/search?q=${encodeURIComponent(clean)}`;
-    }
-
-    addHistoryItem({
-      type: 'search',
-      title: clean,
-      subtitle: `DIØR Web Engine (${searchEngine.toUpperCase()})`,
-    });
-
-    if (onLaunchProxy) {
-      onLaunchProxy(target);
-    } else {
-      onNavigate('proxy');
-    }
-  };
-
-  const quickLinks = [
-    { label: 'YouTube', url: 'https://youtube.com' },
-    { label: 'Discord', url: 'https://discord.com/app' },
-    { label: 'Roblox', url: 'https://roblox.com' },
-    { label: 'ChatGPT', url: 'https://chat.openai.com' },
-    { label: 'GitHub', url: 'https://github.com' },
-    { label: 'Twitch', url: 'https://twitch.tv' },
-    { label: 'Spotify', url: 'https://open.spotify.com' },
-    { label: 'TikTok', url: 'https://tiktok.com' },
-  ];
-
   return (
-    <div className="relative min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center px-4 py-10 text-zinc-100 select-none">
-      <div className="w-full max-w-2xl mx-auto flex flex-col items-center text-center space-y-6">
-        
-        {/* Brand Header */}
-        <div className="space-y-1">
-          <h1
-            className="text-5xl sm:text-6xl font-normal tracking-[0.2em] leading-none uppercase text-zinc-100"
-            style={{
-              fontFamily: "'Bodoni Moda', 'Cinzel', 'Playfair Display', Georgia, serif",
-            }}
-          >
-            DIØR
-          </h1>
-          <p className="text-xs text-zinc-400 font-mono tracking-wider pt-1">
-            {currentTimeStr ? `${currentTimeStr} • FAST WEB PORTAL` : 'FAST WEB PORTAL'}
+    <div className="min-h-[calc(100vh-5rem)] flex flex-col items-center justify-center px-4 py-8 select-none">
+      <div className="flex flex-col items-center text-center space-y-4">
+        {/* Yuno Logo */}
+        <div className="w-32 h-32 sm:w-36 sm:h-36 rounded-2xl overflow-hidden shadow-xl">
+          <img
+            src="/yuno-logo.jpg"
+            alt="Yuno Logo"
+            className="w-full h-full object-cover"
+          />
+        </div>
+
+        {/* Title */}
+        <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-white">
+          Yuno
+        </h1>
+
+        {/* White Mojangles animated text */}
+        <div className="min-h-[2.5rem] flex items-center justify-center px-4 max-w-2xl text-center">
+          <p className="font-mojangles text-xs sm:text-sm md:text-base text-white tracking-wider break-words leading-relaxed">
+            {displayText.startsWith('join the discord @ ') ? (
+              <span>
+                join the discord @{' '}
+                <a
+                  href="https://discord.gg/N8Mdrx9GC"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`underline text-purple-400 hover:text-purple-300 transition-opacity duration-150 cursor-pointer ${
+                    isDiscordBlinking ? 'opacity-0' : 'opacity-100'
+                  }`}
+                >
+                  {displayText.slice('join the discord @ '.length)}
+                </a>
+              </span>
+            ) : (
+              displayText
+            )}
+            <span className="inline-block w-2 h-4 ml-1 bg-white align-middle animate-pulse" />
           </p>
         </div>
-
-        {/* Search Omnibox */}
-        <form onSubmit={handleSearch} className="w-full space-y-2.5">
-          <div className="relative flex items-center bg-zinc-900 border border-zinc-700 focus-within:border-zinc-500 rounded-xl px-4 py-3 shadow-sm transition-colors">
-            <Search className="w-4 h-4 text-zinc-400 mr-3 flex-shrink-0" />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search Google, DuckDuckGo or enter URL..."
-              className="w-full bg-transparent text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none"
-              autoFocus
-            />
-            {query.trim() && (
-              <div className="flex items-center space-x-2 flex-shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setQuery('')}
-                  className="p-1 text-zinc-400 hover:text-zinc-200 cursor-pointer"
-                  title="Clear"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-                <button
-                  type="submit"
-                  className="px-3 py-1 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors cursor-pointer"
-                >
-                  Open
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Engine Selector Pills */}
-          <div className="flex items-center justify-center flex-wrap gap-1.5 pt-0.5 text-xs text-zinc-400">
-            <span className="text-[11px] font-mono text-zinc-500 mr-1">Search:</span>
-            {[
-              { id: 'proxy', label: 'Direct URL' },
-              { id: 'google', label: 'Google' },
-              { id: 'duckduckgo', label: 'DuckDuckGo' },
-              { id: 'youtube', label: 'YouTube' },
-              { id: 'bing', label: 'Bing' },
-            ].map((eng) => (
-              <button
-                key={eng.id}
-                type="button"
-                onClick={() => setSearchEngine(eng.id as any)}
-                className={`px-2.5 py-1 rounded-md text-xs transition-colors cursor-pointer border ${
-                  searchEngine === eng.id
-                    ? 'bg-zinc-800 text-white border-zinc-600 font-medium'
-                    : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
-                }`}
-              >
-                {eng.label}
-              </button>
-            ))}
-          </div>
-        </form>
-
-        {/* Clean Shortcuts Grid */}
-        <div className="w-full pt-4">
-          <div className="text-left mb-2.5 px-1 flex items-center justify-between text-xs text-zinc-400 font-mono">
-            <span>QUICK SHORTCUTS</span>
-            <span className="text-[10px] text-zinc-500">CLICK TO LAUNCH</span>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full">
-            {quickLinks.map((link) => (
-              <button
-                key={link.label}
-                type="button"
-                onClick={() => {
-                  setQuery(link.url);
-                  if (onLaunchProxy) {
-                    onLaunchProxy(link.url);
-                  } else {
-                    onNavigate('proxy');
-                  }
-                }}
-                className="p-3 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-850 text-left transition-colors cursor-pointer flex items-center justify-between group"
-              >
-                <span className="text-xs font-medium text-zinc-200 group-hover:text-white truncate">
-                  {link.label}
-                </span>
-                <ExternalLink className="w-3.5 h-3.5 text-zinc-500 group-hover:text-zinc-300 flex-shrink-0" />
-              </button>
-            ))}
-          </div>
-        </div>
-
       </div>
     </div>
   );
 };
+
+export default HomeView;

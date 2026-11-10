@@ -1,4 +1,4 @@
-export type NavTab = 'home' | 'games' | 'proxy' | 'movies' | 'youtube' | 'music' | 'settings' | 'links';
+export type NavTab = 'home' | 'games' | 'vivi' | 'movies' | 'youtube' | 'music' | 'settings' | 'links' | 'proxy';
 
 export interface ProxyBrowserTab {
   id: string;
@@ -52,6 +52,7 @@ export interface MovieItem {
   youtubeTrailerId?: string;
   seasonsCount?: number;
   episodesCount?: number;
+  isTvShow?: boolean;
 }
 
 export type StreamSource =
@@ -135,6 +136,7 @@ export interface MusicTrack {
   cover: string;
   coverUrl?: string;
   audioUrl?: string;
+  streamUrl?: string;
   lrcUrl?: string;
   jooxMsg?: string;
   jooxN?: number;

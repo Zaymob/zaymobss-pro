@@ -1,16 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import {
-  History,
-  Search,
-  Film,
-  Music,
-  Gamepad2,
-  Trash2,
+  Film as FilmStrip,
+  Music as MusicNotes,
+  Gamepad2 as GameController,
+  Search as MagnifyingGlass,
+  History as ClockCounterClockwise,
+  Trash2 as Trash,
   X,
   Play,
   Clock,
-  ArrowRight,
-  Sparkles,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -96,105 +94,132 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   const getIconForType = (type: string) => {
     switch (type) {
       case 'watch':
-        return <Film className="w-4 h-4 text-purple-400" />;
+        return <FilmStrip className="w-4 h-4 text-purple-400" />;
       case 'music':
-        return <Music className="w-4 h-4 text-emerald-400" />;
+        return <MusicNotes className="w-4 h-4 text-purple-300" />;
       case 'game':
-        return <Gamepad2 className="w-4 h-4 text-amber-400" />;
+        return <GameController className="w-4 h-4 text-purple-400" />;
       default:
-        return <Search className="w-4 h-4 text-cyan-400" />;
+        return <MagnifyingGlass className="w-4 h-4 text-purple-400" />;
+    }
+  };
+
+  const getTypeLabel = (type: string) => {
+    switch (type) {
+      case 'watch':
+        return 'Movie / TV';
+      case 'music':
+        return 'Music';
+      case 'game':
+        return 'Game';
+      default:
+        return 'Search';
     }
   };
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-sm select-none">
         <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 15 }}
+          initial={{ opacity: 0, scale: 0.96, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 15 }}
-          className="relative w-full max-w-2xl rounded-3xl bg-zinc-950 border border-zinc-800 shadow-2xl text-white overflow-hidden max-h-[85vh] flex flex-col"
+          exit={{ opacity: 0, scale: 0.96, y: 10 }}
+          className="relative w-full max-w-2xl rounded-xl bg-[#0d0716] border border-[#25143b] shadow-2xl text-white overflow-hidden max-h-[85vh] flex flex-col"
         >
-          {/* Header */}
-          <div className="flex items-center justify-between p-5 border-b border-zinc-800 bg-zinc-900/60">
-            <div className="flex items-center space-x-3">
-              <div className="p-2.5 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                <History className="w-5 h-5" />
+          {/* Top Header */}
+          <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#25143b] bg-[#090510]">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-8 h-8 rounded-lg bg-[#1a0e2d] border border-[#3e2264] text-purple-400 flex items-center justify-center flex-shrink-0">
+                <ClockCounterClockwise className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-white">Activity & History Center</h3>
-                <p className="text-xs text-zinc-400">Search logs, watch history, music stream logs & games played</p>
+                <h3 className="text-xs font-semibold text-white tracking-wide uppercase">
+                  ACTIVITY & HISTORY
+                </h3>
+                <p className="text-[11px] text-zinc-400">
+                  Logged stream sessions, games, and browsing activity
+                </p>
               </div>
             </div>
 
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-1.5">
               {historyList.length > 0 && (
                 <button
                   type="button"
                   onClick={handleClearAll}
-                  className="px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-rose-950/40 text-zinc-400 hover:text-rose-400 text-xs font-semibold border border-zinc-800 hover:border-rose-900/60 transition-colors flex items-center space-x-1.5"
+                  className="px-2.5 py-1.5 rounded-lg bg-[#150a24] hover:bg-rose-950/40 text-zinc-400 hover:text-rose-300 text-xs font-medium border border-[#2d164a] hover:border-rose-900/50 transition-colors flex items-center space-x-1.5 cursor-pointer"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
+                  <Trash className="w-3.5 h-3.5" />
                   <span>Clear All</span>
                 </button>
               )}
               <button
                 type="button"
                 onClick={onClose}
-                className="p-2 rounded-xl bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+                className="p-1.5 rounded-lg bg-[#150a24] text-zinc-400 hover:text-white hover:bg-[#201036] border border-[#2d164a] transition-colors cursor-pointer"
+                aria-label="Close"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
           </div>
 
-          {/* Filter Bar */}
-          <div className="p-4 bg-zinc-900/40 border-b border-zinc-800/80 flex flex-col sm:flex-row gap-3">
+          {/* Search & Filter Bar */}
+          <div className="p-3 bg-[#07040a] border-b border-[#25143b] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
             <div className="relative flex-1">
-              <Search className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <MagnifyingGlass className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 value={searchFilter}
                 onChange={(e) => setSearchFilter(e.target.value)}
-                placeholder="Filter your history records..."
-                className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-500"
+                placeholder="Search history records..."
+                className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-[#0d0716] border border-[#25143b] text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#6b21a8] transition-colors"
               />
             </div>
 
-            <div className="flex flex-wrap gap-1.5 bg-zinc-900/80 p-1 rounded-xl border border-zinc-800">
-              {(['all', 'watch', 'music', 'search', 'game'] as const).map((tab) => (
+            {/* Filter Buttons */}
+            <div className="flex items-center space-x-1 overflow-x-auto scrollbar-none py-0.5">
+              {(['all', 'watch', 'music', 'game', 'search'] as const).map((tab) => (
                 <button
                   key={tab}
                   type="button"
                   onClick={() => setActiveTab(tab)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-all ${
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer border ${
                     activeTab === tab
-                      ? 'bg-amber-500 text-zinc-950 shadow-md'
-                      : 'text-zinc-400 hover:text-zinc-200'
+                      ? 'bg-[#201236] text-white border-[#5b2a94] font-semibold'
+                      : 'bg-transparent text-zinc-400 hover:text-white border-transparent hover:border-[#2b1647]'
                   }`}
                 >
-                  {tab === 'all' ? 'All Logs' : tab === 'watch' ? 'Watch' : tab === 'music' ? 'Music' : tab === 'search' ? 'Search' : 'Games'}
+                  {tab === 'all'
+                    ? 'All'
+                    : tab === 'watch'
+                    ? 'Cinema & TV'
+                    : tab === 'music'
+                    ? 'Music'
+                    : tab === 'game'
+                    ? 'Games'
+                    : 'Search'}
                 </button>
               ))}
             </div>
           </div>
 
           {/* History List Content */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-2 scrollbar-thin scrollbar-thumb-zinc-800">
+          <div className="flex-1 overflow-y-auto p-3.5 space-y-2 scrollbar-thin">
             {filteredItems.length === 0 ? (
-              <div className="py-16 text-center space-y-3">
-                <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 text-zinc-600 flex items-center justify-center mx-auto">
-                  <History className="w-6 h-6" />
+              <div className="py-16 text-center space-y-2.5">
+                <div className="w-10 h-10 rounded-lg bg-[#140b22] border border-[#25143b] text-purple-400 flex items-center justify-center mx-auto">
+                  <ClockCounterClockwise className="w-5 h-5" />
                 </div>
                 <div>
-                  <p className="text-sm font-bold text-zinc-300">No History Records Found</p>
-                  <p className="text-xs text-zinc-500">
-                    Your searches, movie views, music tracks and game sessions will be recorded here.
+                  <p className="text-xs font-semibold text-zinc-200">No History Records</p>
+                  <p className="text-[11px] text-zinc-500 max-w-xs mx-auto">
+                    Activity from movies, TV series, music streams, and games will appear here.
                   </p>
                 </div>
               </div>
             ) : (
-              filteredItems.map((item) => {
+              filteredItems.map((item, idx) => {
                 const dateStr = new Date(item.timestamp).toLocaleDateString([], {
                   month: 'short',
                   day: 'numeric',
@@ -204,66 +229,68 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
 
                 return (
                   <div
-                    key={item.id}
-                    className="p-3 rounded-2xl bg-zinc-900/70 hover:bg-zinc-900 border border-zinc-800/80 hover:border-zinc-700 transition-all flex items-center justify-between gap-3 group"
+                    key={`${item.id}-${idx}`}
+                    className="p-2.5 rounded-lg bg-[#0e0916] hover:bg-[#150e21] border border-[#221338] hover:border-[#4d2382] transition-colors flex items-center justify-between gap-3 group"
                   >
                     <div
                       onClick={() => {
                         onSelectHistoryItem?.(item);
                         onClose();
                       }}
-                      className="flex items-center space-x-3.5 flex-1 min-w-0 cursor-pointer"
+                      className="flex items-center space-x-3 flex-1 min-w-0 cursor-pointer"
                     >
                       {item.thumbnail ? (
                         <img
                           src={item.thumbnail}
                           alt={item.title}
-                          className="w-12 h-12 rounded-xl object-cover border border-zinc-800 flex-shrink-0"
+                          className="w-10 h-10 rounded-lg object-cover border border-[#25143b] bg-[#07040a] flex-shrink-0"
+                          loading="lazy"
                         />
                       ) : (
-                        <div className="w-10 h-10 rounded-xl bg-zinc-800 border border-zinc-700/60 flex items-center justify-center flex-shrink-0">
+                        <div className="w-10 h-10 rounded-lg bg-[#1a0e2d] border border-[#2e154e] flex items-center justify-center flex-shrink-0">
                           {getIconForType(item.type)}
                         </div>
                       )}
 
                       <div className="truncate flex-1 min-w-0">
                         <div className="flex items-center space-x-2">
-                          <span className="text-xs font-bold text-white group-hover:text-amber-400 transition-colors truncate">
+                          <span className="text-xs font-semibold text-white group-hover:text-purple-300 transition-colors truncate">
                             {item.title}
-                          </span>
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-mono capitalize bg-zinc-800 text-zinc-400 border border-zinc-700/60">
-                            {item.type}
                           </span>
                         </div>
                         {item.subtitle && (
-                          <p className="text-[11px] text-zinc-400 truncate mt-0.5">{item.subtitle}</p>
+                          <p className="text-[11px] text-zinc-400 truncate">{item.subtitle}</p>
                         )}
-                        <span className="text-[10px] text-zinc-500 font-mono mt-0.5 flex items-center space-x-1">
-                          <Clock className="w-3 h-3 inline" />
-                          <span>{dateStr}</span>
-                        </span>
+                        <div className="text-[10px] text-zinc-500 font-mono flex items-center space-x-1.5 mt-0.5">
+                          <span>{getTypeLabel(item.type)}</span>
+                          <span aria-hidden="true">·</span>
+                          <span className="flex items-center space-x-1">
+                            <Clock className="w-3 h-3 inline" />
+                            <span>{dateStr}</span>
+                          </span>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center space-x-1.5 flex-shrink-0">
+                    <div className="flex items-center space-x-1 flex-shrink-0">
                       <button
                         type="button"
                         onClick={() => {
                           onSelectHistoryItem?.(item);
                           onClose();
                         }}
-                        className="p-2 rounded-xl bg-zinc-800 hover:bg-amber-500 hover:text-zinc-950 text-zinc-300 transition-colors"
-                        title="Resume / Replay / View"
+                        className="p-1.5 rounded-lg bg-[#1a0e2d] hover:bg-purple-600 text-zinc-300 hover:text-white border border-[#341b57] transition-colors cursor-pointer"
+                        title="Resume / Replay"
                       >
                         <Play className="w-3.5 h-3.5 fill-current" />
                       </button>
                       <button
                         type="button"
                         onClick={() => handleRemoveItem(item.id)}
-                        className="p-2 rounded-xl bg-zinc-800 hover:bg-rose-900/60 text-zinc-400 hover:text-rose-400 transition-colors"
+                        className="p-1.5 rounded-lg bg-[#1a0e2d] hover:bg-rose-950/60 text-zinc-400 hover:text-rose-300 border border-[#341b57] transition-colors cursor-pointer"
                         title="Remove record"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>

@@ -998,7 +998,6 @@ export const YoutubeView: React.FC<YoutubeViewProps> = ({
                       <div>
                         <h3 className="text-sm font-black text-white tracking-tight flex items-center space-x-2">
                           <span>Yunø Live Chat</span>
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
                         </h3>
                         <p className="text-[10px] text-zinc-400">Stream community discussion & instant reactions</p>
                       </div>

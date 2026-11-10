@@ -1,25 +1,14 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
-  GameController,
-  MagnifyingGlass as Search,
-  Play,
+  Search,
   X,
-  CornersOut as Maximize2,
-  ArrowClockwise as RefreshCw,
-  Heart,
-  Lightning as Zap,
-  ArrowSquareOut as ExternalLink,
-} from '@phosphor-icons/react';
-import { motion, AnimatePresence } from 'motion/react';
+  Maximize2,
+  Gamepad2,
+  Play,
+  Star,
+} from 'lucide-react';
+import { AnimatePresence } from 'motion/react';
 import { addHistoryItem } from './HistoryModal';
-import { PlayableTetris } from './games/PlayableTetris';
-import { PlayableSnake } from './games/PlayableSnake';
-import { Playable2048 } from './games/Playable2048';
-import { PlayableDino } from './games/PlayableDino';
-import { PlayableFlappy } from './games/PlayableFlappy';
-import { PlayableSpaceInvaders } from './games/PlayableSpaceInvaders';
-import { PlayableWordle } from './games/PlayableWordle';
-import { PlayableCalculator } from './games/PlayableCalculator';
 
 interface GamesViewProps {
   selectedGameId?: string;
@@ -31,145 +20,222 @@ export interface ExternalGame {
   description: string;
   image: string;
   url: string;
-  source: 'noahh' | 'hydra' | 'lumin' | 'builtin';
+  source: 'hydra' | 'lumin' | 'truffled' | 'seraph' | 'ugs' | 'ckv' | 'all' | string;
   category: string;
   rating: number;
   plays: string;
-  canvasType?: 'tetris' | 'snake' | '2048' | 'dino' | 'flappy' | 'space_invaders' | 'wordle' | 'calculator';
 }
 
-const CALCULATOR_GAME: ExternalGame = {
-  id: 'game-calculator-hidden',
-  title: 'Calculator',
-  description: 'Standard utility calculation tool with arithmetic operations.',
-  image: 'https://images.unsplash.com/photo-1587145820266-a5951ee6f620?w=600&auto=format&fit=crop&q=80',
-  url: '',
-  source: 'builtin',
-  category: 'UTILITY',
-  rating: 5.0,
-  plays: '10K',
-  canvasType: 'calculator',
-};
+const CATEGORY_TABS = [
+  { id: 'all', label: 'all' },
+  { id: 'classic', label: 'classic' },
+  { id: 'mario', label: 'mario' },
+  { id: 'pokemon', label: 'pokemon' },
+  { id: 'papa', label: "papa's" },
+  { id: 'puzzle', label: 'puzzle' },
+  { id: 'action', label: 'action' },
+  { id: 'racing', label: 'racing' },
+  { id: 'horror', label: 'horror' },
+  { id: 'favorites', label: 'favorites' },
+];
 
-// Curated high-resolution, thematic game covers for top web games
-const CURATED_GAME_ART: Record<string, string> = {
-  'minecraft': 'https://images.unsplash.com/photo-1627856013091-fed6e4e30025?w=600&auto=format&fit=crop&q=80',
-  'eaglercraft': 'https://images.unsplash.com/photo-1627856013091-fed6e4e30025?w=600&auto=format&fit=crop&q=80',
-  'roblox': 'https://images.unsplash.com/photo-1563089145-599997674d42?w=600&auto=format&fit=crop&q=80',
-  'slope': 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=600&auto=format&fit=crop&q=80',
-  'subway': 'https://images.unsplash.com/photo-1538481199705-c710c4e965fc?w=600&auto=format&fit=crop&q=80',
-  'retro bowl': 'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?w=600&auto=format&fit=crop&q=80',
-  '1v1': 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=600&auto=format&fit=crop&q=80',
-  'cookie clicker': 'https://images.unsplash.com/photo-1558961363-fa8fdf82db35?w=600&auto=format&fit=crop&q=80',
-  'geometry dash': 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80',
-  'friday night funkin': 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
-  'fnf': 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
-  'fnaf': 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=600&auto=format&fit=crop&q=80',
-  'five nights': 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=600&auto=format&fit=crop&q=80',
-  'drift': 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=600&auto=format&fit=crop&q=80',
-  'moto': 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=600&auto=format&fit=crop&q=80',
-  'bike': 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=600&auto=format&fit=crop&q=80',
-  'basketball': 'https://images.unsplash.com/photo-1546519638-68e109498ffc?w=600&auto=format&fit=crop&q=80',
-  'soccer': 'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?w=600&auto=format&fit=crop&q=80',
-  'chess': 'https://images.unsplash.com/photo-1529699211952-734e80c4d42b?w=600&auto=format&fit=crop&q=80',
-  'gartic': 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&auto=format&fit=crop&q=80',
-  'tetris': 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=600&auto=format&fit=crop&q=80',
-  'snake': 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=600&auto=format&fit=crop&q=80',
-  '2048': 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&auto=format&fit=crop&q=80',
-  'space invaders': 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=600&auto=format&fit=crop&q=80',
-  'dino': 'https://images.unsplash.com/photo-1579373903781-fd5c0c30c4cd?w=600&auto=format&fit=crop&q=80',
-  'flappy': 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80',
-  'wordle': 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&auto=format&fit=crop&q=80',
-  'drive mad': 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?w=600&auto=format&fit=crop&q=80',
-  'eggy car': 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?w=600&auto=format&fit=crop&q=80',
-  'paper.io': 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=600&auto=format&fit=crop&q=80',
-  'crossy road': 'https://images.unsplash.com/photo-1579373903781-fd5c0c30c4cd?w=600&auto=format&fit=crop&q=80',
-  'bitlife': 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
-  'krunker': 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=600&auto=format&fit=crop&q=80',
-  'smash karts': 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=600&auto=format&fit=crop&q=80',
-};
-
-// Generates a customized, distinct SVG game cover so no two games ever share a boring generic fallback
-export const generateGameArtwork = (title: string, category: string = 'ARCADE'): string => {
-  let hash = 0;
-  for (let i = 0; i < title.length; i++) {
-    hash = title.charCodeAt(i) + ((hash << 5) - hash);
+const getGameCategoryTag = (game: ExternalGame): string => {
+  const t = (game.title || '').toLowerCase();
+  if (
+    t.includes('fnaf') ||
+    t.includes('horror') ||
+    t.includes('scary') ||
+    t.includes('granny') ||
+    t.includes('slender') ||
+    t.includes('baldi') ||
+    t.includes('zombie') ||
+    t.includes('creepy') ||
+    t.includes('fear') ||
+    t.includes('nightmare') ||
+    t.includes('poppy') ||
+    t.includes('huggy') ||
+    t.includes('evil') ||
+    t.includes('haunt') ||
+    t.includes('spooky') ||
+    t.includes('eyes') ||
+    t.includes('ghost') ||
+    t.includes('scream') ||
+    t.includes('dead') ||
+    t.includes('neighbor')
+  ) {
+    return 'horror';
   }
-
-  const palettes = [
-    { start: '#10b981', mid: '#065f46', end: '#022c22', accent: '#34d399', badge: 'EMERALD' },
-    { start: '#3b82f6', mid: '#1e40af', end: '#0f172a', accent: '#60a5fa', badge: 'SAPPHIRE' },
-    { start: '#8b5cf6', mid: '#5b21b6', end: '#1e1b4b', accent: '#a78bfa', badge: 'AMETHYST' },
-    { start: '#ec4899', mid: '#9d174d', end: '#3b0764', accent: '#f472b6', badge: 'RUBY' },
-    { start: '#f59e0b', mid: '#92400e', end: '#451a03', accent: '#fbbf24', badge: 'AMBER' },
-    { start: '#06b6d4', mid: '#155e75', end: '#082f49', accent: '#22d3ee', badge: 'CYAN' },
-    { start: '#ef4444', mid: '#991b1b', end: '#450a0a', accent: '#f87171', badge: 'CRIMSON' },
-    { start: '#6366f1', mid: '#3730a3', end: '#1e1b4b', accent: '#818cf8', badge: 'INDIGO' },
-    { start: '#14b8a6', mid: '#115e59', end: '#042f2e', accent: '#2dd4bf', badge: 'TEAL' },
-    { start: '#d946ef', mid: '#86198f', end: '#3b0764', accent: '#e879f9', badge: 'MAGENTA' },
-  ];
-
-  const p = palettes[Math.abs(hash) % palettes.length];
-  const initials =
-    title
-      .split(/[\s-_:.]+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((w) => w[0].toUpperCase())
-      .join('') || 'GM';
-
-  const cleanTitle = title.replace(/[<>&"]/g, '').slice(0, 26);
-  const cleanCat = (category || 'ARCADE').replace(/[<>&"]/g, '').toUpperCase().slice(0, 14);
-
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="375" viewBox="0 0 600 375">
-    <defs>
-      <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="${p.start}"/>
-        <stop offset="50%" stop-color="${p.mid}"/>
-        <stop offset="100%" stop-color="${p.end}"/>
-      </linearGradient>
-      <pattern id="grid" width="25" height="25" patternUnits="userSpaceOnUse">
-        <path d="M 25 0 L 0 0 0 25" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
-      </pattern>
-    </defs>
-    <rect width="600" height="375" fill="url(#bg)"/>
-    <rect width="600" height="375" fill="url(#grid)"/>
-    
-    <circle cx="520" cy="60" r="160" fill="white" fill-opacity="0.05" />
-    <circle cx="80" cy="320" r="120" fill="${p.accent}" fill-opacity="0.08" />
-
-    <!-- Center Icon Shield -->
-    <rect x="225" y="90" width="150" height="95" rx="20" fill="rgba(0,0,0,0.5)" stroke="${p.accent}" stroke-width="2" stroke-opacity="0.6"/>
-    <text x="300" y="152" font-family="system-ui, -apple-system, sans-serif" font-size="42" font-weight="900" fill="#ffffff" text-anchor="middle" letter-spacing="3">${initials}</text>
-
-    <!-- Game Title -->
-    <text x="300" y="240" font-family="system-ui, -apple-system, sans-serif" font-size="24" font-weight="800" fill="#ffffff" text-anchor="middle" letter-spacing="0.5">${cleanTitle}</text>
-    
-    <!-- Category Pill -->
-    <rect x="${300 - (cleanCat.length * 4.5 + 16)}" y="260" width="${cleanCat.length * 9 + 32}" height="26" rx="13" fill="rgba(0,0,0,0.45)" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>
-    <text x="300" y="277" font-family="ui-monospace, monospace" font-size="11" font-weight="800" fill="${p.accent}" text-anchor="middle" letter-spacing="1.5">${cleanCat}</text>
-  </svg>`;
-
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  if (t.includes('mario')) return 'mario';
+  if (t.includes('pokemon')) return 'pokemon';
+  if (t.includes('papa')) return 'papa';
+  if (
+    t.includes('drift') ||
+    t.includes('drive') ||
+    t.includes('race') ||
+    t.includes('moto') ||
+    t.includes('car') ||
+    t.includes('kart') ||
+    t.includes('speed')
+  ) {
+    return 'racing';
+  }
+  if (
+    t.includes('chess') ||
+    t.includes('2048') ||
+    t.includes('puzzle') ||
+    t.includes('word') ||
+    t.includes('sudoku') ||
+    t.includes('mahjong') ||
+    t.includes('logic') ||
+    t.includes('minesweeper')
+  ) {
+    return 'puzzle';
+  }
+  if (
+    t.includes('tetris') ||
+    t.includes('snake') ||
+    t.includes('dino') ||
+    t.includes('flappy') ||
+    t.includes('retro bowl') ||
+    t.includes('minecraft') ||
+    t.includes('pacman') ||
+    t.includes('riddle school') ||
+    t.includes('escaping') ||
+    t.includes('stealing') ||
+    t.includes('airship') ||
+    t.includes('complex')
+  ) {
+    return 'classic';
+  }
+  if (
+    t.includes('slope') ||
+    t.includes('subway') ||
+    t.includes('run') ||
+    t.includes('bullet') ||
+    t.includes('dawn') ||
+    t.includes('action') ||
+    t.includes('shoot') ||
+    t.includes('strike') ||
+    t.includes('gun') ||
+    t.includes('tank') ||
+    t.includes('combat') ||
+    t.includes('survival') ||
+    t.includes('battle') ||
+    t.includes('superhot') ||
+    t.includes('fruit ninja') ||
+    t.includes('jetpack') ||
+    t.includes('happy wheels') ||
+    t.includes('vex')
+  ) {
+    return 'action';
+  }
+  return 'classic';
 };
+
+const POPULAR_KEYS = [
+  'slope',
+  'subway surfers',
+  'flappy bird',
+  'papa',
+  'super mario',
+  'run 3',
+  'bitlife',
+  'crossy road',
+  'minecraft',
+  'cookie clicker',
+  'temple run',
+  'duck life',
+  'dino',
+  'jetpack joyride',
+  'retro bowl',
+  'fruit ninja',
+  'doodle jump',
+  '2048',
+  'tetris',
+  'happy wheels',
+  'superhot',
+  'paperio',
+  'tunnel rush',
+  'fnaf',
+  'drift hunters',
+  'motox3m',
+  'riddle school',
+];
 
 // Lumin SDK Container
-const LuminContainer: React.FC = () => {
+interface LuminContainerProps {
+  onFallbackToHydra: () => void;
+}
+
+const LuminContainer: React.FC<LuminContainerProps> = ({ onFallbackToHydra }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [luminError, setLuminError] = useState<boolean>(false);
+  const [isInitializing, setIsInitializing] = useState<boolean>(true);
 
   useEffect(() => {
+    let isMounted = true;
+
+    const handleRejection = (e: PromiseRejectionEvent) => {
+      const reasonStr = String(e?.reason?.message || e?.reason || '');
+      if (
+        reasonStr.includes('Lumin') ||
+        reasonStr.includes('domain fetch failed') ||
+        reasonStr.includes('Worker connection')
+      ) {
+        e.preventDefault();
+        e.stopImmediatePropagation?.();
+        if (isMounted) {
+          setLuminError(true);
+          setIsInitializing(false);
+        }
+      }
+    };
+
+    const handleError = (e: ErrorEvent) => {
+      const msg = String(e?.message || '');
+      if (
+        msg.includes('Lumin') ||
+        msg.includes('domain fetch failed') ||
+        msg.includes('Worker connection')
+      ) {
+        e.preventDefault();
+        e.stopImmediatePropagation?.();
+        if (isMounted) {
+          setLuminError(true);
+          setIsInitializing(false);
+        }
+      }
+    };
+
+    window.addEventListener('unhandledrejection', handleRejection);
+    window.addEventListener('error', handleError);
+
     const initLumin = () => {
       if ((window as any).Lumin && typeof (window as any).Lumin.init === 'function') {
         try {
-          (window as any).Lumin.init({
+          const res = (window as any).Lumin.init({
             container: '#games',
             theme: 'dark',
             columns: 12,
             rows: 8,
             gamesPerPage: 96,
           });
+          if (res && typeof res.catch === 'function') {
+            res.catch((err: any) => {
+              console.warn('Lumin init caught error:', err);
+              if (isMounted) {
+                setLuminError(true);
+                setIsInitializing(false);
+              }
+            });
+          }
+          if (isMounted) setIsInitializing(false);
         } catch (e) {
-          console.error('Lumin SDK init error:', e);
+          console.warn('Lumin SDK init error:', e);
+          if (isMounted) {
+            setLuminError(true);
+            setIsInitializing(false);
+          }
         }
       }
     };
@@ -181,61 +247,108 @@ const LuminContainer: React.FC = () => {
       script.src = 'https://cdn.jsdelivr.net/gh/luminsdk/script@latest/lumin.min.js';
       script.async = true;
       script.onload = () => {
-        initLumin();
+        if (isMounted) initLumin();
+      };
+      script.onerror = () => {
+        if (isMounted) {
+          setLuminError(true);
+          setIsInitializing(false);
+        }
       };
       document.body.appendChild(script);
     }
+
+    const timer = setTimeout(() => {
+      if (isMounted && isInitializing) {
+        setIsInitializing(false);
+      }
+    }, 4000);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+      window.removeEventListener('unhandledrejection', handleRejection);
+      window.removeEventListener('error', handleError);
+    };
   }, []);
 
+  if (luminError) {
+    return (
+      <div className="w-full min-h-[420px] rounded-xl bg-[#0c0714] border border-[#221338] p-8 flex flex-col items-center justify-center text-center space-y-3">
+        <Gamepad2 className="w-9 h-9 text-zinc-600" />
+        <h3 className="text-sm font-semibold text-zinc-200">Lumin Cloud Unavailable</h3>
+        <p className="text-xs text-zinc-400 max-w-md">
+          The Lumin Cloud SDK is currently unreachable in this network sandbox. You can switch to Hydra Stash or Noah's Vault for instant gameplay.
+        </p>
+        <button
+          onClick={onFallbackToHydra}
+          className="mt-2 px-4 py-2 bg-[#2f1454] hover:bg-[#3d186e] text-white text-xs font-semibold rounded-lg border border-[#5b249e] transition-colors cursor-pointer"
+        >
+          Switch to Hydra Stash
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className="w-full min-h-[700px] rounded-2xl bg-[#181818] border border-zinc-800 p-4 shadow-xl overflow-hidden">
+    <div className="w-full min-h-[700px] rounded-xl bg-[#0c0714] border border-[#221338] p-4 overflow-hidden relative">
+      {isInitializing && (
+        <div className="absolute inset-0 bg-[#0c0714]/80 flex items-center justify-center z-10">
+          <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
       <div id="games" ref={containerRef} className="w-full h-full min-h-[650px]" />
     </div>
   );
 };
 
 export const GamesView: React.FC<GamesViewProps> = ({ selectedGameId }) => {
-  const [activeSource, setActiveSource] = useState<'noahh' | 'hydra' | 'lumin'>('noahh');
+  const [activeSource, setActiveSource] = useState<
+    'all' | 'truffled' | 'seraph' | 'ugs' | 'ckv' | 'hydra' | 'lumin'
+  >('all');
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [favorites, setFavorites] = useState<string[]>(() => {
+  const [visibleCount, setVisibleCount] = useState<number>(75);
+
+  const [truffledGames, setTruffledGames] = useState<ExternalGame[]>(() => {
     try {
-      const saved = localStorage.getItem('yuno_game_favorites') || localStorage.getItem('dior_game_favorites');
-      if (saved) return JSON.parse(saved);
+      const cached = localStorage.getItem('yuno_games_cache_truffled');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0 && parsed.some(g => Boolean(g.image))) return parsed;
+      }
     } catch {}
     return [];
   });
 
-  // Check Yunø Lite Mode (Image-only mode)
-  const [isLiteActive, setIsLiteActive] = useState<boolean>(() => {
+  const [seraphGames, setSeraphGames] = useState<ExternalGame[]>(() => {
     try {
-      return localStorage.getItem('yuno_lite_mode') === 'true';
-    } catch {
-      return false;
-    }
-  });
-
-  useEffect(() => {
-    const checkLite = () => {
-      try {
-        setIsLiteActive(localStorage.getItem('yuno_lite_mode') === 'true');
-      } catch {}
-    };
-    window.addEventListener('storage', checkLite);
-    const interval = setInterval(checkLite, 1000);
-    return () => {
-      window.removeEventListener('storage', checkLite);
-      clearInterval(interval);
-    };
-  }, []);
-
-  // External Game Catalogs with instant LocalStorage caching
-  const [noahhGames, setNoahhGames] = useState<ExternalGame[]>(() => {
-    try {
-      const cached = localStorage.getItem('yuno_games_cache_noahh');
+      const cached = localStorage.getItem('yuno_games_cache_seraph');
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0 && parsed.some(g => Boolean(g.image))) return parsed;
+      }
+    } catch {}
+    return [];
+  });
+
+  const [ugsGames, setUgsGames] = useState<ExternalGame[]>(() => {
+    try {
+      const cached = localStorage.getItem('yuno_games_cache_ugs');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0 && parsed.some(g => Boolean(g.image))) return parsed;
+      }
+    } catch {}
+    return [];
+  });
+
+  const [ckvGames, setCkvGames] = useState<ExternalGame[]>(() => {
+    try {
+      const cached = localStorage.getItem('yuno_games_cache_ckv');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0 && parsed.some(g => Boolean(g.image))) return parsed;
       }
     } catch {}
     return [];
@@ -252,568 +365,477 @@ export const GamesView: React.FC<GamesViewProps> = ({ selectedGameId }) => {
     return [];
   });
 
+  const [favorites, setFavorites] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('yuno_game_favorites');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
   const [isLoadingGames, setIsLoadingGames] = useState<boolean>(false);
-
-  // Active playing game modal
   const [playingGame, setPlayingGame] = useState<ExternalGame | null>(null);
-
   const gameContainerRef = useRef<HTMLDivElement>(null);
 
-  // Toggle Fullscreen on active game container
-  const toggleFullscreen = () => {
-    if (gameContainerRef.current) {
-      if (!document.fullscreenElement) {
-        gameContainerRef.current.requestFullscreen().catch((err) => {
-          console.warn('Fullscreen request error:', err);
-        });
-      } else {
-        document.exitFullscreen().catch((err) => {
-          console.warn('Exit fullscreen error:', err);
-        });
-      }
-    }
-  };
+  // Load All game catalogs (gmshelf: Truffled, Seraph, UGS, CKV + Hydra)
+  useEffect(() => {
+    let isCancelled = false;
 
-  // Fetch games from external CDNs with graceful fallback
-  const fetchExternalGames = async () => {
-    if (activeSource === 'noahh' && noahhGames.length > 0) return;
-    if (activeSource === 'hydra' && hydraGames.length > 0) return;
+    const fetchAllCatalogs = async () => {
+      setIsLoadingGames(true);
+      try {
+        const [gmshelfRes, hydraRes] = await Promise.allSettled([
+          fetch('/api/games/gmshelf').then((r) => (r.ok ? r.json() : null)),
+          fetch('/api/games/hydra').then((r) => (r.ok ? r.json() : null)),
+        ]);
 
-    setIsLoadingGames(true);
-    try {
-      if (activeSource === 'noahh') {
-        const res = await fetch(`/api/games/noahh?_t=${Date.now()}`, {
-          signal: AbortSignal.timeout(7000),
-          cache: 'no-store',
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data.games) && data.games.length > 0) {
-            setNoahhGames(data.games);
+        if (isCancelled) return;
+
+        if (gmshelfRes.status === 'fulfilled' && gmshelfRes.value?.games) {
+          const allGmshelf: ExternalGame[] = gmshelfRes.value.games;
+          const truffled = allGmshelf.filter((g) => g.source === 'truffled');
+          const seraph = allGmshelf.filter((g) => g.source === 'seraph');
+          const ugs = allGmshelf.filter((g) => g.source === 'ugs');
+          const ckv = allGmshelf.filter((g) => g.source === 'ckv');
+
+          if (truffled.length > 0) {
+            setTruffledGames(truffled);
             try {
-              localStorage.setItem('yuno_games_cache_noahh', JSON.stringify(data.games));
+              localStorage.setItem('yuno_games_cache_truffled', JSON.stringify(truffled));
+            } catch {}
+          }
+          if (seraph.length > 0) {
+            setSeraphGames(seraph);
+            try {
+              localStorage.setItem('yuno_games_cache_seraph', JSON.stringify(seraph));
+            } catch {}
+          }
+          if (ugs.length > 0) {
+            setUgsGames(ugs);
+            try {
+              localStorage.setItem('yuno_games_cache_ugs', JSON.stringify(ugs));
+            } catch {}
+          }
+          if (ckv.length > 0) {
+            setCkvGames(ckv);
+            try {
+              localStorage.setItem('yuno_games_cache_ckv', JSON.stringify(ckv));
             } catch {}
           }
         }
-      } else if (activeSource === 'hydra') {
-        const res = await fetch(`/api/games/hydra?_t=${Date.now()}`, {
-          signal: AbortSignal.timeout(7000),
-          cache: 'no-store',
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data.games) && data.games.length > 0) {
-            setHydraGames(data.games);
-            try {
-              localStorage.setItem('yuno_games_cache_hydra', JSON.stringify(data.games));
-            } catch {}
-          }
+
+        if (hydraRes.status === 'fulfilled' && hydraRes.value?.games) {
+          const list = hydraRes.value.games;
+          setHydraGames(list);
+          try {
+            localStorage.setItem('yuno_games_cache_hydra', JSON.stringify(list));
+          } catch {}
         }
+      } catch (err) {
+        console.error('Error fetching game catalog:', err);
+      } finally {
+        if (!isCancelled) setIsLoadingGames(false);
       }
-    } catch {
-      // Graceful fallback to local cache
-    } finally {
-      setIsLoadingGames(false);
-    }
-  };
+    };
 
-  useEffect(() => {
-    if (activeSource !== 'lumin') {
-      fetchExternalGames();
-    }
-  }, [activeSource]);
+    fetchAllCatalogs();
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
 
-  // Handle selected game ID from URL or external navigation
-  useEffect(() => {
-    if (!selectedGameId) return;
-
-    const allGames = [...noahhGames, ...hydraGames];
-    const found = allGames.find(
-      (g) =>
-        g.id === selectedGameId ||
-        g.title.toLowerCase() === selectedGameId.toLowerCase() ||
-        g.title.toLowerCase().includes(selectedGameId.toLowerCase().replace(/[-_]/g, ' '))
-    );
-
-    if (found) {
-      setPlayingGame(found);
-    }
-  }, [selectedGameId, noahhGames, hydraGames]);
-
-  // Favorite toggle handler with persistence
-  const toggleFavorite = (gameKey: string, e: React.MouseEvent) => {
+  const toggleFavorite = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setFavorites((prev) => {
-      const next = prev.includes(gameKey) ? prev.filter((id) => id !== gameKey) : [...prev, gameKey];
+      const next = prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id];
       try {
         localStorage.setItem('yuno_game_favorites', JSON.stringify(next));
-        localStorage.setItem('dior_game_favorites', JSON.stringify(next));
       } catch {}
       return next;
     });
   };
 
-  // Get image for game with curated lookup and dynamic custom fallback
-  const getGameImage = (game: ExternalGame): string => {
-    if (game.image && typeof game.image === 'string' && game.image.startsWith('http')) {
-      // Check if it's a raw github image that should be converted or used
-      if (!game.image.includes('placeholder') && !game.image.includes('unsplash.com/photo-1550745165')) {
-        return game.image;
-      }
-    }
-
-    const titleLower = (game.title || '').toLowerCase();
-    for (const [key, curatedUrl] of Object.entries(CURATED_GAME_ART)) {
-      if (titleLower.includes(key)) {
-        return curatedUrl;
-      }
-    }
-
-    if (game.image && game.image.startsWith('http')) {
-      return game.image;
-    }
-
-    return generateGameArtwork(game.title, game.category);
-  };
-
-  // Build current unified game list based on source
+  // Current active catalog based on selected source (all, truffled, seraph, ugs, ckv, hydra, noahh)
   const currentCatalog = useMemo(() => {
-    if (activeSource === 'hydra') {
-      return hydraGames;
+    let rawList: ExternalGame[] = [];
+    if (activeSource === 'truffled') rawList = truffledGames;
+    else if (activeSource === 'seraph') rawList = seraphGames;
+    else if (activeSource === 'ugs') rawList = ugsGames;
+    else if (activeSource === 'ckv') rawList = ckvGames;
+    else if (activeSource === 'hydra') rawList = hydraGames;
+    else {
+      // 'all': Combine all sources
+      rawList = [
+        ...truffledGames,
+        ...seraphGames,
+        ...ugsGames,
+        ...ckvGames,
+        ...hydraGames,
+      ];
     }
-    if (activeSource === 'noahh') {
-      return noahhGames;
+
+    // Deduplicate by lowercase title
+    const seen = new Set<string>();
+    const unique: ExternalGame[] = [];
+    for (const g of rawList) {
+      const key = (g.title || '').toLowerCase().trim();
+      if (!seen.has(key)) {
+        seen.add(key);
+        unique.push(g);
+      }
     }
-    return [];
-  }, [activeSource, noahhGames, hydraGames]);
 
-  // Categories list: keeping All Titles and Starred
-  const CATEGORIES = [
-    { id: 'all', label: 'All Titles', icon: Zap },
-    { id: 'favorites', label: 'Starred', icon: Heart },
-  ];
+    // Sort popular titles to the front
+    return unique.sort((a, b) => {
+      const ta = (a.title || '').toLowerCase();
+      const tb = (b.title || '').toLowerCase();
 
-  // Filtered games based on search and category
+      let scoreA = 9999;
+      let scoreB = 9999;
+
+      for (let i = 0; i < POPULAR_KEYS.length; i++) {
+        if (ta.includes(POPULAR_KEYS[i])) {
+          scoreA = i;
+          break;
+        }
+      }
+
+      for (let i = 0; i < POPULAR_KEYS.length; i++) {
+        if (tb.includes(POPULAR_KEYS[i])) {
+          scoreB = i;
+          break;
+        }
+      }
+
+      if (scoreA !== scoreB) return scoreA - scoreB;
+      return ta.localeCompare(tb);
+    });
+  }, [activeSource, truffledGames, seraphGames, ugsGames, ckvGames, hydraGames]);
+
+  // Filtered list based on category & search
   const filteredGames = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    const isCalculatorQuery = query === 'calculator';
+    let list = currentCatalog;
 
-    const baseList = isCalculatorQuery ? [CALCULATOR_GAME, ...currentCatalog] : currentCatalog;
+    if (activeCategory === 'favorites') {
+      list = list.filter((g) => favorites.includes(g.id));
+    } else if (activeCategory !== 'all') {
+      list = list.filter((g) => getGameCategoryTag(g) === activeCategory);
+    }
 
-    return baseList.filter((game) => {
-      // If it's the hidden calculator, only show when exact word 'calculator' is typed
-      if (game.id === CALCULATOR_GAME.id) {
-        return isCalculatorQuery;
-      }
+    if (query) {
+      list = list.filter(
+        (g) =>
+          g.title.toLowerCase().includes(query) ||
+          (g.category && g.category.toLowerCase().includes(query)) ||
+          getGameCategoryTag(g).toLowerCase().includes(query)
+      );
+    }
 
-      const matchesSearch =
-        !query ||
-        game.title.toLowerCase().includes(query) ||
-        (game.category && game.category.toLowerCase().includes(query)) ||
-        (game.description && game.description.toLowerCase().includes(query));
+    return list;
+  }, [currentCatalog, activeCategory, searchQuery, favorites]);
 
-      if (!matchesSearch) return false;
+  // Reset pagination when category, search, or source changes
+  useEffect(() => {
+    setVisibleCount(75);
+  }, [activeCategory, searchQuery, activeSource]);
 
-      if (activeCategory === 'favorites') {
-        return favorites.includes(game.id || game.title);
-      }
+  const displayedGames = useMemo(() => {
+    return filteredGames.slice(0, visibleCount);
+  }, [filteredGames, visibleCount]);
 
-      return true;
-    });
-  }, [currentCatalog, searchQuery, activeCategory, favorites]);
-
-  // Split into favorites on top and remainder
-  const favoritedGames = useMemo(() => {
-    if (activeCategory === 'favorites') return filteredGames;
-    return filteredGames.filter((g) => favorites.includes(g.id || g.title));
-  }, [filteredGames, favorites, activeCategory]);
-
-  const otherGames = useMemo(() => {
-    if (activeCategory === 'favorites') return [];
-    return filteredGames.filter((g) => !favorites.includes(g.id || g.title));
-  }, [filteredGames, favorites, activeCategory]);
-
-  // Start Playing Game
   const handleLaunchGame = (game: ExternalGame) => {
-    const finalImage = getGameImage(game);
-    setPlayingGame({ ...game, image: finalImage });
+    setPlayingGame(game);
     addHistoryItem({
       type: 'game',
       title: game.title,
-      subtitle: game.category || 'Arcade Game',
-      thumbnail: finalImage,
+      subtitle: game.category || 'Game',
+      thumbnail: game.image || '',
       data: game,
     });
   };
 
-  // Render individual game card
-  const renderGameCard = (game: ExternalGame, idx: number) => {
-    const gameKey = game.id || game.title;
-    const isFav = favorites.includes(gameKey);
-    const imageUrl = getGameImage(game);
-
-    return (
-      <div
-        key={`${gameKey}-${idx}`}
-        onClick={() => handleLaunchGame(game)}
-        className="group relative p-2.5 bg-zinc-950/80 hover:bg-zinc-900 border border-zinc-800/80 hover:border-zinc-700/80 rounded-2xl cursor-pointer transition-all duration-200 flex flex-col justify-between hover:shadow-xl hover:shadow-black/60 hover:-translate-y-0.5"
-      >
-        <div className="aspect-[16/10] w-full rounded-xl overflow-hidden bg-zinc-900 relative">
-          <img
-            src={imageUrl}
-            alt={game.title}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            loading="lazy"
-            referrerPolicy="no-referrer"
-            onError={(e) => {
-              const target = e.currentTarget;
-              target.src = generateGameArtwork(game.title, game.category);
-            }}
-          />
-          <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
-
-          {/* Index Number Badge */}
-          <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-zinc-950/90 text-[10px] font-mono text-zinc-300 border border-zinc-700 font-bold">
-            #{idx + 1}
-          </div>
-
-          {/* Source Tag Badge */}
-          {game.source === 'builtin' && (
-            <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/30 text-[9px] font-mono text-emerald-400 font-bold">
-              OFFLINE
-            </div>
-          )}
-
-          {/* Heart Favorite Button */}
-          <div className="absolute top-2 right-2 flex items-center space-x-1">
-            <button
-              onClick={(e) => toggleFavorite(gameKey, e)}
-              className={`p-1.5 rounded-lg border transition-all ${
-                isFav
-                  ? 'bg-rose-500/20 border-rose-500/40 text-rose-400 shadow-sm'
-                  : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-white hover:bg-zinc-800'
-              }`}
-              title={isFav ? 'Unfavorite' : 'Favorite'}
-            >
-              <Heart className={`w-3.5 h-3.5 ${isFav ? 'fill-current' : ''}`} />
-            </button>
-          </div>
-
-          {/* Center Play Overlay Icon */}
-          <div className="absolute inset-0 m-auto w-10 h-10 rounded-full bg-white text-black flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all scale-90 group-hover:scale-100 shadow-2xl">
-            <Play className="w-4 h-4 fill-current ml-0.5" />
-          </div>
-        </div>
-
-        {/* When in Yunø Lite Mode: Hide text (pure picture only!) */}
-        {!isLiteActive && (
-          <div className="mt-2.5 px-1">
-            <div className="flex items-center justify-between gap-1.5">
-              <h3 className="text-xs font-bold text-zinc-100 group-hover:text-white transition-colors truncate">
-                {game.title}
-              </h3>
-              <span className="uppercase text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400 flex-shrink-0">
-                {game.category || 'Arcade'}
-              </span>
-            </div>
-          </div>
-        )}
-      </div>
+  // Deep link
+  useEffect(() => {
+    if (!selectedGameId) return;
+    const all = [
+      ...truffledGames,
+      ...seraphGames,
+      ...ugsGames,
+      ...ckvGames,
+      ...hydraGames,
+    ];
+    const found = all.find(
+      (g) => g.id === selectedGameId || g.title.toLowerCase().includes(selectedGameId.toLowerCase())
     );
+    if (found) {
+      handleLaunchGame(found);
+    }
+  }, [
+    selectedGameId,
+    truffledGames,
+    seraphGames,
+    ugsGames,
+    ckvGames,
+    hydraGames,
+  ]);
+
+  const toggleFullscreen = () => {
+    if (!gameContainerRef.current) return;
+    if (!document.fullscreenElement) {
+      gameContainerRef.current.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
   };
 
+  const totalAllGames =
+    truffledGames.length +
+    seraphGames.length +
+    ugsGames.length +
+    ckvGames.length +
+    hydraGames.length;
+
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-20 px-2 sm:px-4">
-      {/* Sleek Modern Arcade Header */}
-      <div className="relative rounded-2xl bg-zinc-900 border border-zinc-800 p-5 sm:p-6 shadow-lg">
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-5">
-          <div className="space-y-1">
-            <div className="flex items-center space-x-3">
-              <div className="w-9 h-9 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center text-white">
-                <GameController className="w-5 h-5 text-emerald-400" weight="fill" />
-              </div>
-              <div>
-                <h1 className="text-xl sm:text-2xl font-black text-zinc-100 tracking-tight uppercase">
-                  Games
-                </h1>
-              </div>
-              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold bg-zinc-800 text-emerald-400 border border-zinc-700">
-                {filteredGames.length}
-              </span>
-            </div>
-            <p className="text-xs text-zinc-400 font-sans pl-12">
-              Play games
-            </p>
-          </div>
+    <div className="w-full max-w-7xl mx-auto space-y-3.5 pb-20 select-none">
+      {/* Top Bar: Clean source dropdown & search bar */}
+      <div className="flex items-center space-x-2.5">
+        {/* Source selector */}
+        <select
+          value={activeSource}
+          onChange={(e) => setActiveSource(e.target.value as any)}
+          className="bg-[#121216] border border-zinc-800 text-zinc-300 text-xs px-2.5 py-2 rounded-lg cursor-pointer focus:outline-none focus:border-zinc-700"
+        >
+          <option value="all">all {totalAllGames > 0 ? `(${totalAllGames})` : ''}</option>
+          <option value="truffled">truffled {truffledGames.length > 0 ? `(${truffledGames.length})` : ''}</option>
+          <option value="seraph">seraph {seraphGames.length > 0 ? `(${seraphGames.length})` : ''}</option>
+          <option value="ugs">ugs {ugsGames.length > 0 ? `(${ugsGames.length})` : ''}</option>
+          <option value="ckv">ckv {ckvGames.length > 0 ? `(${ckvGames.length})` : ''}</option>
+          <option value="hydra">hydra {hydraGames.length > 0 ? `(${hydraGames.length})` : ''}</option>
+          <option value="lumin">lumin</option>
+        </select>
 
-          {/* Elevated Source Selector Pills */}
-          <div className="flex items-center space-x-1.5 bg-zinc-950 p-1.5 rounded-xl border border-zinc-800 text-xs overflow-x-auto scrollbar-none">
+        {/* Clean search input */}
+        <div className="relative flex-1">
+          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="search..."
+            className="w-full pl-8 pr-7 py-2 bg-[#121216] border border-zinc-800 focus:border-zinc-700 rounded-lg text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none transition-colors"
+          />
+          {searchQuery && (
             <button
-              onClick={() => {
-                setActiveSource('noahh');
-                setActiveCategory('all');
-              }}
-              className={`px-4 py-1.5 rounded-lg font-medium transition-all cursor-pointer flex items-center space-x-1.5 whitespace-nowrap ${
-                activeSource === 'noahh'
-                  ? 'bg-zinc-800 text-white font-bold border border-zinc-600 shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white cursor-pointer"
             >
-              <span>Noah's Vault</span>
+              <X className="w-3.5 h-3.5" />
             </button>
-
-            <button
-              onClick={() => {
-                setActiveSource('hydra');
-                setActiveCategory('all');
-              }}
-              className={`px-4 py-1.5 rounded-lg font-medium transition-all cursor-pointer flex items-center space-x-1.5 whitespace-nowrap ${
-                activeSource === 'hydra'
-                  ? 'bg-zinc-800 text-white font-bold border border-zinc-600 shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <span>Hydra Stash</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setActiveSource('lumin');
-              }}
-              className={`px-4 py-1.5 rounded-lg font-medium transition-all cursor-pointer flex items-center space-x-1.5 whitespace-nowrap ${
-                activeSource === 'lumin'
-                  ? 'bg-zinc-800 text-white font-bold border border-zinc-600 shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <span>Lumin Cloud</span>
-            </button>
-          </div>
+          )}
         </div>
       </div>
 
-      {/* RENDER LUMIN SDK SOURCE IF ACTIVE */}
+      {/* Sub-bar: Count & Category Filter Tabs */}
+      <div className="flex items-center flex-wrap gap-x-3 gap-y-1.5 text-xs text-zinc-400 py-1">
+        <span className="text-zinc-500 font-mono text-xs shrink-0">
+          {filteredGames.length} available
+        </span>
+
+        <div className="flex items-center flex-wrap gap-1">
+          {CATEGORY_TABS.map((tab) => {
+            const isActive = activeCategory === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveCategory(tab.id)}
+                className={`px-2.5 py-0.5 rounded-full text-xs font-medium transition-colors cursor-pointer ${
+                  isActive
+                    ? 'bg-[#2f1454] text-white border border-[#5b249e]'
+                    : 'text-zinc-400 hover:text-white hover:bg-[#150a26]'
+                }`}
+              >
+                {tab.label}
+                {tab.id === 'favorites' && favorites.length > 0 && (
+                  <span className="text-[10px] ml-1 text-purple-300">({favorites.length})</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Section Header */}
+      <div className="flex items-center space-x-2 text-zinc-400 text-xs font-bold uppercase tracking-wider pt-1">
+        <Gamepad2 className="w-3.5 h-3.5 text-purple-400" />
+        <span>{activeCategory === 'all' ? 'ALL GAMES' : `${activeCategory} GAMES`}</span>
+      </div>
+
+      {/* RENDER LUMIN IF ACTIVE */}
       {activeSource === 'lumin' ? (
-        <LuminContainer />
+        <LuminContainer onFallbackToHydra={() => setActiveSource('hydra')} />
       ) : (
         <>
-          {/* Subheader, Categories & Search Bar */}
-          <div className="space-y-3">
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 px-1">
-              {/* Category Filter Chips */}
-              <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 scrollbar-none">
-                {CATEGORIES.map((cat) => {
-                  const Icon = cat.icon;
-                  const isActive = activeCategory === cat.id;
-                  return (
-                    <button
-                      key={cat.id}
-                      onClick={() => setActiveCategory(cat.id)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all flex items-center space-x-1.5 whitespace-nowrap cursor-pointer border ${
-                        isActive
-                          ? 'bg-zinc-800 text-white border-zinc-600 font-bold shadow-sm'
-                          : 'bg-zinc-950/60 text-zinc-400 border-zinc-800/80 hover:text-zinc-200 hover:border-zinc-700'
-                      }`}
-                    >
-                      <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-emerald-400' : 'text-zinc-500'}`} />
-                      <span>{cat.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Search Bar */}
-              <div className="relative w-full sm:w-80 flex-shrink-0">
-                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Search games, genres, or titles..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9.5 pr-9 py-2 bg-zinc-950/90 border border-zinc-800 focus:border-zinc-500 rounded-2xl text-xs text-white placeholder-zinc-500 focus:outline-none transition-all shadow-sm"
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white p-0.5"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Counter Summary */}
-            <div className="text-xs font-mono text-zinc-400 flex items-center space-x-2.5 px-1">
-              <span className="font-semibold text-zinc-300">{filteredGames.length} Titles Available</span>
-              {favorites.length > 0 && (
-                <span className="text-rose-400 font-medium">• {favorites.length} Starred</span>
-              )}
-            </div>
-          </div>
-
           {/* Loading Indicator */}
-          {isLoadingGames && (
+          {isLoadingGames && currentCatalog.length === 0 && (
             <div className="py-20 text-center space-y-3">
-              <div className="w-7 h-7 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin mx-auto" />
-              <p className="text-xs text-zinc-400">Loading catalog...</p>
+              <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto" />
+              <p className="text-xs text-zinc-500 font-mono">loading games...</p>
             </div>
           )}
 
-          {/* Game Cards Grid */}
-          {!isLoadingGames && (
-            <div className="space-y-6">
-              {/* Section 1: Favorited Games (if any exist in current filtered results) */}
-              {favoritedGames.length > 0 && activeCategory !== 'favorites' && (
-                <div className="space-y-3">
-                  <div className="flex items-center space-x-2 text-xs font-bold text-white uppercase tracking-wider">
-                    <Heart className="w-3.5 h-3.5 fill-current text-rose-500" />
-                    <span>Favorites ({favoritedGames.length})</span>
-                  </div>
+          {/* Empty State */}
+          {filteredGames.length === 0 && !isLoadingGames && (
+            <div className="py-16 text-center bg-[#0d0716] border border-[#221237] rounded-xl space-y-2">
+              <Gamepad2 className="w-8 h-8 text-zinc-600 mx-auto" />
+              <p className="text-xs text-zinc-400 font-medium">No games found.</p>
+              <button
+                onClick={() => {
+                  setSearchQuery('');
+                  setActiveCategory('all');
+                }}
+                className="text-xs text-purple-400 hover:text-purple-300 underline font-mono cursor-pointer"
+              >
+                Reset filters
+              </button>
+            </div>
+          )}
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-                    {favoritedGames.map((game, idx) => renderGameCard(game, idx))}
-                  </div>
+          {/* Main Games Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5">
+            {displayedGames.map((game, idx) => {
+              const isFav = favorites.includes(game.id);
+              const formattedTitle = (game.title || '').toLowerCase();
 
-                  {/* Sleek Divider between Hearted and Other Games */}
-                  {otherGames.length > 0 && (
-                    <div className="relative my-6">
-                      <div className="absolute inset-0 flex items-center">
-                        <div className="w-full border-t border-zinc-800" />
-                      </div>
-                      <div className="relative flex justify-center text-xs uppercase tracking-wider font-mono">
-                        <span className="bg-[#0b0b0e] px-3.5 py-1 rounded-full border border-zinc-800 text-[10px] text-zinc-400">
-                          All Games ({otherGames.length})
-                        </span>
+              return (
+                <div
+                  key={`${game.id || game.title}-${idx}`}
+                  onClick={() => handleLaunchGame(game)}
+                  className="flex flex-col group cursor-pointer"
+                >
+                  {/* Thumbnail */}
+                  <div className="relative aspect-[16/10] bg-[#120822] border border-[#23123b] group-hover:border-[#6b21a8] rounded-xl overflow-hidden transition-colors flex items-center justify-center">
+                    {game.image ? (
+                      <img
+                        src={game.image}
+                        alt={game.title}
+                        loading="lazy"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          if (target.src.includes('raw.githubusercontent.com') && !target.dataset.retried) {
+                            target.dataset.retried = 'true';
+                            target.src = target.src.replace('raw.githubusercontent.com', 'cdn.jsdelivr.net/gh').replace('/main/', '/');
+                            return;
+                          }
+                          target.style.display = 'none';
+                          if (target.parentElement) {
+                            const fallback = target.parentElement.querySelector('.fallback-badge');
+                            if (fallback) (fallback as HTMLElement).style.display = 'flex';
+                          }
+                        }}
+                      />
+                    ) : null}
+
+                    {/* Fallback monogram for broken images */}
+                    <div
+                      className={`fallback-badge w-full h-full flex flex-col items-center justify-center p-2 text-center bg-[#140b24] ${
+                        game.image ? 'hidden' : 'flex'
+                      }`}
+                    >
+                      <Gamepad2 className="w-5 h-5 text-purple-400 mb-0.5" />
+                      <span className="font-mono text-[9px] text-zinc-400 uppercase tracking-wider truncate max-w-full px-1">
+                        {game.title}
+                      </span>
+                    </div>
+
+                    {/* Favorite Star Button */}
+                    <button
+                      onClick={(e) => toggleFavorite(game.id, e)}
+                      className={`absolute top-1.5 right-1.5 p-1 rounded-md transition-colors cursor-pointer border ${
+                        isFav
+                          ? 'bg-[#3b1768] text-amber-400 border border-[#6b21a8]'
+                          : 'bg-[#07030e]/80 text-zinc-500 hover:text-white border border-[#23123b]'
+                      }`}
+                      title={isFav ? 'Remove from favorites' : 'Add to favorites'}
+                    >
+                      <Star className={`w-3 h-3 ${isFav ? 'fill-amber-400' : ''}`} />
+                    </button>
+
+                    {/* Subtle Hover Play Overlay */}
+                    <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <div className="w-8 h-8 rounded-full bg-[#3c1770] border border-[#6b21a8] text-white flex items-center justify-center shadow">
+                        <Play className="w-3.5 h-3.5 fill-white ml-0.5" />
                       </div>
                     </div>
-                  )}
-                </div>
-              )}
-
-              {/* Section 2: Other Games / Full List */}
-              {activeCategory === 'favorites' ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-                  {favoritedGames.map((game, idx) => renderGameCard(game, idx))}
-                </div>
-              ) : (
-                otherGames.length > 0 && (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-                    {otherGames.map((game, idx) =>
-                      renderGameCard(game, favoritedGames.length + idx)
-                    )}
                   </div>
-                )
-              )}
 
-              {/* Empty Search Results */}
-              {filteredGames.length === 0 && (
-                <div className="p-12 text-center border border-dashed border-zinc-800 rounded-2xl space-y-2">
-                  <p className="text-sm font-semibold text-zinc-300">No games found</p>
-                  <p className="text-xs text-zinc-500">
-                    Try searching for a different title or clearing the search filter
-                  </p>
+                  {/* Below Image: Only Game Title */}
+                  <div className="mt-1.5 text-left">
+                    <span className="text-xs font-semibold text-zinc-200 group-hover:text-white truncate block">
+                      {formattedTitle}
+                    </span>
+                  </div>
                 </div>
-              )}
+              );
+            })}
+          </div>
+
+          {/* Load More Button for Large Catalog */}
+          {displayedGames.length < filteredGames.length && (
+            <div className="pt-4 text-center">
+              <button
+                onClick={() => setVisibleCount((prev) => prev + 75)}
+                className="px-6 py-2 bg-[#140b24] hover:bg-[#1d1033] text-purple-200 hover:text-white text-xs font-semibold rounded-lg border border-[#2b1747] hover:border-[#522394] transition-colors cursor-pointer"
+              >
+                Load More ({filteredGames.length - displayedGames.length} remaining)
+              </button>
             </div>
           )}
         </>
       )}
 
-      {/* FULLSCREEN GAME MODAL OVERLAY */}
+      {/* Pure Game Frame with Overlapping Black Circle Close and Fullscreen Buttons */}
       <AnimatePresence>
         {playingGame && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-2 sm:p-6"
-          >
+          <div className="fixed inset-0 z-50 bg-black flex items-center justify-center">
             <div
               ref={gameContainerRef}
-              className="w-full h-full max-w-6xl max-h-[90vh] bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden flex flex-col shadow-2xl relative"
+              className="relative w-full h-full bg-black flex items-center justify-center overflow-hidden"
             >
-              {/* Modal Window Top Header */}
-              <div className="flex items-center justify-between p-4 bg-zinc-950 border-b border-zinc-800">
-                <div className="flex items-center space-x-3">
-                  <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="text-sm font-bold text-white">{playingGame.title}</span>
-                  <span className="text-[10px] font-mono text-emerald-400 px-2 py-0.5 bg-emerald-500/20 rounded border border-emerald-500/30">
-                    {playingGame.source === 'builtin' ? 'OFFLINE NATIVE GAME' : 'CDN UNBLOCKED GAME'}
-                  </span>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  {playingGame.url && (
-                    <button
-                      onClick={() => {
-                        window.open(playingGame.url, '_blank', 'noopener,noreferrer');
-                      }}
-                      className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 hover:text-white text-xs font-mono font-medium transition-all flex items-center space-x-1.5"
-                      title="Open game directly in a new tab"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Pop-out</span>
-                    </button>
-                  )}
-
-                  <button
-                    onClick={toggleFullscreen}
-                    className="px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-300 hover:text-emerald-200 text-xs font-mono font-bold transition-all flex items-center space-x-1.5 shadow-lg"
-                    title="Fullscreen Mode"
-                  >
-                    <Maximize2 className="w-4 h-4" />
-                    <span>Fullscreen</span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      const current = playingGame;
-                      setPlayingGame(null);
-                      setTimeout(() => setPlayingGame(current), 50);
-                    }}
-                    className="p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
-                    title="Reload Game"
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                  </button>
-
-                  <button
-                    onClick={() => setPlayingGame(null)}
-                    className="p-2 rounded-xl bg-zinc-900 hover:bg-rose-500/20 text-zinc-400 hover:text-rose-400 transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
+              {/* Floating Black Circle Controls Overlapping the Game Frame */}
+              <div className="absolute top-4 right-4 flex items-center space-x-2 z-30">
+                <button
+                  onClick={toggleFullscreen}
+                  className="w-9 h-9 rounded-full bg-black/85 hover:bg-black text-white flex items-center justify-center cursor-pointer transition-colors shadow-lg border border-white/20"
+                  title="Fullscreen"
+                  aria-label="Fullscreen"
+                >
+                  <Maximize2 className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setPlayingGame(null)}
+                  className="w-9 h-9 rounded-full bg-black/85 hover:bg-black text-white flex items-center justify-center cursor-pointer transition-colors shadow-lg border border-white/20"
+                  title="Close"
+                  aria-label="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
 
-              {/* Game Viewport Container */}
-              <div className="flex-1 bg-black flex items-center justify-center relative overflow-hidden p-2">
-                {playingGame.source === 'builtin' && playingGame.canvasType ? (
-                  <div className="w-full h-full flex items-center justify-center p-4 overflow-auto">
-                    {playingGame.canvasType === 'tetris' && <PlayableTetris />}
-                    {playingGame.canvasType === 'snake' && <PlayableSnake />}
-                    {playingGame.canvasType === '2048' && <Playable2048 />}
-                    {playingGame.canvasType === 'dino' && <PlayableDino />}
-                    {playingGame.canvasType === 'flappy' && <PlayableFlappy />}
-                    {playingGame.canvasType === 'space_invaders' && <PlayableSpaceInvaders />}
-                    {playingGame.canvasType === 'wordle' && <PlayableWordle />}
-                    {playingGame.canvasType === 'calculator' && <PlayableCalculator />}
-                  </div>
-                ) : (
-                  <iframe
-                    src={playingGame.url}
-                    title={playingGame.title}
-                    className="w-full h-full border-0 rounded-xl bg-black"
-                    allowFullScreen
-                    allow="autoplay; payment; microphone; camera; midi; geolocation; gyroscope; accelerometer; cross-origin-isolated; encrypted-media; fullscreen"
-                    referrerPolicy="no-referrer"
-                  />
-                )}
-              </div>
+              {/* Game Viewport Frame */}
+              <iframe
+                src={playingGame.url}
+                title={playingGame.title}
+                className="w-full h-full border-0 bg-black"
+                allowFullScreen
+                allow="autoplay; payment; microphone; camera; midi; geolocation; gyroscope; accelerometer; cross-origin-isolated; encrypted-media; fullscreen"
+                referrerPolicy="no-referrer"
+              />
             </div>
-          </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

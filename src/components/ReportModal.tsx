@@ -189,7 +189,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                 >
                   <option value="Voice & Video Calls">Voice & Video Calls</option>
                   <option value="Screen Sharing">Screen Sharing</option>
-                  <option value="Movies & TV Player">Movies & TV Player</option>
+                  <option value="Cinema Player">Cinema Player</option>
                   <option value="Music & Audio">Music & Audio</option>
                   <option value="Chat & DMs">Chat & DMs</option>
                   <option value="Games">Games</option>

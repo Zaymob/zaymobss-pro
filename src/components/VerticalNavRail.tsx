@@ -1,20 +1,20 @@
 import React from 'react';
 import { NavTab } from '../types';
 import {
-  House,
+  Home as House,
   Globe,
-  GameController,
-  FilmStrip,
-  MusicNotes,
-  Gear,
-  ClockCounterClockwise,
+  Gamepad2 as GameController,
+  Film as FilmStrip,
+  Music as MusicNotes,
+  Settings as Gear,
+  Handshake,
   ShieldCheck,
-} from '@phosphor-icons/react';
+} from 'lucide-react';
 
 interface VerticalNavRailProps {
   activeTab: NavTab;
   onNavigate: (tab: NavTab) => void;
-  onOpenHistory?: () => void;
+  onOpenPartners?: () => void;
   isAdmin?: boolean;
   onOpenAdminDashboard?: () => void;
 }
@@ -22,7 +22,7 @@ interface VerticalNavRailProps {
 export const VerticalNavRail: React.FC<VerticalNavRailProps> = ({
   activeTab,
   onNavigate,
-  onOpenHistory,
+  onOpenPartners,
   isAdmin,
   onOpenAdminDashboard,
 }) => {
@@ -53,7 +53,7 @@ export const VerticalNavRail: React.FC<VerticalNavRailProps> = ({
               }`}
               title={item.label}
             >
-              <Icon className="w-5 h-5" weight={isActive ? 'fill' : 'regular'} />
+              <Icon className="w-5 h-5" />
 
               {/* Active solid indicator bar */}
               {isActive && (
@@ -72,13 +72,13 @@ export const VerticalNavRail: React.FC<VerticalNavRailProps> = ({
 
       {/* Bottom Utility Items */}
       <div className="flex flex-col items-center space-y-2.5 pt-3 border-t border-zinc-800 w-full px-2">
-        {onOpenHistory && (
+        {onOpenPartners && (
           <button
-            onClick={onOpenHistory}
-            className="w-9 h-9 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-900 border border-transparent hover:border-zinc-800 flex items-center justify-center transition-colors cursor-pointer"
-            title="Activity History"
+            onClick={onOpenPartners}
+            className="w-9 h-9 rounded-xl text-purple-400 hover:text-white hover:bg-[#1a0e2d] border border-transparent hover:border-[#3d196b] flex items-center justify-center transition-colors cursor-pointer"
+            title="Partners"
           >
-            <ClockCounterClockwise className="w-4 h-4" />
+            <Handshake className="w-4 h-4" />
           </button>
         )}
 
@@ -88,7 +88,7 @@ export const VerticalNavRail: React.FC<VerticalNavRailProps> = ({
             className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 flex items-center justify-center transition-colors cursor-pointer"
             title="Admin Moderation Terminal"
           >
-            <ShieldCheck className="w-4 h-4" weight="fill" />
+            <ShieldCheck className="w-4 h-4" />
           </button>
         )}
       </div>

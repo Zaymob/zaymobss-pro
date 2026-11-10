@@ -9,7 +9,8 @@ import {
   ExternalLink,
   Volume2,
   VolumeX,
-  Play
+  Play,
+  AppWindow
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -26,6 +27,21 @@ export const PipVideoOverlay: React.FC<PipVideoOverlayProps> = ({
 }) => {
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(false);
+
+  const popOutToDesktopWindow = () => {
+    const width = 560;
+    const height = 315;
+    const left = Math.max(0, window.screen.width - width - 40);
+    const top = Math.max(0, window.screen.height - height - 80);
+    const popup = window.open(
+      `https://www.youtube.com/embed/${pipVideo.videoId}?autoplay=1&enablejsapi=1`,
+      `pip_tube_${pipVideo.videoId}`,
+      `popup=1,width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no,resizable=yes`
+    );
+    if (popup) {
+      onClose();
+    }
+  };
 
   if (!pipVideo) return null;
 
@@ -70,6 +86,15 @@ export const PipVideoOverlay: React.FC<PipVideoOverlayProps> = ({
               className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
             >
               {isMinimized ? <Maximize2 className="w-3.5 h-3.5" /> : <Minimize2 className="w-3.5 h-3.5" />}
+            </button>
+
+            <button
+              type="button"
+              onClick={popOutToDesktopWindow}
+              title="Pop out to floating desktop window (draggable across your browser & desktop)"
+              className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
+            >
+              <AppWindow className="w-3.5 h-3.5" />
             </button>
 
             <button

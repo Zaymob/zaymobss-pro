@@ -153,7 +153,7 @@ export const StreamSourceDropdown: React.FC<StreamSourceDropdownProps> = ({
             : 'bg-zinc-900 hover:bg-zinc-800/90 border-zinc-800 text-zinc-300 hover:text-white px-3 py-1.5'
         } text-xs font-mono select-none`}
       >
-        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
+        <span className="w-2 h-2 rounded-full bg-purple-400 flex-shrink-0" />
         <span className="text-[11px] font-bold text-zinc-400 hidden sm:inline uppercase">
           Source:
         </span>

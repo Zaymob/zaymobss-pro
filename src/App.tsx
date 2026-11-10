@@ -11,10 +11,10 @@ import { YoutubeView } from './components/YoutubeView';
 import { MusicView } from './components/MusicView';
 import { SettingsView } from './components/SettingsView';
 import { MusicPlayerBar } from './components/MusicPlayerBar';
-import { ProxyTab } from './components/ProxyTab';
+import { ViviView } from './components/ViviView';
 import { LinkFinderView } from './components/LinkFinderView';
 import { PipVideoOverlay } from './components/PipVideoOverlay';
-import { VerticalNavRail } from './components/VerticalNavRail';
+import { TopNavbar } from './components/TopNavbar';
 
 import { motion, AnimatePresence } from 'motion/react';
 import { BanAppealModal } from './components/BanAppealModal';
@@ -23,6 +23,8 @@ import { AdminDashboardModal } from './components/AdminDashboardModal';
 import { AnnouncementPopupModal, AnnouncementData } from './components/AnnouncementPopupModal';
 import { ReportModal } from './components/ReportModal';
 import { HistoryModal, addHistoryItem, HistoryItem } from './components/HistoryModal';
+import { PartnersModal } from './components/PartnersModal';
+import { addMusicHistory } from './utils/historyManager';
 import { BannedScreen } from './components/BannedScreen';
 import { getSavedCloakSettings, saveCloakSettings } from './utils/tabCloak';
 import { ConstellationCanvas } from './components/ConstellationCanvas';
@@ -38,6 +40,10 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>('home');
 
   const handleNavigateTab = (tab: NavTab) => {
+    if ((tab as any) === 'partners') {
+      setIsPartnersModalOpen(true);
+      return;
+    }
     if (tab === activeTab) return;
     setActiveTab(tab);
   };
@@ -45,11 +51,11 @@ export default function App() {
   const [currentWallpaper, setCurrentWallpaper] = useState<string>(() => {
     try {
       const saved = localStorage.getItem('yuno_current_wallpaper');
-      if (saved && !saved.includes('unsplash.com') && !saved.includes('pinimg.com') && !saved.includes('wallpaperflare.com')) {
+      if (saved) {
         return saved;
       }
     } catch (e) {}
-    return '#09090b';
+    return '#07040a';
   });
 
   const [effectSettings, setEffectSettings] = useState<WallpaperEffectSettings>(getSavedEffectSettings);
@@ -132,6 +138,7 @@ export default function App() {
   const [isTabMaskModalOpen, setIsTabMaskModalOpen] = useState<boolean>(false);
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState<boolean>(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState<boolean>(false);
+  const [isPartnersModalOpen, setIsPartnersModalOpen] = useState<boolean>(false);
   const [reportModalState, setReportModalState] = useState<{
     isOpen: boolean;
     type: 'user' | 'message' | 'bug';
@@ -157,27 +164,10 @@ export default function App() {
 
   const [banDetails, setBanDetails] = useState<{ reason?: string; banImage?: string } | null>(null);
 
-  // Check and show active announcement once on site open
+  // Announcements popup disabled per user request
   useEffect(() => {
-    const checkAnnouncements = async () => {
-      try {
-        const res = await fetch('/api/announcements');
-        if (!res.ok) return;
-        const data = await res.json();
-        if (Array.isArray(data.announcements) && data.announcements.length > 0) {
-          const latest = data.announcements[0];
-          const seenKey = `yuno_seen_ann_${latest.id}`;
-          const hasSeen = sessionStorage.getItem(seenKey) || localStorage.getItem(seenKey);
-          if (!hasSeen) {
-            setActiveAnnouncement(latest);
-            setIsAnnouncementPopupOpen(true);
-          }
-        }
-      } catch (e) {
-        console.error('Error fetching announcements:', e);
-      }
-    };
-    checkAnnouncements();
+    setIsAnnouncementPopupOpen(false);
+    setActiveAnnouncement(null);
   }, []);
 
   // Handle Dismiss Announcement
@@ -353,6 +343,7 @@ export default function App() {
   const [audioDuration, setAudioDuration] = useState<number>(0);
   const [playbackContext, setPlaybackContext] = useState<PlaybackContext | null>(null);
   const [playQueue, setPlayQueue] = useState<MusicTrack[]>([]);
+  const [selectedArtistForMusic, setSelectedArtistForMusic] = useState<{ id: string; name: string; picture?: string } | null>(null);
 
   const handleAddToQueue = (track: MusicTrack, playNext: boolean = false) => {
     setPlayQueue((prev) => {
@@ -386,7 +377,17 @@ export default function App() {
       setPlaybackContext(context);
     }
 
-    // Save track to history modal & localStorage
+    // Save track to independent music history & global modal
+    addMusicHistory({
+      trackId: track.id,
+      title: track.title,
+      artist: track.artist,
+      cover: track.coverUrl || (track as any).cover || '',
+      streamUrl: track.streamUrl,
+      duration: track.duration,
+      data: track,
+    });
+
     addHistoryItem({
       type: 'music',
       title: track.title,
@@ -587,25 +588,13 @@ export default function App() {
         <BootScreen onComplete={() => setShowBootScreen(false)} />
       )}
 
-      {/* Dynamic Background Wallpaper & Screen Effects across EVERY Tab */}
-      {!isYunoLiteActive ? (
+      {/* Dynamic Background Wallpaper & Screen Effects across EVERY Tab (except vivi & music) */}
+      {!isYunoLiteActive && activeTab !== 'vivi' && activeTab !== 'proxy' && activeTab !== 'music' ? (
         <>
-          {currentWallpaper === 'constellation' ? (
-            <div className="fixed inset-0 pointer-events-none z-0 bg-[#050507] overflow-hidden">
-              <ConstellationCanvas />
-              {effectSettings.vignette && (
-                <div
-                  className="absolute inset-0 pointer-events-none"
-                  style={{
-                    boxShadow: 'inset 0 0 140px rgba(0, 0, 0, 0.9)',
-                  }}
-                />
-              )}
-            </div>
-          ) : currentWallpaper.startsWith('#') || currentWallpaper.startsWith('rgb') ? (
+          {currentWallpaper === 'constellation' || currentWallpaper.startsWith('#') || currentWallpaper.startsWith('rgb') ? (
             <div
               className="fixed inset-0 pointer-events-none z-0 overflow-hidden"
-              style={{ backgroundColor: currentWallpaper }}
+              style={{ backgroundColor: currentWallpaper === 'constellation' ? '#07040a' : currentWallpaper }}
             />
           ) : (
             <div
@@ -641,29 +630,36 @@ export default function App() {
           <WallpaperCanvasEffects settings={effectSettings} />
         </>
       ) : (
-        <div className="fixed inset-0 pointer-events-none z-0 bg-[#09090b]" />
+        <div className="fixed inset-0 pointer-events-none z-0 bg-[#07040a]" />
       )}
 
-      {/* Main Workspace Layout with Vertical Rail */}
-      <div className="relative z-10 flex min-h-screen bg-transparent text-white">
-        {/* Sleek Vertical Rail */}
-        <VerticalNavRail
+      {/* Main Workspace Layout with Top Navbar */}
+      <div className="relative z-10 flex flex-col min-h-screen bg-transparent text-white">
+        {/* Top Navbar */}
+        <TopNavbar
           activeTab={activeTab}
-          onNavigate={(tab) => handleNavigateTab(tab)}
+          onNavigate={(tab) => {
+            if (tab === ('partners' as any)) {
+              setIsPartnersModalOpen(true);
+            } else {
+              handleNavigateTab(tab);
+            }
+          }}
+          onOpenTabMask={() => setIsTabMaskModalOpen(true)}
           onOpenHistory={() => setIsHistoryModalOpen(true)}
           isAdmin={isAdminAuthenticated}
           onOpenAdminDashboard={() => setIsAdminDashboardOpen(true)}
         />
 
-        {/* Content Area (offset by left rail) */}
+        {/* Content Area (offset by top bar) */}
         {(() => {
-          const isFullBleedTab = activeTab === 'proxy';
+          const isFullBleedTab = activeTab === 'vivi' || activeTab === 'proxy';
           return (
             <main
-              className={`flex-1 w-full pl-14 sm:pl-16 transition-all duration-300 ${
+              className={`flex-1 w-full transition-all duration-300 ${
                 isFullBleedTab
-                  ? `p-0 m-0 max-w-none ${currentTrack ? 'pb-24' : 'pb-6'}`
-                  : `max-w-7xl mx-auto p-3 sm:p-5 lg:p-6 ${currentTrack ? 'pb-24' : 'pb-12'}`
+                  ? `pt-14 p-0 m-0 max-w-none ${currentTrack ? 'pb-24' : 'pb-0'}`
+                  : `pt-18 sm:pt-20 px-3 sm:px-5 lg:px-6 max-w-7xl mx-auto ${currentTrack ? 'pb-28' : 'pb-16'}`
               }`}
             >
               <AnimatePresence mode="wait">
@@ -694,11 +690,8 @@ export default function App() {
                     />
                   )}
 
-                  {activeTab === 'proxy' && (
-                    <ProxyTab
-                      initialUrl={proxyTargetUrl}
-                      onNavigateHome={() => handleNavigateTab('home')}
-                    />
+                  {(activeTab === 'vivi' || activeTab === 'proxy') && (
+                    <ViviView />
                   )}
 
                   {activeTab === 'links' && (
@@ -730,13 +723,16 @@ export default function App() {
                       onPlayTrack={handlePlayTrack}
                       onTogglePlay={handleTogglePlay}
                       currentTime={audioCurrentTime}
+                      onSeek={handleSeek}
                       playQueue={playQueue}
                       onAddToQueue={handleAddToQueue}
                       onRemoveFromQueue={handleRemoveFromQueue}
                       onClearQueue={handleClearQueue}
                       onNavigateHome={() => handleNavigateTab('home')}
+                      initialArtist={selectedArtistForMusic}
                     />
                   )}
+
 
                   {activeTab === 'settings' && (
                     <SettingsView
@@ -751,6 +747,8 @@ export default function App() {
                       isAdmin={isAdminAuthenticated}
                       onOpenAdminDashboard={() => setIsAdminDashboardOpen(true)}
                       onAdminLogout={handleAdminLogout}
+                      userProfile={userProfile}
+                      onUpdateProfile={(p) => setUserProfile(p)}
                     />
                   )}
                 </motion.div>
@@ -776,6 +774,10 @@ export default function App() {
         onRemoveFromQueue={handleRemoveFromQueue}
         onClearQueue={handleClearQueue}
         onPlayTrack={handlePlayTrack}
+        onOpenArtist={(artistName) => {
+          setSelectedArtistForMusic({ id: artistName, name: artistName });
+          handleNavigateTab('music');
+        }}
       />
 
       {/* Ban & Timeout Appeal Petition Modal */}
@@ -819,6 +821,12 @@ export default function App() {
         targetUser={reportModalState.targetUser}
         messageContent={reportModalState.messageContent}
         messageId={reportModalState.messageId}
+      />
+
+      {/* Partners Notice Modal */}
+      <PartnersModal
+        isOpen={isPartnersModalOpen}
+        onClose={() => setIsPartnersModalOpen(false)}
       />
 
       {/* Activity History Modal */}

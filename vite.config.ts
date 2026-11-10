@@ -1,11 +1,24 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import fs from 'fs';
 import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react(),
+      tailwindcss(),
+      {
+        name: 'clean-dist-assets',
+        closeBundle() {
+          const aistudioDist = path.resolve(__dirname, 'dist/assets');
+          if (fs.existsSync(aistudioDist)) {
+            fs.rmSync(aistudioDist, { recursive: true, force: true });
+          }
+        },
+      },
+    ],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

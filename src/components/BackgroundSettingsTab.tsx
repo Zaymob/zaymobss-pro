@@ -56,11 +56,7 @@ export const BackgroundSettingsTab: React.FC<BackgroundSettingsTabProps> = ({
     icon: React.ComponentType<{ className?: string }>;
   }> = [
     { id: 'none', label: 'Clean / None', description: 'Zero extra particles over your background', icon: EyeOff },
-    { id: 'rain', label: 'Rain Drops', description: 'Falling rain mist', icon: CloudRain },
-    { id: 'snow', label: 'Snowfall', description: 'Drifting winter flakes', icon: Snowflake },
-    { id: 'stars', label: 'Star Dust', description: 'Ambient star sparkles', icon: Sparkles },
-    { id: 'fireflies', label: 'Embers', description: 'Floating embers', icon: Flame },
-    { id: 'fog', label: 'Misty Fog', description: 'Atmospheric mist', icon: CloudFog },
+    { id: 'rain', label: 'Rainfall', description: 'Falling rain mist', icon: CloudRain },
   ];
 
   const handleUpdate = (partial: Partial<WallpaperEffectSettings>) => {

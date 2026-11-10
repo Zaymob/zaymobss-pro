@@ -2,14 +2,14 @@ import React, { useState } from 'react';
 import {
   Copy,
   Check,
-  ArrowClockwise as RefreshCw,
-  LinkSimple as LinkIcon,
+  RefreshCw,
+  Link as LinkIcon,
   ShieldCheck,
-  ArrowSquareOut as ExternalLink,
-  Question as HelpCircle,
-  PaperPlaneRight as Send,
+  ExternalLink,
+  HelpCircle,
+  Send,
   Globe,
-} from '@phosphor-icons/react';
+} from 'lucide-react';
 
 interface LinkFinderViewProps {
   onLaunchProxy?: (url: string) => void;
@@ -167,6 +167,7 @@ export const LinkFinderView: React.FC<LinkFinderViewProps> = ({ onLaunchProxy })
                 className="w-full bg-[#18181f] border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-zinc-200 focus:outline-none focus:border-amber-500/60 font-mono cursor-pointer"
               >
                 <option value="default">Current App Applet Host</option>
+                <option value="my.canva.site">my.canva.site (Canva Portfolio)</option>
                 <option value="diornet.org">diornet.org</option>
                 <option value="studyhub.edu">studyhub.edu</option>
                 <option value="classroom-notes.net">classroom-notes.net</option>

@@ -1,6 +1,6 @@
 {
-  "name": "Dior",
-  "description": "Dior",
+  "name": "Yuno",
+  "description": "Yuno",
   "requestFramePermissions": ["camera", "microphone", "display-capture", "geolocation"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

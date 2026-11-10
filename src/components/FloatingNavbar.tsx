@@ -1,26 +1,26 @@
 import React from 'react';
 import { NavTab } from '../types';
 import {
-  House,
+  Home as House,
   Globe,
-  LinkSimple,
-  FilmStrip,
-  GameController,
-  Television,
-  Robot,
-  ChatCircleText,
-  MusicNotes,
-  Handshake,
-  Gear,
-  ClockCounterClockwise,
+  Link as LinkSimple,
+  Film as FilmStrip,
+  Gamepad2 as GameController,
+  Tv as Television,
+  Bot as Robot,
+  MessageSquare as ChatCircleText,
+  Music as MusicNotes,
+  Users,
+  Settings as Gear,
   ShieldCheck,
   User,
-} from '@phosphor-icons/react';
+} from 'lucide-react';
 
 interface FloatingNavbarProps {
   activeTab: NavTab;
   onNavigate: (tab: NavTab) => void;
   onOpenHistory?: () => void;
+  onOpenPartners?: () => void;
   onOpenProfile?: () => void;
   isAdmin?: boolean;
   onOpenAdminDashboard?: () => void;
@@ -30,6 +30,7 @@ export const FloatingNavbar: React.FC<FloatingNavbarProps> = ({
   activeTab,
   onNavigate,
   onOpenHistory,
+  onOpenPartners,
   onOpenProfile,
   isAdmin,
   onOpenAdminDashboard,
@@ -37,12 +38,10 @@ export const FloatingNavbar: React.FC<FloatingNavbarProps> = ({
   const navItems = [
     { id: 'home' as NavTab, icon: House, title: 'Home' },
     { id: 'games' as NavTab, icon: GameController, title: 'Games' },
-    { id: 'ai' as NavTab, icon: Robot, title: 'Dior Ai' },
+    { id: 'ai' as NavTab, icon: Robot, title: 'AI' },
     { id: 'proxy' as NavTab, icon: Globe, title: 'Proxy' },
-    { id: 'community' as NavTab, icon: ChatCircleText, title: 'Chat' },
     { id: 'movies' as NavTab, icon: FilmStrip, title: 'Cinema' },
     { id: 'music' as NavTab, icon: MusicNotes, title: 'Music' },
-    { id: 'partners' as NavTab, icon: Handshake, title: 'Partners' },
     { id: 'settings' as NavTab, icon: Gear, title: 'Settings' },
   ];
 
@@ -54,7 +53,10 @@ export const FloatingNavbar: React.FC<FloatingNavbarProps> = ({
           onClick={() => onNavigate('home')}
           className="flex items-center space-x-2 text-left cursor-pointer flex-shrink-0"
         >
-          <span className="text-sm font-black text-white tracking-widest uppercase">DIOR</span>
+          <div className="w-6 h-6 rounded-md overflow-hidden border border-[#2b1746] bg-[#0c0714] flex-shrink-0">
+            <img src="/yuno-logo.jpg" alt="Yuno" className="w-full h-full object-cover" />
+          </div>
+          <span className="text-sm font-black text-white tracking-widest uppercase">YUNO</span>
         </button>
 
         {/* Tab Items Navigation */}
@@ -72,7 +74,7 @@ export const FloatingNavbar: React.FC<FloatingNavbarProps> = ({
                     : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
                 }`}
               >
-                <Icon className="w-3.5 h-3.5 flex-shrink-0" weight={isActive ? 'fill' : 'regular'} />
+                <Icon className="w-3.5 h-3.5 flex-shrink-0" />
                 <span>{item.title}</span>
               </button>
             );
@@ -81,16 +83,6 @@ export const FloatingNavbar: React.FC<FloatingNavbarProps> = ({
 
         {/* Quick Utility Actions */}
         <div className="flex items-center space-x-1.5 flex-shrink-0">
-          {onOpenHistory && (
-            <button
-              onClick={onOpenHistory}
-              className="p-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-800 transition-colors flex items-center space-x-1 text-xs"
-              title="Activity & Search / Watch History"
-            >
-              <ClockCounterClockwise className="w-3.5 h-3.5" />
-              <span className="hidden lg:inline">History</span>
-            </button>
-          )}
 
           {isAdmin && onOpenAdminDashboard && (
             <button
@@ -98,7 +90,7 @@ export const FloatingNavbar: React.FC<FloatingNavbarProps> = ({
               className="px-2 py-1.5 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold transition-colors flex items-center space-x-1 text-xs"
               title="Admin Moderation Terminal"
             >
-              <ShieldCheck className="w-3.5 h-3.5" weight="fill" />
+              <ShieldCheck className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Admin</span>
             </button>
           )}

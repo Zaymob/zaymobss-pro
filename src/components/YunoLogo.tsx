@@ -1,5 +1,4 @@
 import React from 'react';
-import yunoLogoImg from '../assets/images/yuno_orbit_logo_1785802876898.jpg';
 
 interface YunoLogoProps {
   className?: string;
@@ -13,10 +12,10 @@ export const YunoLogo: React.FC<YunoLogoProps> = ({
 }) => {
   if (variant === 'badge') {
     return (
-      <div className={`relative overflow-hidden rounded-xl bg-zinc-900 p-0.5 border border-zinc-700 flex items-center justify-center flex-shrink-0 group-hover:border-zinc-500 transition-colors ${className}`}>
+      <div className={`relative overflow-hidden rounded-xl bg-[#0c0714] p-0.5 border border-[#2c1747] flex items-center justify-center flex-shrink-0 transition-colors ${className}`}>
         <img
-          src={yunoLogoImg}
-          alt="YUNØ Logo"
+          src="/yuno-logo.jpg"
+          alt="Yuno Logo"
           referrerPolicy="no-referrer"
           className="w-full h-full object-cover rounded-[10px]"
         />
@@ -26,8 +25,8 @@ export const YunoLogo: React.FC<YunoLogoProps> = ({
 
   return (
     <img
-      src={yunoLogoImg}
-      alt="YUNØ Logo"
+      src="/yuno-logo.jpg"
+      alt="Yuno Logo"
       referrerPolicy="no-referrer"
       className={`object-contain ${className}`}
     />

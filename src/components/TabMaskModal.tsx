@@ -160,20 +160,17 @@ export const TabMaskModal: React.FC<TabMaskModalProps> = ({ isOpen, onClose }) =
   const categories = ['All', 'Google', 'School', 'Tools', 'Reference'];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-      <div className="relative w-full max-w-3xl max-h-[90vh] bg-[#101015] border border-zinc-800 rounded-3xl shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden flex flex-col text-white">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-sm animate-fadeIn">
+      <div className="relative w-full max-w-3xl max-h-[90vh] bg-[#0d0716] border border-[#25143b] rounded-xl shadow-2xl overflow-hidden flex flex-col text-white">
         {/* Header */}
-        <div className="p-5 sm:p-6 border-b border-zinc-800 flex items-center justify-between bg-zinc-950/60">
+        <div className="p-4 sm:p-5 border-b border-[#25143b] flex items-center justify-between bg-[#090510]">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
-              <Shield className="w-5 h-5" />
+            <div className="w-8 h-8 rounded-lg bg-[#1a0e2d] border border-[#3e2264] flex items-center justify-center text-purple-400">
+              <Shield className="w-4 h-4" />
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <h2 className="text-lg font-extrabold text-white">Tab Masking & Stealth Cloaker</h2>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  DISGUISE ENGINE
-                </span>
+                <h2 className="text-sm font-semibold text-white tracking-wide uppercase">Tab Masking & Stealth Cloaker</h2>
               </div>
               <p className="text-xs text-zinc-400">
                 Disguise your browser tab's title & favicon or launch inside an invisible `about:blank` frame.
@@ -183,14 +180,14 @@ export const TabMaskModal: React.FC<TabMaskModalProps> = ({ isOpen, onClose }) =
 
           <button
             onClick={onClose}
-            className="p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer border border-zinc-800"
+            className="p-1.5 rounded-lg bg-[#150a24] hover:bg-[#201036] text-zinc-400 hover:text-white transition-colors cursor-pointer border border-[#2d164a]"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-5">
           {/* Live Browser Tab Preview Bar */}
           <div className="space-y-2">
             <div className="flex items-center justify-between text-[11px] font-mono text-zinc-400 uppercase tracking-wider">
@@ -198,10 +195,10 @@ export const TabMaskModal: React.FC<TabMaskModalProps> = ({ isOpen, onClose }) =
               <span className="text-emerald-400 font-bold">● Active in Browser</span>
             </div>
 
-            <div className="p-3 bg-zinc-950 rounded-2xl border border-zinc-800 shadow-inner">
+            <div className="p-3 bg-[#07040a] rounded-lg border border-[#25143b]">
               <div className="flex items-center space-x-2">
                 {/* Simulated Chrome/Firefox Tab Pill */}
-                <div className="flex items-center space-x-2.5 px-4 py-2 bg-[#181820] rounded-xl border border-zinc-700/80 shadow-md max-w-sm sm:max-w-md w-full">
+                <div className="flex items-center space-x-2.5 px-3 py-1.5 bg-[#140b22] rounded-lg border border-[#2d164a] max-w-sm sm:max-w-md w-full">
                   <img
                     src={currentDisplayIcon}
                     alt="Favicon"
@@ -211,15 +208,15 @@ export const TabMaskModal: React.FC<TabMaskModalProps> = ({ isOpen, onClose }) =
                         'https://www.google.com/favicon.ico';
                     }}
                   />
-                  <span className="text-xs font-semibold text-zinc-200 truncate flex-1 font-sans">
+                  <span className="text-xs font-medium text-zinc-200 truncate flex-1 font-sans">
                     {currentDisplayTitle}
                   </span>
                   <X className="w-3 h-3 text-zinc-500 hover:text-zinc-300 cursor-default flex-shrink-0" />
                 </div>
 
-                <div className="hidden sm:flex items-center space-x-1.5 px-3 py-1.5 bg-zinc-900/60 rounded-xl text-[11px] text-zinc-400 border border-zinc-800">
+                <div className="hidden sm:flex items-center space-x-1.5 px-2.5 py-1 bg-[#0d0716] rounded-lg text-[11px] text-zinc-400 border border-[#25143b]">
                   <span>Tab ID:</span>
-                  <span className="font-mono text-amber-400 font-bold">
+                  <span className="font-mono text-purple-400 font-bold">
                     {settings.activeMaskId.toUpperCase()}
                   </span>
                 </div>
@@ -228,13 +225,13 @@ export const TabMaskModal: React.FC<TabMaskModalProps> = ({ isOpen, onClose }) =
           </div>
 
           {/* Quick about:blank Launcher Action Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Launch about:blank */}
-            <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 flex flex-col justify-between space-y-3">
+            <div className="p-3.5 rounded-lg bg-[#0e0916] border border-[#25143b] flex flex-col justify-between space-y-3">
               <div>
                 <div className="flex items-center space-x-2">
-                  <ExternalLink className="w-4 h-4 text-zinc-300" />
-                  <h3 className="text-sm font-bold text-white">Open in `about:blank`</h3>
+                  <ExternalLink className="w-4 h-4 text-purple-400" />
+                  <h3 className="text-xs font-semibold text-white uppercase tracking-wider">Open in `about:blank`</h3>
                 </div>
                 <p className="text-xs text-zinc-400 mt-1">
                   Embeds the app in a clean `about:blank` tab. Leaves zero history logs and conceals URL bar.
@@ -243,7 +240,7 @@ export const TabMaskModal: React.FC<TabMaskModalProps> = ({ isOpen, onClose }) =
 
               <button
                 onClick={handleLaunchAboutBlank}
-                className="w-full py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs transition-colors flex items-center justify-center space-x-2 cursor-pointer"
+                className="w-full py-2 px-3 rounded-lg bg-[#201236] hover:bg-[#2c1a47] text-white font-semibold text-xs transition-colors flex items-center justify-center space-x-2 cursor-pointer border border-[#552c8c] hover:border-[#793ebd]"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
                 <span>Launch `about:blank` Window</span>
@@ -251,11 +248,11 @@ export const TabMaskModal: React.FC<TabMaskModalProps> = ({ isOpen, onClose }) =
             </div>
 
             {/* Launch Blob URL Cloak */}
-            <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 flex flex-col justify-between space-y-3">
+            <div className="p-3.5 rounded-lg bg-[#0e0916] border border-[#25143b] flex flex-col justify-between space-y-3">
               <div>
                 <div className="flex items-center space-x-2">
-                  <Layers className="w-4 h-4 text-zinc-300" />
-                  <h3 className="text-sm font-bold text-white">Blob URL Cloaker</h3>
+                  <Layers className="w-4 h-4 text-purple-400" />
+                  <h3 className="text-xs font-semibold text-white uppercase tracking-wider">Blob URL Cloaker</h3>
                 </div>
                 <p className="text-xs text-zinc-400 mt-1">
                   Generates an ephemeral `blob:https://...` frame. Useful when popups are restricted.
@@ -264,7 +261,7 @@ export const TabMaskModal: React.FC<TabMaskModalProps> = ({ isOpen, onClose }) =
 
               <button
                 onClick={handleLaunchBlob}
-                className="w-full py-2.5 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs transition-colors flex items-center justify-center space-x-2 cursor-pointer border border-zinc-700"
+                className="w-full py-2 px-3 rounded-lg bg-[#150a24] hover:bg-[#201036] text-zinc-200 font-semibold text-xs transition-colors flex items-center justify-center space-x-2 cursor-pointer border border-[#2d164a] hover:border-[#4d2382]"
               >
                 <Layers className="w-3.5 h-3.5" />
                 <span>Launch Blob Cloaked Tab</span>
@@ -274,14 +271,14 @@ export const TabMaskModal: React.FC<TabMaskModalProps> = ({ isOpen, onClose }) =
 
           {/* Launch Status Feedback */}
           {launchStatus === 'success' && (
-            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/40 text-emerald-300 text-xs font-mono flex items-center space-x-2">
+            <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-mono flex items-center space-x-2">
               <Check className="w-4 h-4" />
               <span>Cloaked window launched successfully in new tab!</span>
             </div>
           )}
 
           {launchStatus === 'blocked' && (
-            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/40 text-rose-300 text-xs font-mono flex items-center space-x-2">
+            <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono flex items-center space-x-2">
               <AlertTriangle className="w-4 h-4" />
               <span>Popup blocked by browser. Please allow popups for this site or try Blob Cloak.</span>
             </div>
@@ -291,21 +288,21 @@ export const TabMaskModal: React.FC<TabMaskModalProps> = ({ isOpen, onClose }) =
           <div className="space-y-3">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
               <div className="flex items-center space-x-2">
-                <span className="text-xs font-bold text-white uppercase tracking-wider font-mono">
-                  Select Tab Disguise Preset
+                <span className="text-xs font-semibold text-white uppercase tracking-wider">
+                  Select Tab Disguise Mask
                 </span>
               </div>
 
               {/* Category Pills */}
-              <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 max-w-full">
+              <div className="flex items-center space-x-1 overflow-x-auto pb-1 max-w-full">
                 {categories.map((cat) => (
                   <button
                     key={cat}
                     onClick={() => setSelectedCategory(cat)}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer border ${
                       selectedCategory === cat
-                        ? 'bg-zinc-700 text-white'
-                        : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800'
+                        ? 'bg-[#201236] text-white border-[#5b2a94] font-semibold'
+                        : 'bg-transparent text-zinc-400 hover:text-white border-transparent hover:border-[#2b1647]'
                     }`}
                   >
                     {cat}
@@ -315,20 +312,20 @@ export const TabMaskModal: React.FC<TabMaskModalProps> = ({ isOpen, onClose }) =
             </div>
 
             {/* Presets Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
               {filteredPresets.map((preset) => {
                 const isSelected = settings.activeMaskId === preset.id;
                 return (
                   <button
                     key={preset.id}
                     onClick={() => handleSelectPreset(preset)}
-                    className={`p-3 rounded-2xl border text-left transition-all flex items-center space-x-3 cursor-pointer group ${
+                    className={`p-2.5 rounded-lg border text-left transition-colors flex items-center space-x-2.5 cursor-pointer group ${
                       isSelected
-                        ? 'bg-amber-500/15 border-amber-500/60 shadow-[0_0_20px_rgba(245,158,11,0.15)] ring-1 ring-amber-500/40'
-                        : 'bg-zinc-900/70 border-zinc-800/80 hover:bg-zinc-900 hover:border-zinc-700'
+                        ? 'bg-[#201236] border-[#5b2a94] text-white font-medium'
+                        : 'bg-[#07040a] border-[#25143b] text-zinc-300 hover:bg-[#130b20] hover:border-[#3e2264]'
                     }`}
                   >
-                    <div className="w-9 h-9 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-center p-1.5 flex-shrink-0 shadow-inner group-hover:scale-105 transition-transform">
+                    <div className="w-7 h-7 rounded bg-[#130b20] border border-[#25143b] flex items-center justify-center p-1 flex-shrink-0">
                       <img
                         src={preset.icon}
                         alt={preset.name}
@@ -342,13 +339,11 @@ export const TabMaskModal: React.FC<TabMaskModalProps> = ({ isOpen, onClose }) =
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-white truncate block">
+                        <span className="text-xs font-semibold text-white truncate block">
                           {preset.name}
                         </span>
                         {isSelected && (
-                          <div className="w-4 h-4 rounded-full bg-amber-400 text-black flex items-center justify-center flex-shrink-0">
-                            <Check className="w-2.5 h-2.5 stroke-[3]" />
-                          </div>
+                          <Check className="w-3.5 h-3.5 text-purple-400 flex-shrink-0" />
                         )}
                       </div>
                       <p className="text-[10px] text-zinc-400 truncate mt-0.5">
@@ -362,14 +357,14 @@ export const TabMaskModal: React.FC<TabMaskModalProps> = ({ isOpen, onClose }) =
           </div>
 
           {/* Custom Disguise Inputs */}
-          <div className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800 space-y-3">
+          <div className="p-3.5 rounded-lg bg-[#0e0916] border border-[#25143b] space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold font-mono text-zinc-300 uppercase">
+              <span className="text-xs font-semibold text-white uppercase tracking-wider">
                 Custom Tab Disguise
               </span>
               <button
                 onClick={handleResetToDefault}
-                className="text-[11px] text-zinc-400 hover:text-amber-300 flex items-center space-x-1 transition-colors cursor-pointer"
+                className="text-[11px] text-zinc-400 hover:text-purple-300 flex items-center space-x-1 transition-colors cursor-pointer"
               >
                 <RotateCcw className="w-3 h-3" />
                 <span>Reset to Default</span>
@@ -386,7 +381,7 @@ export const TabMaskModal: React.FC<TabMaskModalProps> = ({ isOpen, onClose }) =
                   placeholder="e.g. My Homework - Biology Doc"
                   value={settings.customTitle}
                   onChange={(e) => handleCustomChange(e.target.value, settings.customIcon)}
-                  className="w-full px-3.5 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-500/60"
+                  className="w-full px-3 py-1.5 bg-[#07040a] border border-[#2a1744] rounded-lg text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#6b21a8] transition-colors"
                 />
               </div>
 
@@ -400,10 +395,10 @@ export const TabMaskModal: React.FC<TabMaskModalProps> = ({ isOpen, onClose }) =
                     placeholder="https://example.com/favicon.ico"
                     value={settings.customIcon}
                     onChange={(e) => handleCustomChange(settings.customTitle, e.target.value)}
-                    className="flex-1 px-3.5 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-500/60"
+                    className="flex-1 px-3 py-1.5 bg-[#07040a] border border-[#2a1744] rounded-lg text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#6b21a8] transition-colors"
                   />
-                  <label className="p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 cursor-pointer flex-shrink-0" title="Upload Favicon Image">
-                    <Upload className="w-4 h-4 text-amber-400" />
+                  <label className="p-1.5 rounded-lg bg-[#140b22] hover:bg-[#1e1333] border border-[#2a1744] text-zinc-300 cursor-pointer flex-shrink-0" title="Upload Favicon Image">
+                    <Upload className="w-4 h-4 text-purple-400" />
                     <input
                       type="file"
                       accept="image/*"
@@ -428,29 +423,29 @@ export const TabMaskModal: React.FC<TabMaskModalProps> = ({ isOpen, onClose }) =
           </div>
 
           {/* Emergency Panic Key & Anti-Close Protection */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2 border-t border-zinc-800/80">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-[#25143b]">
             {/* Panic Key Config */}
-            <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-2.5">
+            <div className="p-3.5 rounded-lg bg-[#0e0916] border border-[#25143b] space-y-2.5">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
-                  <Keyboard className="w-4 h-4 text-rose-400" />
-                  <span className="text-xs font-bold text-white">Emergency Panic Hotkey</span>
+                  <Keyboard className="w-4 h-4 text-purple-400" />
+                  <span className="text-xs font-semibold text-white uppercase tracking-wider">Emergency Panic Hotkey</span>
                 </div>
                 <button
                   onClick={() => setIsRecordingPanicKey(true)}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold transition-all cursor-pointer ${
+                  className={`px-2 py-0.5 rounded-lg text-[11px] font-mono font-semibold transition-all cursor-pointer border ${
                     isRecordingPanicKey
-                      ? 'bg-rose-500 text-white animate-pulse'
-                      : 'bg-zinc-800 hover:bg-zinc-700 text-amber-300 border border-zinc-700'
+                      ? 'bg-purple-600 text-white border-purple-400 animate-pulse'
+                      : 'bg-[#150a24] text-purple-300 border-[#3e2264] hover:border-purple-400'
                   }`}
                 >
-                  {isRecordingPanicKey ? 'Press any key...' : `Key: [ ${settings.panicKey || ']'} ]`}
+                  {isRecordingPanicKey ? 'Press any key...' : `Key: [ ${settings.panicKey || '`'} ]`}
                 </button>
               </div>
 
               <div>
                 <label className="text-[10px] font-mono text-zinc-400 block mb-1">
-                  Decoy Redirect URL (Triggers on Panic Key)
+                  Decoy Redirect URL
                 </label>
                 <input
                   type="url"
@@ -461,29 +456,29 @@ export const TabMaskModal: React.FC<TabMaskModalProps> = ({ isOpen, onClose }) =
                     saveCloakSettings(updated);
                   }}
                   placeholder="https://classroom.google.com"
-                  className="w-full px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-zinc-300 placeholder-zinc-500 focus:outline-none focus:border-rose-500"
+                  className="w-full px-3 py-1.5 bg-[#07040a] border border-[#2a1744] rounded-lg text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#6b21a8] transition-colors"
                 />
               </div>
             </div>
 
             {/* Anti-Close Prompt Switch */}
-            <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 flex items-center justify-between">
+            <div className="p-3.5 rounded-lg bg-[#0e0916] border border-[#25143b] flex items-center justify-between">
               <div className="space-y-1 max-w-[200px]">
                 <div className="flex items-center space-x-2">
-                  <Lock className="w-4 h-4 text-emerald-400" />
-                  <span className="text-xs font-bold text-white">Anti-Close Guard</span>
+                  <Lock className="w-4 h-4 text-purple-400" />
+                  <span className="text-xs font-semibold text-white uppercase tracking-wider">Anti-Close Guard</span>
                 </div>
                 <p className="text-[11px] text-zinc-400">
-                  Prompts confirmation before tab closes so you won't lose your work or get closed out.
+                  Prompts confirmation before tab closes to protect your work and tab state.
                 </p>
               </div>
 
               <button
                 onClick={handleToggleAntiClose}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer border ${
                   settings.antiCloseEnabled
-                    ? 'bg-emerald-500 text-black border-emerald-400 shadow-md'
-                    : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-white'
+                    ? 'bg-purple-600 text-white border-purple-500'
+                    : 'bg-[#150a24] text-zinc-400 border-[#2d164a] hover:text-white hover:border-[#4d2382]'
                 }`}
               >
                 {settings.antiCloseEnabled ? 'Protected' : 'Disabled'}
@@ -493,14 +488,14 @@ export const TabMaskModal: React.FC<TabMaskModalProps> = ({ isOpen, onClose }) =
         </div>
 
         {/* Footer */}
-        <div className="p-4 sm:p-5 border-t border-zinc-800 bg-zinc-950/80 flex items-center justify-between">
+        <div className="p-3.5 sm:p-4 border-t border-[#25143b] bg-[#090510] flex items-center justify-between">
           <span className="text-xs text-zinc-500 font-mono">
             Mask applied in real-time. Safe to close this dialog.
           </span>
 
           <button
             onClick={onClose}
-            className="px-5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-extrabold text-xs transition-colors cursor-pointer border border-zinc-700"
+            className="px-4 py-1.5 rounded-lg bg-[#201236] hover:bg-[#2c1a47] text-white font-semibold text-xs transition-colors cursor-pointer border border-[#552c8c] hover:border-[#793ebd]"
           >
             Done
           </button>

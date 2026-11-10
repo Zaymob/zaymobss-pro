@@ -1,0 +1,50 @@
+{
+  "systemAnnouncements": [],
+  "systemPartners": [],
+  "globalAnnouncements": [],
+  "communityMessages": [],
+  "customGroupsList": [],
+  "userDMs": [],
+  "bannedRecords": [],
+  "customBanScreenImage": "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1200&auto=format&fit=crop&q=80",
+  "userReportsList": [],
+  "bugReportsList": [],
+  "friendRequestsList": [],
+  "userFriends": [],
+  "banAppeals": [
+    {
+      "id": "appeal-demo-1",
+      "username": "Vortex_99",
+      "reason": "I promise not to spam vibecoded slop in global chat anymore. Please grant me a second chance!",
+      "status": "PENDING",
+      "timestamp": "10:07 PM",
+      "type": "BAN"
+    }
+  ],
+  "customAdminPasscode": "8560",
+  "userTimeouts": [
+    [
+      "BadActor",
+      1792105634564
+    ]
+  ],
+  "userTimeoutDetails": [
+    [
+      "BadActor",
+      {
+        "reason": "Automated 72-hour chat ban for hate speech / slur violation",
+        "adminName": "AutoMod",
+        "durationMinutes": 4320
+      }
+    ]
+  ],
+  "userStreaks": [
+    [
+      "tester",
+      {
+        "count": 1,
+        "lastDate": "2026-10-12"
+      }
+    ]
+  ]
+}

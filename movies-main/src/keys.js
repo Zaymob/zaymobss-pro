@@ -44,11 +44,9 @@ export class RotatingKey {
     this.refreshing = this.discover()
       .then((list) => {
         const uniq = [...new Set(list)];
-        console.log(`[keys] ${this.name}: key failed, found ${uniq.length} candidate(s)`);
         return uniq;
       })
-      .catch((e) => {
-        console.log(`[keys] ${this.name}: discovery failed:`, e.message);
+      .catch(() => {
         return [];
       })
       .finally(() => (this.refreshing = null));

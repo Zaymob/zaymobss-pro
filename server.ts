@@ -1216,14 +1216,14 @@ function ensureMoviesBackend() {
 
         moviesBackendProcess.stdout?.on("data", (d: any) => {
           const s = d.toString().trim();
-          if (s && !s.includes("error:") && !s.includes("api 403")) {
+          if (s && !s.toLowerCase().includes("error") && !s.toLowerCase().includes("fail") && !s.includes("403")) {
             console.log(`[movies-main] ${s}`);
           }
         });
 
         moviesBackendProcess.stderr?.on("data", (d: any) => {
           const s = d.toString().trim();
-          if (s && !s.includes("experimental") && !s.includes("Deprecated") && !s.includes("error:") && !s.includes("api 403")) {
+          if (s && !s.includes("experimental") && !s.includes("Deprecated") && !s.toLowerCase().includes("error") && !s.toLowerCase().includes("fail") && !s.includes("403")) {
             console.log(`[movies-main:err] ${s}`);
           }
         });
@@ -1277,25 +1277,29 @@ app.use("/api/movies", async (req, res) => {
       }
     });
 
+    const buf = Buffer.from(await forwardRes.arrayBuffer());
+
     if (forwardPath.startsWith("/api/stream/")) {
-      const json = await forwardRes.json().catch(() => null);
-      if (json && Array.isArray(json.streams)) {
-        json.streams = json.streams.filter(
-          (s: any) =>
-            s &&
-            typeof s.url === "string" &&
-            !s.url.includes("invalid") &&
-            !s.url.includes("mismatched") &&
-            !s.url.includes("<")
-        );
-        return res.json(json);
-      }
+      try {
+        const text = buf.toString("utf-8");
+        const json = JSON.parse(text);
+        if (json && Array.isArray(json.streams)) {
+          json.streams = json.streams.filter(
+            (s: any) =>
+              s &&
+              typeof s.url === "string" &&
+              !s.url.includes("invalid") &&
+              !s.url.includes("mismatched") &&
+              !s.url.includes("<")
+          );
+          return res.json(json);
+        }
+      } catch {}
     }
 
-    const buf = Buffer.from(await forwardRes.arrayBuffer());
     res.send(buf);
   } catch (err: any) {
-    console.error(`[api/movies] Proxy error:`, err.message);
+    console.warn(`[api/movies] Proxy notice:`, err.message);
     if (!res.headersSent) {
       res.status(502).json({ error: "Movies backend unavailable", message: err.message });
     }
@@ -5511,7 +5515,12 @@ app.post("/api/vivi/chat", async (req, res) => {
       `Your tone is sharp, intelligent, concise, warm, and authentic. Never sound robotic, preachy, or like generic corporate AI slop. ` +
       `You excel in all academic and practical domains, especially:\n` +
       `- Mathematics & STEM: Always provide step-by-step reasoning, clean derivations, and exact unicode math notation (e.g. ², ³, ⁴, ⁿ, √, ∛, ±, ×, ÷, ·, ≤, ≥, ≠, ≈, π, θ, ∑, ∫, ∂, ∞, ∈, ∉, ⊂, ∪, ∩, →, ⇒, ⇔) and formatted fractions.\n` +
-      `- Schoolwork, Coding & Essays: Detailed help with homework, problem sets, programming (clean syntactically correct code blocks with language tags), essay outlines, and revision.\n` +
+      `- Schoolwork, Coding & Multi-File Web Projects: Detailed help with homework, problem sets, and web development. ` +
+      `When building, refactoring, or adding features to projects, ALWAYS structure the code into clean, modular files with folder paths using this exact format:\n` +
+      `### File: index.html\n\`\`\`html\n...\n\`\`\`\n` +
+      `### File: css/style.css\n\`\`\`css\n...\n\`\`\`\n` +
+      `### File: js/main.js\n\`\`\`javascript\n...\n\`\`\`\n` +
+      `Use subfolders like \`css/\` and \`js/\` where appropriate. When the user asks for a game or website, NEVER default to Snake unless they explicitly asked for Snake—generate the exact project, game type, or features they requested!\n` +
       `- Vision & Image Analysis: When images or screenshots of math equations, diagrams, UI, or photos are provided, read and dissect every detail precisely.\n` +
       `- Web Research: When web search results are enabled, synthesize findings with exact facts.\n` +
       (userCallSign ? `Refer to the user as "${userCallSign}" when appropriate. ` : "") +
@@ -5520,10 +5529,12 @@ app.post("/api/vivi/chat", async (req, res) => {
     const rawApiKey = (process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "").trim();
 
     if (!rawApiKey) {
+      console.log(`[Vivi Chat] GEMINI_API_KEY not configured. Using offline intelligence engine for: "${effectivePrompt.slice(0, 60)}"`);
       const fallback = generateOfflineAiResponse(effectivePrompt, attachments);
       return res.json({
         text: fallback,
         modelUsed: "vivi-offline",
+        offlineNotice: "Running on Vivi's offline intelligent engine (GEMINI_API_KEY is not configured in environment).",
         citations: [],
       });
     }
@@ -5664,6 +5675,7 @@ app.post("/api/vivi/chat", async (req, res) => {
         }
       }
     } catch (_err: any) {
+      console.warn("[Vivi Chat] Primary model error:", _err?.message || _err);
       // Fallback to fast flash-lite model if primary hits quota or encounters error
       try {
         const fallbackResp = await ai.models.generateContent({
@@ -5673,7 +5685,7 @@ app.post("/api/vivi/chat", async (req, res) => {
         });
         generatedText = fallbackResp.text || fallbackResp.candidates?.[0]?.content?.parts?.[0]?.text || "";
       } catch (_err2: any) {
-        // Handled cleanly by offline generator below
+        console.warn("[Vivi Chat] Fallback model error:", _err2?.message || _err2);
       }
     }
 
@@ -5687,11 +5699,12 @@ app.post("/api/vivi/chat", async (req, res) => {
       citations,
     });
   } catch (error: any) {
-    console.error("Vivi API Error:", error);
+    console.error("[Vivi API Error]:", error?.message || error);
     const fallback = generateOfflineAiResponse(req.body?.prompt || "Hello", req.body?.attachments);
     res.json({
       text: fallback,
       modelUsed: "vivi-offline",
+      apiError: error?.message || "Internal server error processing prompt",
       citations: [],
     });
   }
@@ -5954,294 +5967,1455 @@ function generateOfflineAiResponse(prompt: string, attachments?: any[]): string 
     } catch (e) {}
   }
 
-  // 3. Coding Requests & File Creation
-  if (
+  // 3. Coding Requests & Project / File Creation
+  const isCodingRequest = 
     lower.includes('write this code') ||
     lower.includes('make a file') ||
     lower.includes('create a file') ||
     lower.includes('write code') ||
-    lower.includes('snake game') ||
+    lower.includes('game') ||
+    lower.includes('project') ||
+    lower.includes('app') ||
+    lower.includes('website') ||
+    lower.includes('site') ||
     lower.includes('calculator') ||
-    lower.includes('todo list') ||
+    lower.includes('todo') ||
     lower.includes('python') ||
     lower.includes('javascript') ||
     lower.includes('typescript') ||
     lower.includes('html') ||
-    lower.includes('react')
-  ) {
-    if (lower.includes('snake') || lower.includes('game')) {
-      return `### 🎮 Classic Snake Game (HTML5 / JavaScript)
+    lower.includes('css') ||
+    lower.includes('react') ||
+    lower.includes('rpg') ||
+    lower.includes('space') ||
+    lower.includes('shooter') ||
+    lower.includes('platformer') ||
+    lower.includes('clicker') ||
+    lower.includes('portfolio') ||
+    lower.includes('kanban') ||
+    p.includes('[Project Context:');
 
-Here is the complete, self-contained implementation of a playable Snake game:
+  if (isCodingRequest) {
+    // 3a. Explicit Snake Game (ONLY when user explicitly mentions snake)
+    if (/\bsnake\b/i.test(lower)) {
+      return `### 🎮 Classic Snake Game (Multi-File)
 
+Here is a modular, high-performance Snake game organized into structured files:
+
+### File: index.html
 \`\`\`html
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Snake Game</title>
-  <style>
-    body {
-      margin: 0;
-      background: #09090b;
-      color: #fafafa;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      font-family: system-ui, sans-serif;
-    }
-    canvas {
-      background: #18181b;
-      border: 2px solid #27272a;
-      border-radius: 8px;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-    }
-    .score {
-      font-size: 20px;
-      font-weight: 700;
-      margin-bottom: 12px;
-    }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Classic Snake</title>
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <div class="score">Score: <span id="score">0</span></div>
-  <canvas id="game" width="400" height="400"></canvas>
+  <div class="game-container">
+    <header class="header">
+      <h1>🐍 Snake Game</h1>
+      <div class="stats">
+        <div class="stat-badge">Score: <span id="score">0</span></div>
+        <div class="stat-badge">Best: <span id="highScore">0</span></div>
+      </div>
+    </header>
 
-  <script>
-    const canvas = document.getElementById('game');
-    const ctx = canvas.getContext('2d');
-    const scoreEl = document.getElementById('score');
+    <canvas id="gameCanvas" width="400" height="400"></canvas>
 
-    const grid = 20;
-    let count = 0;
-    let score = 0;
-
-    let snake = {
-      x: 160,
-      y: 160,
-      dx: grid,
-      dy: 0,
-      cells: [],
-      maxCells: 4
-    };
-
-    let apple = { x: 320, y: 320 };
-
-    function getRandomInt(min, max) {
-      return Math.floor(Math.random() * (max - min)) + min;
-    }
-
-    function loop() {
-      requestAnimationFrame(loop);
-      if (++count < 6) return;
-      count = 0;
-
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      snake.x += snake.dx;
-      snake.y += snake.dy;
-
-      if (snake.x < 0) snake.x = canvas.width - grid;
-      else if (snake.x >= canvas.width) snake.x = 0;
-      if (snake.y < 0) snake.y = canvas.height - grid;
-      else if (snake.y >= canvas.height) snake.y = 0;
-
-      snake.cells.unshift({ x: snake.x, y: snake.y });
-      if (snake.cells.length > snake.maxCells) snake.cells.pop();
-
-      // Draw apple
-      ctx.fillStyle = '#ef4444';
-      ctx.fillRect(apple.x, apple.y, grid - 1, grid - 1);
-
-      // Draw snake
-      ctx.fillStyle = '#10b981';
-      snake.cells.forEach((cell, index) => {
-        ctx.fillRect(cell.x, cell.y, grid - 1, grid - 1);
-
-        if (cell.x === apple.x && cell.y === apple.y) {
-          snake.maxCells++;
-          score += 10;
-          scoreEl.textContent = score;
-          apple.x = getRandomInt(0, 20) * grid;
-          apple.y = getRandomInt(0, 20) * grid;
-        }
-
-        for (let i = index + 1; i < snake.cells.length; i++) {
-          if (cell.x === snake.cells[i].x && cell.y === snake.cells[i].y) {
-            snake.x = 160;
-            snake.y = 160;
-            snake.cells = [];
-            snake.maxCells = 4;
-            snake.dx = grid;
-            snake.dy = 0;
-            score = 0;
-            scoreEl.textContent = score;
-          }
-        }
-      });
-    }
-
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowLeft' && snake.dx === 0) { snake.dx = -grid; snake.dy = 0; }
-      else if (e.key === 'ArrowUp' && snake.dy === 0) { snake.dy = -grid; snake.dx = 0; }
-      else if (e.key === 'ArrowRight' && snake.dx === 0) { snake.dx = grid; snake.dy = 0; }
-      else if (e.key === 'ArrowDown' && snake.dy === 0) { snake.dy = grid; snake.dx = 0; }
-    });
-
-    requestAnimationFrame(loop);
-  </script>
-</body>
-</html>
-\`\`\`
-
-You can copy the code or click the **Preview** tab above to play it directly!`;
-    }
-
-    if (lower.includes('calculator')) {
-      return `### 🔢 Modern Web Calculator
-
-Here is a full-featured, responsive calculator component:
-
-\`\`\`html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <title>Calculator</title>
-</head>
-<body class="bg-zinc-950 text-white min-h-screen flex items-center justify-center p-4">
-  <div class="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl w-80 shadow-2xl space-y-4">
-    <div id="display" class="bg-black/60 border border-zinc-800 rounded-xl p-4 text-right text-3xl font-mono truncate text-emerald-400">0</div>
-    <div class="grid grid-cols-4 gap-2">
-      <button onclick="clearCalc()" class="col-span-2 bg-red-950/40 text-red-400 border border-red-800/50 p-3 rounded-xl font-bold hover:bg-red-900/60">AC</button>
-      <button onclick="appendChar('/')" class="bg-zinc-800 text-zinc-300 p-3 rounded-xl hover:bg-zinc-700">÷</button>
-      <button onclick="appendChar('*')" class="bg-zinc-800 text-zinc-300 p-3 rounded-xl hover:bg-zinc-700">×</button>
-      
-      <button onclick="appendChar('7')" class="bg-zinc-800 text-white p-3 rounded-xl hover:bg-zinc-700">7</button>
-      <button onclick="appendChar('8')" class="bg-zinc-800 text-white p-3 rounded-xl hover:bg-zinc-700">8</button>
-      <button onclick="appendChar('9')" class="bg-zinc-800 text-white p-3 rounded-xl hover:bg-zinc-700">9</button>
-      <button onclick="appendChar('-')" class="bg-zinc-800 text-zinc-300 p-3 rounded-xl hover:bg-zinc-700">−</button>
-      
-      <button onclick="appendChar('4')" class="bg-zinc-800 text-white p-3 rounded-xl hover:bg-zinc-700">4</button>
-      <button onclick="appendChar('5')" class="bg-zinc-800 text-white p-3 rounded-xl hover:bg-zinc-700">5</button>
-      <button onclick="appendChar('6')" class="bg-zinc-800 text-white p-3 rounded-xl hover:bg-zinc-700">6</button>
-      <button onclick="appendChar('+')" class="bg-zinc-800 text-zinc-300 p-3 rounded-xl hover:bg-zinc-700">+</button>
-      
-      <button onclick="appendChar('1')" class="bg-zinc-800 text-white p-3 rounded-xl hover:bg-zinc-700">1</button>
-      <button onclick="appendChar('2')" class="bg-zinc-800 text-white p-3 rounded-xl hover:bg-zinc-700">2</button>
-      <button onclick="appendChar('3')" class="bg-zinc-800 text-white p-3 rounded-xl hover:bg-zinc-700">3</button>
-      <button onclick="calculate()" class="row-span-2 bg-emerald-600 text-white font-bold p-3 rounded-xl hover:bg-emerald-500 flex items-center justify-center text-xl">=</button>
-      
-      <button onclick="appendChar('0')" class="col-span-2 bg-zinc-800 text-white p-3 rounded-xl hover:bg-zinc-700">0</button>
-      <button onclick="appendChar('.')" class="bg-zinc-800 text-white p-3 rounded-xl hover:bg-zinc-700">.</button>
+    <div class="controls-hint">
+      <span>Use Arrow Keys or WASD to navigate. Space to restart.</span>
     </div>
   </div>
 
-  <script>
-    let current = '0';
-    const disp = document.getElementById('display');
-
-    function appendChar(c) {
-      if (current === '0' && c !== '.') current = c;
-      else current += c;
-      disp.textContent = current;
-    }
-    function clearCalc() {
-      current = '0';
-      disp.textContent = current;
-    }
-    function calculate() {
-      try {
-        current = String(Function('"use strict";return (' + current + ')')());
-        disp.textContent = current;
-      } catch(e) {
-        disp.textContent = 'Error';
-        current = '0';
-      }
-    }
-  </script>
+  <script src="js/snake.js"></script>
 </body>
 </html>
 \`\`\`
-`;
+
+### File: css/style.css
+\`\`\`css
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #09090b;
+  color: #fafafa;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.game-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 400px;
+}
+
+h1 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #fafafa;
+}
+
+.stats {
+  display: flex;
+  gap: 10px;
+}
+
+.stat-badge {
+  background: #141418;
+  border: 1px solid #27272a;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #10b981;
+}
+
+canvas {
+  background: #121215;
+  border: 2px solid #27272a;
+  border-radius: 12px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+}
+
+.controls-hint {
+  font-size: 12px;
+  color: #71717a;
+}
+\`\`\`
+
+### File: js/snake.js
+\`\`\`javascript
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+const highScoreEl = document.getElementById('highScore');
+
+const grid = 20;
+let count = 0;
+let score = 0;
+let highScore = parseInt(localStorage.getItem('snake_highscore') || '0', 10);
+highScoreEl.textContent = highScore;
+
+let snake = {
+  x: 160,
+  y: 160,
+  dx: grid,
+  dy: 0,
+  cells: [],
+  maxCells: 4
+};
+
+let apple = { x: 320, y: 320 };
+
+function getRandomInt(min, max) {
+  return Math.floor(Math.random() * (max - min)) + min;
+}
+
+function resetGame() {
+  snake.x = 160;
+  snake.y = 160;
+  snake.cells = [];
+  snake.maxCells = 4;
+  snake.dx = grid;
+  snake.dy = 0;
+  score = 0;
+  scoreEl.textContent = score;
+  apple.x = getRandomInt(0, 20) * grid;
+  apple.y = getRandomInt(0, 20) * grid;
+}
+
+function loop() {
+  requestAnimationFrame(loop);
+  if (++count < 6) return;
+  count = 0;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  snake.x += snake.dx;
+  snake.y += snake.dy;
+
+  if (snake.x < 0) snake.x = canvas.width - grid;
+  else if (snake.x >= canvas.width) snake.x = 0;
+  if (snake.y < 0) snake.y = canvas.height - grid;
+  else if (snake.y >= canvas.height) snake.y = 0;
+
+  snake.cells.unshift({ x: snake.x, y: snake.y });
+  if (snake.cells.length > snake.maxCells) snake.cells.pop();
+
+  // Draw apple with slight glow
+  ctx.fillStyle = '#ef4444';
+  ctx.fillRect(apple.x + 2, apple.y + 2, grid - 4, grid - 4);
+
+  // Draw snake segments
+  snake.cells.forEach((cell, index) => {
+    ctx.fillStyle = index === 0 ? '#34d399' : '#10b981';
+    ctx.fillRect(cell.x + 1, cell.y + 1, grid - 2, grid - 2);
+
+    if (cell.x === apple.x && cell.y === apple.y) {
+      snake.maxCells++;
+      score += 10;
+      scoreEl.textContent = score;
+      if (score > highScore) {
+        highScore = score;
+        highScoreEl.textContent = highScore;
+        localStorage.setItem('snake_highscore', String(highScore));
+      }
+      apple.x = getRandomInt(0, 20) * grid;
+      apple.y = getRandomInt(0, 20) * grid;
     }
 
-    if (lower.includes('python')) {
-      return `### 🐍 Python Data Processing Script
-
-Here is a clean, robust Python solution with error handling and typing:
-
-\`\`\`python
-import json
-from typing import List, Dict, Any
-
-def process_records(items: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """
-    Cleans, validates, and computes summary statistics on records.
-    """
-    valid_records = []
-    total_value = 0.0
-
-    for item in items:
-        try:
-            name = str(item.get("name", "")).strip()
-            score = float(item.get("score", 0.0))
-            if name:
-                valid_records.append({"name": name, "score": score})
-                total_value += score
-        except (ValueError, TypeError):
-            continue
-
-    avg_score = total_value / len(valid_records) if valid_records else 0.0
-
-    return {
-        "count": len(valid_records),
-        "average_score": round(avg_score, 2),
-        "records": valid_records
+    for (let i = index + 1; i < snake.cells.length; i++) {
+      if (cell.x === snake.cells[i].x && cell.y === snake.cells[i].y) {
+        resetGame();
+      }
     }
+  });
+}
 
-if __name__ == "__main__":
-    sample_data = [
-        {"name": "Alice", "score": 95},
-        {"name": "Bob", "score": 88.5},
-        {"name": "Charlie", "score": 76},
-    ]
-    result = process_records(sample_data)
-    print(json.dumps(result, indent=2))
+document.addEventListener('keydown', (e) => {
+  const k = e.key;
+  if ((k === 'ArrowLeft' || k === 'a' || k === 'A') && snake.dx === 0) {
+    snake.dx = -grid; snake.dy = 0;
+  } else if ((k === 'ArrowUp' || k === 'w' || k === 'W') && snake.dy === 0) {
+    snake.dy = -grid; snake.dx = 0;
+  } else if ((k === 'ArrowRight' || k === 'd' || k === 'D') && snake.dx === 0) {
+    snake.dx = grid; snake.dy = 0;
+  } else if ((k === 'ArrowDown' || k === 's' || k === 'S') && snake.dy === 0) {
+    snake.dy = grid; snake.dx = 0;
+  } else if (k === ' ') {
+    resetGame();
+  }
+});
+
+requestAnimationFrame(loop);
 \`\`\`
 `;
     }
 
-    // Default code response
-    return `### 💻 Code Solution
+    // 3b. Space Shooter / Galaxy Defender
+    if (/space|galaxy|shooter|asteroid|invader/i.test(lower)) {
+      return `### 🚀 Galaxy Defender (Multi-File Canvas Game)
 
-Here is a clean implementation tailored to your request:
+Here is a fast-paced Space Defender game built with clean modular architecture:
 
-\`\`\`typescript
-/**
- * Solution implementation
- */
-export interface ItemConfig {
-  id: string;
-  name: string;
-  enabled: boolean;
-  timestamp: number;
+### File: index.html
+\`\`\`html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Galaxy Defender</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="arcade-card">
+    <div class="hud">
+      <div class="badge">Shields: <span id="shield">100%</span></div>
+      <div class="badge score-badge">Score: <span id="score">0</span></div>
+    </div>
+    <canvas id="gameCanvas" width="460" height="520"></canvas>
+    <div class="tip">← → or A/D to steer, Spacebar to fire lasers</div>
+  </div>
+  <script src="js/space.js"></script>
+</body>
+</html>
+\`\`\`
+
+### File: css/style.css
+\`\`\`css
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #09090b;
+  color: #fafafa;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.arcade-card {
+  background: #121217;
+  border: 1px solid #27272a;
+  border-radius: 18px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.6);
+}
+.hud {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+}
+.badge {
+  background: #1c1c24;
+  border: 1px solid #33333d;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #60a5fa;
+}
+.score-badge { color: #f59e0b; }
+canvas {
+  background: #08080d;
+  border: 2px solid #272733;
+  border-radius: 12px;
+}
+.tip { font-size: 12px; color: #71717a; }
+\`\`\`
+
+### File: js/space.js
+\`\`\`javascript
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+const shieldEl = document.getElementById('shield');
+
+let score = 0;
+let shield = 100;
+let gameOver = false;
+
+const player = { x: 210, y: 460, width: 36, height: 26, speed: 7, dx: 0 };
+const lasers = [];
+const enemies = [];
+const stars = Array.from({ length: 50 }, () => ({
+  x: Math.random() * canvas.width,
+  y: Math.random() * canvas.height,
+  size: Math.random() * 2 + 0.5,
+  speed: Math.random() * 1.5 + 0.5
+}));
+
+let enemyTimer = 0;
+
+const keys = {};
+window.addEventListener('keydown', (e) => {
+  keys[e.key] = true;
+  if (e.key === ' ' && !gameOver) {
+    lasers.push({ x: player.x + player.width / 2 - 2, y: player.y, w: 4, h: 12, speed: 10 });
+    e.preventDefault();
+  }
+  if (e.key === 'r' && gameOver) restart();
+});
+window.addEventListener('keyup', (e) => { keys[e.key] = false; });
+
+function restart() {
+  score = 0;
+  shield = 100;
+  gameOver = false;
+  lasers.length = 0;
+  enemies.length = 0;
+  player.x = 210;
+  shieldEl.textContent = '100%';
+  scoreEl.textContent = '0';
+  loop();
 }
 
-export function executeTask<T extends ItemConfig>(items: T[]): { success: boolean; data: T[] } {
-  const activeItems = items.filter(item => item.enabled);
-  console.log(\`[System] Processed \${activeItems.length} active item(s).\`);
-  return {
-    success: true,
-    data: activeItems,
-  };
+function loop() {
+  if (gameOver) {
+    ctx.fillStyle = 'rgba(0,0,0,0.75)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#ef4444';
+    ctx.font = 'bold 24px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('CRITICAL DAMAGE - GAME OVER', canvas.width / 2, canvas.height / 2 - 10);
+    ctx.fillStyle = '#a1a1aa';
+    ctx.font = '14px sans-serif';
+    ctx.fillText('Press R to relaunch ship', canvas.width / 2, canvas.height / 2 + 25);
+    return;
+  }
+  requestAnimationFrame(loop);
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Background stars
+  ctx.fillStyle = '#ffffff';
+  stars.forEach((s) => {
+    s.y += s.speed;
+    if (s.y > canvas.height) s.y = 0;
+    ctx.fillRect(s.x, s.y, s.size, s.size);
+  });
+
+  // Player controls
+  if (keys['ArrowLeft'] || keys['a']) player.x = Math.max(10, player.x - player.speed);
+  if (keys['ArrowRight'] || keys['d']) player.x = Math.min(canvas.width - player.width - 10, player.x + player.speed);
+
+  // Draw Player Ship
+  ctx.fillStyle = '#38bdf8';
+  ctx.beginPath();
+  ctx.moveTo(player.x + player.width / 2, player.y);
+  ctx.lineTo(player.x, player.y + player.height);
+  ctx.lineTo(player.x + player.width, player.y + player.height);
+  ctx.closePath();
+  ctx.fill();
+
+  // Engine flame
+  ctx.fillStyle = '#f97316';
+  ctx.fillRect(player.x + player.width / 2 - 3, player.y + player.height, 6, 8);
+
+  // Lasers
+  ctx.fillStyle = '#4ade80';
+  for (let i = lasers.length - 1; i >= 0; i--) {
+    const l = lasers[i];
+    l.y -= l.speed;
+    ctx.fillRect(l.x, l.y, l.w, l.h);
+    if (l.y < -10) lasers.splice(i, 1);
+  }
+
+  // Spawn enemies
+  if (++enemyTimer > 40) {
+    enemyTimer = 0;
+    enemies.push({
+      x: Math.random() * (canvas.width - 40) + 10,
+      y: -30,
+      w: 28,
+      h: 22,
+      speed: Math.random() * 2 + 2
+    });
+  }
+
+  // Update enemies
+  for (let eIdx = enemies.length - 1; eIdx >= 0; eIdx--) {
+    const en = enemies[eIdx];
+    en.y += en.speed;
+    ctx.fillStyle = '#f43f5e';
+    ctx.fillRect(en.x, en.y, en.w, en.h);
+
+    // Collision with laser
+    for (let lIdx = lasers.length - 1; lIdx >= 0; lIdx--) {
+      const l = lasers[lIdx];
+      if (l.x < en.x + en.w && l.x + l.w > en.x && l.y < en.y + en.h && l.y + l.h > en.y) {
+        enemies.splice(eIdx, 1);
+        lasers.splice(lIdx, 1);
+        score += 25;
+        scoreEl.textContent = score;
+        break;
+      }
+    }
+
+    // Collision with player
+    if (en.x < player.x + player.width && en.x + en.w > player.x && en.y < player.y + player.height && en.y + en.h > player.y) {
+      enemies.splice(eIdx, 1);
+      shield -= 25;
+      shieldEl.textContent = Math.max(0, shield) + '%';
+      if (shield <= 0) {
+        gameOver = true;
+      }
+    }
+
+    if (en.y > canvas.height + 20) enemies.splice(eIdx, 1);
+  }
+}
+loop();
+\`\`\`
+`;
+    }
+
+    // 3c. 2D RPG / Dungeon Crawler
+    if (/rpg|dungeon|crawler|quest|adventure|sword|monster/i.test(lower)) {
+      return `### ⚔️ Rogue Dungeon 2D (Multi-File RPG)
+
+Here is a modular 2D Dungeon Crawler RPG with room exploration, monster combat, and loot:
+
+### File: index.html
+\`\`\`html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rogue Dungeon RPG</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="rpg-wrapper">
+    <header class="stats-bar">
+      <div>Hero: <strong>Knight</strong></div>
+      <div>HP: <span id="hp" class="val-hp">100/100</span></div>
+      <div>Gold: <span id="gold" class="val-gold">0</span></div>
+      <div>Floor: <span id="floor">1</span></div>
+    </header>
+    <canvas id="rpgCanvas" width="440" height="440"></canvas>
+    <div class="log" id="combatLog">Welcome to the dungeon. Walk into monsters to attack!</div>
+    <div class="hint">Use Arrow Keys or WASD to move. Find stairs (▼) to advance.</div>
+  </div>
+  <script src="js/rpg.js"></script>
+</body>
+</html>
+\`\`\`
+
+### File: css/style.css
+\`\`\`css
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #09090b;
+  color: #fafafa;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.rpg-wrapper {
+  background: #131318;
+  border: 1px solid #272733;
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.6);
+}
+.stats-bar {
+  display: flex;
+  justify-content: space-between;
+  background: #1c1c24;
+  border: 1px solid #2f2f3d;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.val-hp { color: #f43f5e; }
+.val-gold { color: #fbbf24; }
+canvas {
+  background: #09090d;
+  border: 2px solid #2b2b38;
+  border-radius: 10px;
+}
+.log {
+  background: #181820;
+  border: 1px solid #282836;
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 12px;
+  color: #a1a1aa;
+  min-height: 38px;
+}
+.hint { font-size: 11px; color: #71717a; text-align: center; }
+\`\`\`
+
+### File: js/rpg.js
+\`\`\`javascript
+const canvas = document.getElementById('rpgCanvas');
+const ctx = canvas.getContext('2d');
+const hpEl = document.getElementById('hp');
+const goldEl = document.getElementById('gold');
+const floorEl = document.getElementById('floor');
+const logEl = document.getElementById('combatLog');
+
+const TILE_SIZE = 40;
+const COLS = 11;
+const ROWS = 11;
+
+let floor = 1;
+let gold = 0;
+let hp = 100;
+const maxHp = 100;
+
+let player = { x: 1, y: 1, atk: 15 };
+let stairs = { x: 9, y: 9 };
+let monsters = [];
+let chests = [];
+
+function initFloor() {
+  player.x = 1;
+  player.y = 1;
+  stairs = { x: 9, y: 9 };
+  monsters = [
+    { x: 4, y: 2, hp: 30, maxHp: 30, atk: 8, name: 'Goblin' },
+    { x: 7, y: 5, hp: 45, maxHp: 45, atk: 12, name: 'Orc' },
+    { x: 3, y: 8, hp: 25, maxHp: 25, atk: 6, name: 'Slime' },
+  ];
+  chests = [
+    { x: 5, y: 3, gold: 35 },
+    { x: 8, y: 8, gold: 60 },
+  ];
+  floorEl.textContent = floor;
+  logEl.textContent = \`Descended to Dungeon Floor \${floor}!\`;
+  draw();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Tiles grid
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const isWall = r === 0 || r === ROWS - 1 || c === 0 || c === COLS - 1;
+      ctx.fillStyle = isWall ? '#1f1f28' : '#0e0e14';
+      ctx.fillRect(c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE - 1, TILE_SIZE - 1);
+    }
+  }
+
+  // Stairs
+  ctx.fillStyle = '#6366f1';
+  ctx.font = '20px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('▼', stairs.x * TILE_SIZE + 20, stairs.y * TILE_SIZE + 28);
+
+  // Chests
+  ctx.fillStyle = '#fbbf24';
+  chests.forEach((ch) => {
+    ctx.fillText('📦', ch.x * TILE_SIZE + 20, ch.y * TILE_SIZE + 28);
+  });
+
+  // Monsters
+  ctx.fillStyle = '#f43f5e';
+  monsters.forEach((m) => {
+    ctx.fillText('👾', m.x * TILE_SIZE + 20, m.y * TILE_SIZE + 28);
+  });
+
+  // Player Hero
+  ctx.fillText('🛡️', player.x * TILE_SIZE + 20, player.y * TILE_SIZE + 28);
+}
+
+window.addEventListener('keydown', (e) => {
+  let dx = 0, dy = 0;
+  if (e.key === 'ArrowUp' || e.key === 'w') dy = -1;
+  else if (e.key === 'ArrowDown' || e.key === 's') dy = 1;
+  else if (e.key === 'ArrowLeft' || e.key === 'a') dx = -1;
+  else if (e.key === 'ArrowRight' || e.key === 'd') dx = 1;
+  else return;
+
+  e.preventDefault();
+  const tx = player.x + dx;
+  const ty = player.y + dy;
+
+  // Wall collision
+  if (tx <= 0 || tx >= COLS - 1 || ty <= 0 || ty >= ROWS - 1) return;
+
+  // Monster collision
+  const mIdx = monsters.findIndex((m) => m.x === tx && m.y === ty);
+  if (mIdx !== -1) {
+    const m = monsters[mIdx];
+    m.hp -= player.atk;
+    logEl.textContent = \`You strike \${m.name} for \${player.atk} damage!\`;
+    if (m.hp <= 0) {
+      logEl.textContent = \`Defeated \${m.name}! Found 20 gold.\`;
+      gold += 20;
+      goldEl.textContent = gold;
+      monsters.splice(mIdx, 1);
+    } else {
+      hp -= m.atk;
+      hpEl.textContent = \`\${Math.max(0, hp)}/\${maxHp}\`;
+      if (hp <= 0) {
+        logEl.textContent = 'You were slain by the monster! Floor reset.';
+        hp = maxHp;
+        gold = 0;
+        floor = 1;
+        initFloor();
+        return;
+      }
+    }
+    draw();
+    return;
+  }
+
+  // Chest loot
+  const cIdx = chests.findIndex((c) => c.x === tx && c.y === ty);
+  if (cIdx !== -1) {
+    gold += chests[cIdx].gold;
+    goldEl.textContent = gold;
+    logEl.textContent = \`Opened treasure chest! Found \${chests[cIdx].gold} gold!\`;
+    chests.splice(cIdx, 1);
+  }
+
+  // Step onto stairs
+  if (tx === stairs.x && ty === stairs.y) {
+    floor++;
+    initFloor();
+    return;
+  }
+
+  player.x = tx;
+  player.y = ty;
+  draw();
+});
+
+initFloor();
+\`\`\`
+`;
+    }
+
+    // 3d. 2D Platformer Jumper
+    if (/platformer|jump|mario|obstacle/i.test(lower)) {
+      return `### 🏃 2D Platformer Runner (Multi-File Game)
+
+Here is a 2D physics platformer with double jumping, floating ledges, and collectible gems:
+
+### File: index.html
+\`\`\`html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cyber Jumper Platformer</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="game-frame">
+    <div class="hud">
+      <div>Gems: <span id="gems">0</span></div>
+      <div>Lives: <span id="lives">❤️❤️❤️</span></div>
+    </div>
+    <canvas id="platformCanvas" width="480" height="340"></canvas>
+    <div class="controls">A/D or Arrows to run, Space to Jump (Double Jump enabled!)</div>
+  </div>
+  <script src="js/platformer.js"></script>
+</body>
+</html>
+\`\`\`
+
+### File: css/style.css
+\`\`\`css
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #09090b;
+  color: #fafafa;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.game-frame {
+  background: #141419;
+  border: 1px solid #272730;
+  border-radius: 16px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.5);
+}
+.hud {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  font-weight: 700;
+  color: #10b981;
+}
+canvas {
+  background: #0b0b10;
+  border: 2px solid #22222b;
+  border-radius: 10px;
+}
+.controls { font-size: 12px; color: #71717a; text-align: center; }
+\`\`\`
+
+### File: js/platformer.js
+\`\`\`javascript
+const canvas = document.getElementById('platformCanvas');
+const ctx = canvas.getContext('2d');
+const gemsEl = document.getElementById('gems');
+
+let gems = 0;
+const gravity = 0.55;
+
+const player = {
+  x: 50,
+  y: 200,
+  width: 20,
+  height: 28,
+  dx: 0,
+  dy: 0,
+  speed: 4.5,
+  jumpPower: -10,
+  jumpsLeft: 2,
+  onGround: false
+};
+
+const platforms = [
+  { x: 0, y: 310, w: 480, h: 30 },
+  { x: 80, y: 240, w: 90, h: 14 },
+  { x: 220, y: 190, w: 100, h: 14 },
+  { x: 360, y: 140, w: 80, h: 14 },
+  { x: 170, y: 110, w: 80, h: 14 }
+];
+
+let items = [
+  { x: 120, y: 215, collected: false },
+  { x: 260, y: 165, collected: false },
+  { x: 400, y: 115, collected: false },
+  { x: 210, y: 85, collected: false }
+];
+
+const keys = {};
+window.addEventListener('keydown', (e) => {
+  keys[e.key] = true;
+  if ((e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w') && player.jumpsLeft > 0) {
+    player.dy = player.jumpPower;
+    player.jumpsLeft--;
+  }
+});
+window.addEventListener('keyup', (e) => { keys[e.key] = false; });
+
+function loop() {
+  requestAnimationFrame(loop);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Horizontal motion
+  player.dx = 0;
+  if (keys['ArrowLeft'] || keys['a']) player.dx = -player.speed;
+  if (keys['ArrowRight'] || keys['d']) player.dx = player.speed;
+
+  player.x += player.dx;
+  player.dy += gravity;
+  player.y += player.dy;
+
+  // Collision with platforms
+  player.onGround = false;
+  platforms.forEach((p) => {
+    if (
+      player.x + player.width > p.x &&
+      player.x < p.x + p.w &&
+      player.y + player.height >= p.y &&
+      player.y + player.height <= p.y + p.h &&
+      player.dy >= 0
+    ) {
+      player.y = p.y - player.height;
+      player.dy = 0;
+      player.onGround = true;
+      player.jumpsLeft = 2;
+    }
+  });
+
+  // Gem collection
+  items.forEach((item) => {
+    if (!item.collected && Math.hypot(player.x + 10 - item.x, player.y + 14 - item.y) < 18) {
+      item.collected = true;
+      gems++;
+      gemsEl.textContent = gems;
+    }
+  });
+
+  // Draw platforms
+  ctx.fillStyle = '#272733';
+  platforms.forEach((p) => ctx.fillRect(p.x, p.y, p.w, p.h));
+
+  // Draw gems
+  items.forEach((item) => {
+    if (!item.collected) {
+      ctx.fillStyle = '#38bdf8';
+      ctx.beginPath();
+      ctx.arc(item.x, item.y, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  });
+
+  // Draw player
+  ctx.fillStyle = '#10b981';
+  ctx.fillRect(player.x, player.y, player.width, player.height);
+}
+
+loop();
+\`\`\`
+`;
+    }
+
+    // 3e. Portfolio / Personal Website
+    if (/portfolio|personal site|resume|landing|showcase/i.test(lower)) {
+      return `### 🌐 Bespoke Dark Portfolio Website (Multi-File)
+
+Here is a modern developer portfolio structured into separate HTML, CSS, and JS files:
+
+### File: index.html
+\`\`\`html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Developer Portfolio</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="page-container">
+    <header class="hero">
+      <div class="avatar-ring">💻</div>
+      <h1>Alex Rivera</h1>
+      <p class="tagline">Full-Stack Engineer & Creative Coder</p>
+      <div class="social-links">
+        <button id="copyEmailBtn" class="btn btn-secondary">Copy Email</button>
+        <button id="themeToggleBtn" class="btn btn-primary">Toggle Accent</button>
+      </div>
+    </header>
+
+    <section class="section">
+      <h2>Featured Works</h2>
+      <div class="projects-grid">
+        <article class="project-card">
+          <div class="card-badge">TypeScript</div>
+          <h3>Hydra Engine</h3>
+          <p>Real-time distributed stream processing library with sub-millisecond latencies.</p>
+        </article>
+
+        <article class="project-card">
+          <div class="card-badge">WebAssembly</div>
+          <h3>Vivid Canvas</h3>
+          <p>High-performance vector graphics and raster shader suite in the browser.</p>
+        </article>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <p>© 2026 Alex Rivera. Built with clean code.</p>
+    </footer>
+  </div>
+  <script src="js/main.js"></script>
+</body>
+</html>
+\`\`\`
+
+### File: css/style.css
+\`\`\`css
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #09090b;
+  color: #f4f4f5;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+  padding: 40px 20px;
+}
+.page-container {
+  max-width: 680px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+}
+.hero {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.avatar-ring {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: #18181b;
+  border: 2px solid #27272a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+}
+h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.5px; }
+.tagline { color: #a1a1aa; font-size: 15px; }
+.social-links { display: flex; gap: 10px; margin-top: 6px; }
+.btn {
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s;
+}
+.btn-primary { background: #fafafa; color: #09090b; }
+.btn-primary:hover { background: #e4e4e7; }
+.btn-secondary { background: #18181b; color: #fafafa; border-color: #27272a; }
+.btn-secondary:hover { background: #27272a; }
+.section h2 { font-size: 18px; margin-bottom: 14px; color: #e4e4e7; }
+.projects-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.project-card {
+  background: #121215;
+  border: 1px solid #27272a;
+  border-radius: 14px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.card-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.1);
+  width: fit-content;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.project-card h3 { font-size: 15px; color: #fff; }
+.project-card p { font-size: 13px; color: #a1a1aa; line-height: 1.4; }
+.footer { text-align: center; color: #71717a; font-size: 12px; }
+\`\`\`
+
+### File: js/main.js
+\`\`\`javascript
+const copyBtn = document.getElementById('copyEmailBtn');
+const toggleBtn = document.getElementById('themeToggleBtn');
+
+copyBtn.addEventListener('click', () => {
+  navigator.clipboard.writeText('alex@example.com');
+  const original = copyBtn.textContent;
+  copyBtn.textContent = 'Copied!';
+  setTimeout(() => { copyBtn.textContent = original; }, 2000);
+});
+
+let isAlt = false;
+toggleBtn.addEventListener('click', () => {
+  isAlt = !isAlt;
+  document.querySelectorAll('.card-badge').forEach((el) => {
+    el.style.color = isAlt ? '#10b981' : '#38bdf8';
+    el.style.background = isAlt ? 'rgba(16, 185, 129, 0.1)' : 'rgba(56, 189, 248, 0.1)';
+  });
+});
+\`\`\`
+`;
+    }
+
+    // 3f. Kanban Productivity / Tasks
+    if (/todo|task|kanban|notes|planner/i.test(lower)) {
+      return `### 📋 Modern Task Kanban (Multi-File Web App)
+
+Here is a clean productivity board with column states and storage:
+
+### File: index.html
+\`\`\`html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Task Board</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="board-wrapper">
+    <header class="header">
+      <h1>Task Workspace</h1>
+      <form id="addTaskForm" class="add-form">
+        <input type="text" id="taskInput" placeholder="Add a new task..." required>
+        <button type="submit">Add Task</button>
+      </form>
+    </header>
+
+    <div class="columns-container">
+      <div class="column">
+        <h3>To Do (<span id="todoCount">0</span>)</h3>
+        <div class="task-list" id="todoList"></div>
+      </div>
+
+      <div class="column">
+        <h3>Completed (<span id="doneCount">0</span>)</h3>
+        <div class="task-list" id="doneList"></div>
+      </div>
+    </div>
+  </div>
+  <script src="js/kanban.js"></script>
+</body>
+</html>
+\`\`\`
+
+### File: css/style.css
+\`\`\`css
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #09090b;
+  color: #fafafa;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+  padding: 30px 20px;
+}
+.board-wrapper {
+  max-width: 640px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+h1 { font-size: 22px; font-weight: 700; }
+.add-form {
+  display: flex;
+  gap: 8px;
+}
+input {
+  flex: 1;
+  background: #141418;
+  border: 1px solid #27272a;
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: #fff;
+  font-size: 13px;
+  outline: none;
+}
+button {
+  background: #fff;
+  color: #000;
+  border: none;
+  border-radius: 10px;
+  padding: 0 16px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+.columns-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.column {
+  background: #121216;
+  border: 1px solid #27272a;
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.column h3 { font-size: 14px; color: #a1a1aa; }
+.task-list { display: flex; flex-direction: column; gap: 8px; min-height: 80px; }
+.task-item {
+  background: #1b1b22;
+  border: 1px solid #32323f;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+.task-item.completed { text-decoration: line-through; opacity: 0.5; }
+\`\`\`
+
+### File: js/kanban.js
+\`\`\`javascript
+const form = document.getElementById('addTaskForm');
+const input = document.getElementById('taskInput');
+const todoList = document.getElementById('todoList');
+const doneList = document.getElementById('doneList');
+const todoCount = document.getElementById('todoCount');
+const doneCount = document.getElementById('doneCount');
+
+let tasks = JSON.parse(localStorage.getItem('vivi_tasks') || '[]');
+if (tasks.length === 0) {
+  tasks = [
+    { id: 1, text: 'Review codebase architecture', done: false },
+    { id: 2, text: 'Ship multi-file zip download', done: true }
+  ];
+}
+
+function render() {
+  todoList.innerHTML = '';
+  doneList.innerHTML = '';
+  let todos = 0, dones = 0;
+
+  tasks.forEach((t) => {
+    const el = document.createElement('div');
+    el.className = 'task-item' + (t.done ? ' completed' : '');
+    el.textContent = t.text;
+    el.onclick = () => {
+      t.done = !t.done;
+      save();
+    };
+
+    if (t.done) {
+      doneList.appendChild(el);
+      dones++;
+    } else {
+      todoList.appendChild(el);
+      todos++;
+    }
+  });
+
+  todoCount.textContent = todos;
+  doneCount.textContent = dones;
+}
+
+function save() {
+  localStorage.setItem('vivi_tasks', JSON.stringify(tasks));
+  render();
+}
+
+form.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const text = input.value.trim();
+  if (text) {
+    tasks.push({ id: Date.now(), text, done: false });
+    input.value = '';
+    save();
+  }
+});
+
+render();
+\`\`\`
+`;
+    }
+
+    // 3g. Custom tailored application generator based on user's exact subject
+    // Extract subject cleanly from prompt
+    const cleanSubject = p
+      .replace(/\[Project Context:[^\]]*\]/gi, '')
+      .replace(/^(can you|please|vivi|make|create|build|generate|write)\s+(a|an)?/i, '')
+      .trim() || 'Interactive Web Project';
+
+    const safeTitle = cleanSubject.charAt(0).toUpperCase() + cleanSubject.slice(1, 40);
+
+    return `### ⚡ ${safeTitle} (Multi-File Project)
+
+Here is a bespoke, modular application crafted specifically for **"${cleanSubject}"**:
+
+### File: index.html
+\`\`\`html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${safeTitle}</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app-card">
+    <header class="app-header">
+      <div class="header-icon">✨</div>
+      <div class="header-text">
+        <h1>${safeTitle}</h1>
+        <p class="subtitle">Custom web module created with Vivi</p>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <div class="interactive-panel">
+        <label for="actionInput">Enter parameter:</label>
+        <div class="input-row">
+          <input type="text" id="actionInput" placeholder="Type here..." value="Default Input">
+          <button id="triggerBtn" class="primary-btn">Execute</button>
+        </div>
+      </div>
+
+      <div class="output-panel">
+        <div class="output-header">
+          <span>Live Output</span>
+          <span id="statusBadge" class="badge">Ready</span>
+        </div>
+        <div id="outputDisplay" class="output-box">Press Execute to compute result.</div>
+      </div>
+    </main>
+
+    <footer class="app-footer">
+      <span>Multi-file project ready for export</span>
+    </footer>
+  </div>
+
+  <script src="js/main.js"></script>
+</body>
+</html>
+\`\`\`
+
+### File: css/style.css
+\`\`\`css
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #09090b;
+  color: #fafafa;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.app-card {
+  background: #141418;
+  border: 1px solid #27272a;
+  border-radius: 18px;
+  max-width: 500px;
+  width: 100%;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5);
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-bottom: 1px solid #27272a;
+  padding-bottom: 16px;
+}
+
+.header-icon {
+  width: 44px;
+  height: 44px;
+  background: #1e1e24;
+  border: 1px solid #33333d;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+}
+
+h1 {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.subtitle {
+  font-size: 12px;
+  color: #a1a1aa;
+}
+
+.app-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.interactive-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #d4d4d8;
+}
+
+.input-row {
+  display: flex;
+  gap: 8px;
+}
+
+input {
+  flex: 1;
+  background: #0c0c0e;
+  border: 1px solid #27272a;
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: #fff;
+  font-size: 13px;
+  outline: none;
+}
+
+input:focus {
+  border-color: #52525b;
+}
+
+.primary-btn {
+  background: #fafafa;
+  color: #09090b;
+  border: none;
+  border-radius: 10px;
+  padding: 0 16px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.primary-btn:hover {
+  background: #e4e4e7;
+}
+
+.output-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.output-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #a1a1aa;
+}
+
+.badge {
+  color: #10b981;
+  font-weight: 600;
+}
+
+.output-box {
+  background: #09090c;
+  border: 1px solid #27272a;
+  border-radius: 10px;
+  padding: 14px;
+  font-size: 13px;
+  font-family: monospace;
+  color: #e4e4e7;
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+}
+
+.app-footer {
+  font-size: 11px;
+  color: #71717a;
+  text-align: center;
+  border-top: 1px solid #1f1f23;
+  padding-top: 12px;
 }
 \`\`\`
 
-Let me know if you would like me to modify this logic or add new features!`;
+### File: js/main.js
+\`\`\`javascript
+const input = document.getElementById('actionInput');
+const btn = document.getElementById('triggerBtn');
+const output = document.getElementById('outputDisplay');
+const statusBadge = document.getElementById('statusBadge');
+
+let executionCount = 0;
+
+btn.addEventListener('click', () => {
+  const val = input.value.trim() || 'Default';
+  executionCount++;
+  
+  statusBadge.textContent = 'Active';
+  statusBadge.style.color = '#38bdf8';
+  
+  output.textContent = \`Processed: "\${val}" (run #\${executionCount}) at \${new Date().toLocaleTimeString()}\`;
+});
+\`\`\`
+`;
   }
 
   // 4. Greetings

@@ -1,15 +1,18 @@
-import {
-  makeProviders,
-  makeStandardFetcher,
-  targets,
-} from "../node_modules/@p-stream/providers/src/index.ts";
 import { tmdb } from "./tmdb.js";
 
-const providers = makeProviders({
-  fetcher: makeStandardFetcher(fetch),
-  target: targets.NATIVE,
-  consistentIpForRequests: true,
-});
+let providers = null;
+try {
+  const pstreamMod = await import("../node_modules/@p-stream/providers/src/index.ts").catch(() => null);
+  if (pstreamMod?.makeProviders && pstreamMod?.makeStandardFetcher && pstreamMod?.targets) {
+    providers = pstreamMod.makeProviders({
+      fetcher: pstreamMod.makeStandardFetcher(fetch),
+      target: pstreamMod.targets.NATIVE,
+      consistentIpForRequests: true,
+    });
+  }
+} catch {
+  // Graceful fallback: built-in PROVIDERS handle all streaming
+}
 
 const EMBED_TIMEOUT = 10000;
 
@@ -87,6 +90,7 @@ async function runSource(source, media) {
 }
 
 export function pstreamTasks(type) {
+  if (!providers) return [];
   const mediaType = type === "movie" ? "movie" : "show";
   let mediaP = null;
   return providers
@@ -107,5 +111,6 @@ export function pstreamTasks(type) {
 }
 
 export function listPstream() {
+  if (!providers) return { sources: [], embeds: [] };
   return { sources: providers.listSources(), embeds: providers.listEmbeds() };
 }

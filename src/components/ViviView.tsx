@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Send,
   Plus,
@@ -17,7 +17,20 @@ import {
   RotateCcw,
   Sparkles,
   ExternalLink,
+  Folder,
+  FolderOpen,
+  ChevronRight,
+  ChevronDown,
+  Columns,
+  FileCode,
+  RefreshCw,
+  Edit2,
+  Archive,
+  FilePlus,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
+import JSZip from 'jszip';
 
 export interface ViviMessage {
   id: string;
@@ -47,14 +60,25 @@ export interface ViviChat {
   messages: ViviMessage[];
 }
 
+export interface ProjectFile {
+  id: string;
+  name: string;
+  path: string;
+  content: string;
+  language: 'html' | 'css' | 'javascript' | 'typescript' | 'json' | 'markdown' | 'text';
+}
+
 export interface ViviProject {
   id: string;
   title: string;
   description: string;
   createdAt: number;
   updatedAt: number;
-  htmlCode: string;
+  files: ProjectFile[];
+  activeFileId: string;
+  openFileIds: string[];
   messages: ViviMessage[];
+  htmlCode?: string; // legacy backward compatibility
 }
 
 const RANDOM_ONE_LINERS = [
@@ -78,82 +102,49 @@ const THINKING_PHRASES = [
   'Building project...',
 ];
 
-const DEFAULT_CLICKER_GAME = `<!DOCTYPE html>
+export function inferLanguage(filePath: string): ProjectFile['language'] {
+  const lower = filePath.toLowerCase();
+  if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'html';
+  if (lower.endsWith('.css')) return 'css';
+  if (lower.endsWith('.js') || lower.endsWith('.jsx') || lower.endsWith('.mjs')) return 'javascript';
+  if (lower.endsWith('.ts') || lower.endsWith('.tsx')) return 'typescript';
+  if (lower.endsWith('.json')) return 'json';
+  if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'markdown';
+  return 'text';
+}
+
+export function getFileLanguageLabel(language: ProjectFile['language']): { label: string; color: string } {
+  switch (language) {
+    case 'html':
+      return { label: 'HTML', color: '#f97316' };
+    case 'css':
+      return { label: 'CSS', color: '#38bdf8' };
+    case 'javascript':
+      return { label: 'JS', color: '#eab308' };
+    case 'typescript':
+      return { label: 'TS', color: '#60a5fa' };
+    case 'json':
+      return { label: 'JSON', color: '#10b981' };
+    case 'markdown':
+      return { label: 'MD', color: '#c084fc' };
+    default:
+      return { label: 'TXT', color: '#a1a1aa' };
+  }
+}
+
+export const DEFAULT_PROJECT_FILES: ProjectFile[] = [
+  {
+    id: 'f_index',
+    name: 'index.html',
+    path: 'index.html',
+    language: 'html',
+    content: `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Yam Clicker</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
-    body {
-      background: #09090b;
-      color: #fafafa;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-    .game-card {
-      background: #141418;
-      border: 1px solid #27272a;
-      border-radius: 20px;
-      padding: 30px;
-      text-align: center;
-      max-width: 420px;
-      width: 100%;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-    }
-    h1 { font-size: 26px; margin-bottom: 8px; font-weight: 700; color: #fff; }
-    .score-display {
-      font-size: 38px;
-      font-weight: 800;
-      color: #e4e4e7;
-      margin: 15px 0 5px;
-    }
-    .cps-display { font-size: 13px; color: #a1a1aa; margin-bottom: 25px; }
-    .click-target {
-      font-size: 80px;
-      background: #1c1c22;
-      border: 2px solid #3f3f46;
-      border-radius: 50%;
-      width: 150px;
-      height: 150px;
-      margin: 0 auto 25px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      transition: transform 0.08s ease;
-      outline: none;
-    }
-    .click-target:active { transform: scale(0.92); }
-    .upgrades {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      text-align: left;
-    }
-    .upgrade-btn {
-      background: #202026;
-      border: 1px solid #33333b;
-      border-radius: 12px;
-      padding: 12px 16px;
-      color: #fff;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      cursor: pointer;
-      font-size: 13px;
-      transition: background 0.15s;
-    }
-    .upgrade-btn:hover:not(:disabled) { background: #272730; }
-    .upgrade-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-    .btn-cost { font-weight: 700; color: #cbd5e1; }
-  </style>
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <div class="game-card">
@@ -181,93 +172,435 @@ const DEFAULT_CLICKER_GAME = `<!DOCTYPE html>
     </div>
   </div>
 
-  <script>
-    let yams = 0;
-    let clickPower = 1;
-    let cps = 0;
+  <script src="js/clicker.js"></script>
+</body>
+</html>`,
+  },
+  {
+    id: 'f_css',
+    name: 'style.css',
+    path: 'css/style.css',
+    language: 'css',
+    content: `* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  user-select: none;
+}
 
-    let autoHarvesters = 0;
-    let costAuto = 15;
+body {
+  background: #09090b;
+  color: #fafafa;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
 
-    let greenhouses = 0;
-    let costGreenhouse = 100;
+.game-card {
+  background: #141418;
+  border: 1px solid #27272a;
+  border-radius: 20px;
+  padding: 30px;
+  text-align: center;
+  max-width: 420px;
+  width: 100%;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
 
-    let clickUpgrades = 0;
-    let costClick = 50;
+h1 {
+  font-size: 26px;
+  margin-bottom: 8px;
+  font-weight: 700;
+  color: #ffffff;
+}
 
-    const yamsEl = document.getElementById('yams');
-    const cpsEl = document.getElementById('cps');
-    const clickerBtn = document.getElementById('clickerBtn');
+.score-display {
+  font-size: 38px;
+  font-weight: 800;
+  color: #e4e4e7;
+  margin: 15px 0 5px;
+}
 
-    const btnAuto = document.getElementById('btnAutoYam');
-    const costAutoEl = document.getElementById('costAutoYam');
+.cps-display {
+  font-size: 13px;
+  color: #a1a1aa;
+  margin-bottom: 25px;
+}
 
-    const btnGreenhouse = document.getElementById('btnYamFarm');
-    const costGreenhouseEl = document.getElementById('costYamFarm');
+.click-target {
+  font-size: 80px;
+  background: #1c1c22;
+  border: 2px solid #3f3f46;
+  border-radius: 50%;
+  width: 150px;
+  height: 150px;
+  margin: 0 auto 25px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.08s ease;
+  outline: none;
+}
 
-    const btnClick = document.getElementById('btnGoldenYam');
-    const costClickEl = document.getElementById('costGoldenYam');
+.click-target:active {
+  transform: scale(0.92);
+}
 
-    function updateUI() {
-      yamsEl.textContent = Math.floor(yams).toLocaleString();
-      cpsEl.textContent = cps.toLocaleString();
+.upgrades {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: left;
+}
 
-      btnAuto.disabled = yams < costAuto;
-      costAutoEl.textContent = costAuto + ' Yams (' + autoHarvesters + ')';
+.upgrade-btn {
+  background: #202026;
+  border: 1px solid #33333b;
+  border-radius: 12px;
+  padding: 12px 16px;
+  color: #ffffff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.15s;
+}
 
-      btnGreenhouse.disabled = yams < costGreenhouse;
-      costGreenhouseEl.textContent = costGreenhouse + ' Yams (' + greenhouses + ')';
+.upgrade-btn:hover:not(:disabled) {
+  background: #272730;
+}
 
-      btnClick.disabled = yams < costClick;
-      costClickEl.textContent = costClick + ' Yams (+' + clickPower + '/click)';
-    }
+.upgrade-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 
-    clickerBtn.addEventListener('click', () => {
-      yams += clickPower;
-      updateUI();
-    });
+.btn-cost {
+  font-weight: 700;
+  color: #cbd5e1;
+}`,
+  },
+  {
+    id: 'f_js',
+    name: 'clicker.js',
+    path: 'js/clicker.js',
+    language: 'javascript',
+    content: `let yams = 0;
+let clickPower = 1;
+let cps = 0;
 
-    btnAuto.addEventListener('click', () => {
-      if (yams >= costAuto) {
-        yams -= costAuto;
-        autoHarvesters++;
-        cps += 1;
-        costAuto = Math.floor(costAuto * 1.25);
-        updateUI();
-      }
-    });
+let autoHarvesters = 0;
+let costAuto = 15;
 
-    btnGreenhouse.addEventListener('click', () => {
-      if (yams >= costGreenhouse) {
-        yams -= costGreenhouse;
-        greenhouses++;
-        cps += 5;
-        costGreenhouse = Math.floor(costGreenhouse * 1.3);
-        updateUI();
-      }
-    });
+let greenhouses = 0;
+let costGreenhouse = 100;
 
-    btnClick.addEventListener('click', () => {
-      if (yams >= costClick) {
-        yams -= costClick;
-        clickUpgrades++;
-        clickPower += 2;
-        costClick = Math.floor(costClick * 1.5);
-        updateUI();
-      }
-    });
+let clickUpgrades = 0;
+let costClick = 50;
 
-    setInterval(() => {
-      if (cps > 0) {
-        yams += cps / 10;
-        updateUI();
-      }
-    }, 100);
+const yamsEl = document.getElementById('yams');
+const cpsEl = document.getElementById('cps');
+const clickerBtn = document.getElementById('clickerBtn');
 
+const btnAuto = document.getElementById('btnAutoYam');
+const costAutoEl = document.getElementById('costAutoYam');
+
+const btnGreenhouse = document.getElementById('btnYamFarm');
+const costGreenhouseEl = document.getElementById('costYamFarm');
+
+const btnClick = document.getElementById('btnGoldenYam');
+const costClickEl = document.getElementById('costGoldenYam');
+
+function updateUI() {
+  yamsEl.textContent = Math.floor(yams).toLocaleString();
+  cpsEl.textContent = cps.toLocaleString();
+
+  btnAuto.disabled = yams < costAuto;
+  costAutoEl.textContent = costAuto + ' Yams (' + autoHarvesters + ')';
+
+  btnGreenhouse.disabled = yams < costGreenhouse;
+  costGreenhouseEl.textContent = costGreenhouse + ' Yams (' + greenhouses + ')';
+
+  btnClick.disabled = yams < costClick;
+  costClickEl.textContent = costClick + ' Yams (+' + clickPower + '/click)';
+}
+
+clickerBtn.addEventListener('click', () => {
+  yams += clickPower;
+  updateUI();
+});
+
+btnAuto.addEventListener('click', () => {
+  if (yams >= costAuto) {
+    yams -= costAuto;
+    autoHarvesters++;
+    cps += 1;
+    costAuto = Math.floor(costAuto * 1.25);
     updateUI();
-  </script>
+  }
+});
+
+btnGreenhouse.addEventListener('click', () => {
+  if (yams >= costGreenhouse) {
+    yams -= costGreenhouse;
+    greenhouses++;
+    cps += 5;
+    costGreenhouse = Math.floor(costGreenhouse * 1.3);
+    updateUI();
+  }
+});
+
+btnClick.addEventListener('click', () => {
+  if (yams >= costClick) {
+    yams -= costClick;
+    clickUpgrades++;
+    clickPower += 2;
+    costClick = Math.floor(costClick * 1.5);
+    updateUI();
+  }
+});
+
+setInterval(() => {
+  if (cps > 0) {
+    yams += cps / 10;
+    updateUI();
+  }
+}, 100);
+
+updateUI();`,
+  },
+  {
+    id: 'f_readme',
+    name: 'README.md',
+    path: 'README.md',
+    language: 'markdown',
+    content: `# 🍠 Yam Clicker
+
+Interactive multi-file game workspace powered by Vivi.
+
+## Project Structure
+- \`index.html\`: Document skeleton, elements, and stylesheets
+- \`css/style.css\`: High-contrast dark styling and animations
+- \`js/clicker.js\`: Core game loop, upgrade logic, and persistent score
+
+## Features
+- Edit any file in the monospaced editor tab bar
+- Create new subfolders and files
+- Live sandbox updates on save
+- Full folder hierarchy preserved on ZIP download!`,
+  },
+];
+
+// Helper to escape regex special characters
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Assemble index.html with inlined css & js from project files
+export function composePreviewHtml(files: ProjectFile[]): string {
+  if (!files || files.length === 0) {
+    return `<!DOCTYPE html><html><body style="background:#09090b;color:#71717a;font-family:sans-serif;padding:30px;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;"><div>No files in project.</div></body></html>`;
+  }
+
+  // 1. Find entry html file
+  const entryHtml =
+    files.find((f) => f.path === 'index.html' || f.name === 'index.html') ||
+    files.find((f) => f.path.endsWith('.html') || f.name.endsWith('.html')) ||
+    files[0];
+
+  if (!entryHtml.path.endsWith('.html') && entryHtml.language !== 'html') {
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>body { background:#09090b; color:#fafafa; font-family:monospace; padding:20px; white-space:pre-wrap; }</style>
+</head>
+<body>
+  <div style="font-size:12px;color:#a1a1aa;margin-bottom:12px;border-bottom:1px solid #27272a;padding-bottom:6px;">${entryHtml.path}</div>
+  <pre>${entryHtml.content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
 </body>
 </html>`;
+  }
+
+  let html = entryHtml.content;
+
+  // 2. Inline CSS files
+  const cssFiles = files.filter((f) => f.path.endsWith('.css') || f.language === 'css');
+  for (const css of cssFiles) {
+    const escapedPath = escapeRegExp(css.path);
+    const escapedName = escapeRegExp(css.name);
+    const linkRegex = new RegExp(`<link[^>]*href=["'](?:\\.?\\/)?(?:${escapedPath}|${escapedName})["'][^>]*>`, 'gi');
+    if (linkRegex.test(html)) {
+      html = html.replace(linkRegex, `<style data-source="${css.path}">\n${css.content}\n</style>`);
+    } else {
+      if (html.includes('</head>')) {
+        html = html.replace('</head>', `<style data-source="${css.path}">\n${css.content}\n</style>\n</head>`);
+      } else {
+        html = `<style data-source="${css.path}">\n${css.content}\n</style>\n` + html;
+      }
+    }
+  }
+
+  // 3. Inline JS files
+  const jsFiles = files.filter(
+    (f) => (f.path.endsWith('.js') || f.language === 'javascript') && !f.path.endsWith('.d.ts')
+  );
+  for (const js of jsFiles) {
+    const escapedPath = escapeRegExp(js.path);
+    const escapedName = escapeRegExp(js.name);
+    const scriptRegex = new RegExp(
+      `<script[^>]*src=["'](?:\\.?\\/)?(?:${escapedPath}|${escapedName})["'][^>]*>\\s*<\\/script>`,
+      'gi'
+    );
+    if (scriptRegex.test(html)) {
+      html = html.replace(scriptRegex, `<script data-source="${js.path}">\n${js.content}\n</script>`);
+    } else {
+      if (html.includes('</body>')) {
+        html = html.replace('</body>', `<script data-source="${js.path}">\n${js.content}\n</script>\n</body>`);
+      } else {
+        html = html + `\n<script data-source="${js.path}">\n${js.content}\n</script>`;
+      }
+    }
+  }
+
+  return html;
+}
+
+// Parse multiple files from Vivi response
+export function parseProjectFilesFromResponse(
+  text: string
+): Array<{ path: string; content: string; language: ProjectFile['language'] }> {
+  const results: Array<{ path: string; content: string; language: ProjectFile['language'] }> = [];
+
+  // Match patterns like:
+  // ### File: path/to/file.ext
+  // ```lang
+  // code
+  // ```
+  // OR // File: path/to/file.ext
+  const fileSectionRegex = /(?:###\s+File:\s*|(?:\/\*+|\/\/)\s*File:\s*)([^\n\r]+?)(?:\s*\*\/)?\s*\n+```([a-zA-Z0-9_-]*)\s*\n([\s\S]*?)```/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = fileSectionRegex.exec(text)) !== null) {
+    const rawPath = match[1].trim().replace(/^['"`]|['"`]$/g, '');
+    const langRaw = match[2].toLowerCase().trim();
+    const content = match[3];
+
+    results.push({
+      path: rawPath,
+      content,
+      language: inferLanguage(rawPath || langRaw),
+    });
+  }
+
+  // Fallback: If no "### File:" headers matched, but there is a single HTML code block
+  if (results.length === 0) {
+    const htmlMatch = text.match(/```(?:html|xml)?\s*\n([\s\S]*?)```/i);
+    if (htmlMatch) {
+      const fullHtml = htmlMatch[1];
+      if (/<html|<body|<head|<!DOCTYPE/i.test(fullHtml)) {
+        const styleMatch = fullHtml.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
+        const scriptMatch = fullHtml.match(/<script[^>]*>([\s\S]*?)<\/script>/i);
+
+        let cleanHtml = fullHtml;
+        if (styleMatch) {
+          cleanHtml = cleanHtml.replace(styleMatch[0], '<link rel="stylesheet" href="css/style.css">');
+          results.push({
+            path: 'css/style.css',
+            content: styleMatch[1].trim(),
+            language: 'css',
+          });
+        }
+        if (scriptMatch) {
+          cleanHtml = cleanHtml.replace(scriptMatch[0], '<script src="js/main.js"></script>');
+          results.push({
+            path: 'js/main.js',
+            content: scriptMatch[1].trim(),
+            language: 'javascript',
+          });
+        }
+        results.unshift({
+          path: 'index.html',
+          content: cleanHtml.trim(),
+          language: 'html',
+        });
+      }
+    }
+  }
+
+  return results;
+}
+
+// Migrate legacy single-html projects to multi-file structure
+export function migrateProject(proj: any): ViviProject {
+  if (Array.isArray(proj.files) && proj.files.length > 0) {
+    const activeFileId = proj.activeFileId && proj.files.some((f: any) => f.id === proj.activeFileId)
+      ? proj.activeFileId
+      : proj.files[0].id;
+    const openFileIds = Array.isArray(proj.openFileIds) && proj.openFileIds.length > 0
+      ? proj.openFileIds.filter((id: string) => proj.files.some((f: any) => f.id === id))
+      : [activeFileId];
+
+    return {
+      ...proj,
+      activeFileId,
+      openFileIds: openFileIds.length > 0 ? openFileIds : [activeFileId],
+    };
+  }
+
+  // Convert old htmlCode into multi-file project
+  const rawHtml = proj.htmlCode || DEFAULT_PROJECT_FILES[0].content;
+  const styleMatch = rawHtml.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
+  const scriptMatch = rawHtml.match(/<script[^>]*>([\s\S]*?)<\/script>/i);
+
+  const cssContent = styleMatch ? styleMatch[1].trim() : '/* Project Styles */\nbody { background: #09090b; color: #fff; }';
+  const jsContent = scriptMatch ? scriptMatch[1].trim() : '// Project Scripts\nconsole.log("Ready");';
+
+  let cleanedHtml = rawHtml;
+  if (styleMatch) {
+    cleanedHtml = cleanedHtml.replace(styleMatch[0], '<link rel="stylesheet" href="css/style.css">');
+  }
+  if (scriptMatch) {
+    cleanedHtml = cleanedHtml.replace(scriptMatch[0], '<script src="js/main.js"></script>');
+  }
+
+  const files: ProjectFile[] = [
+    {
+      id: 'f_index_' + proj.id,
+      name: 'index.html',
+      path: 'index.html',
+      language: 'html',
+      content: cleanedHtml,
+    },
+    {
+      id: 'f_css_' + proj.id,
+      name: 'style.css',
+      path: 'css/style.css',
+      language: 'css',
+      content: cssContent,
+    },
+    {
+      id: 'f_js_' + proj.id,
+      name: 'main.js',
+      path: 'js/main.js',
+      language: 'javascript',
+      content: jsContent,
+    },
+  ];
+
+  return {
+    ...proj,
+    files,
+    activeFileId: files[0].id,
+    openFileIds: [files[0].id, files[1].id, files[2].id],
+  };
+}
 
 // Pixel Art Bunny Avatar Component (Clean, without container box)
 export const ViviPixelBunny: React.FC<{
@@ -369,28 +702,32 @@ export const ViviView: React.FC = () => {
     return chats[0]?.id || 'chat_' + Date.now();
   });
 
-  // Projects State
+  // Projects State with automatic schema migration
   const [projects, setProjects] = useState<ViviProject[]>(() => {
     try {
       const saved = localStorage.getItem('yuno_vivi_projects');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((p: any) => migrateProject(p));
+        }
       }
     } catch {}
     return [
       {
         id: 'proj_clicker',
-        title: 'HTML Clicker Game',
-        description: 'Interactive HTML/JS Clicker game created with Vivi',
+        title: 'Yam Clicker',
+        description: 'Interactive HTML/JS Clicker game with folder structure and modular files',
         createdAt: Date.now(),
         updatedAt: Date.now(),
-        htmlCode: DEFAULT_CLICKER_GAME,
+        files: DEFAULT_PROJECT_FILES,
+        activeFileId: 'f_index',
+        openFileIds: ['f_index', 'f_css', 'f_js', 'f_readme'],
         messages: [
           {
             id: 'init_p1',
             role: 'model',
-            content: `I've started the **HTML Clicker Game** project for you! 🎮\n\nYou can play it live in the preview pane on the right, inspect the code, or tell me what features you'd like to add (e.g. "Add a prestige reset system", "Make golden cookies fall from the sky", "Add sound effects").`,
+            content: `I've set up the **Yam Clicker** project for you! 🎮\n\nNotice the clean folder structure:\n- \`index.html\`: Document structure & game canvas\n- \`css/style.css\`: Bespoke dark design\n- \`js/clicker.js\`: Game economy, upgrades & click logic\n\nYou can edit any file in the tabs above, run the live preview, or tell me what features to add. When you're ready, hit **Download ZIP** to get everything in intact folders!`,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           },
         ],
@@ -402,7 +739,33 @@ export const ViviView: React.FC = () => {
     return projects[0]?.id || '';
   });
 
-  const [projectWorkspaceTab, setProjectWorkspaceTab] = useState<'preview' | 'code'>('preview');
+  // Workspace Mode: 'preview' | 'code' | 'split' (side-by-side)
+  const [projectWorkspaceTab, setProjectWorkspaceTab] = useState<'preview' | 'code' | 'split'>('split');
+  const [isExplorerOpen, setIsExplorerOpen] = useState(true);
+  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({
+    css: true,
+    js: true,
+    assets: true,
+  });
+
+  // Modals & Toast State
+  const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [newProjectTemplate, setNewProjectTemplate] = useState<'clicker' | 'space' | 'portfolio' | 'blank'>('clicker');
+
+  const [isNewFileModalOpen, setIsNewFileModalOpen] = useState(false);
+  const [newFilePath, setNewFilePath] = useState('');
+
+  const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
+  const [targetFileId, setTargetFileId] = useState<string | null>(null);
+  const [renameFilePath, setRenameFilePath] = useState('');
+
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [editorCursor, setEditorCursor] = useState({ line: 1, col: 1 });
+  const [previewKey, setPreviewKey] = useState(0);
+
+  const gutterRef = useRef<HTMLDivElement>(null);
+  const codeEditorRef = useRef<HTMLTextAreaElement>(null);
 
   // Cross-Chat Memories (persisted silently without intrusive button)
   const [memories] = useState<string[]>(() => {
@@ -449,8 +812,47 @@ export const ViviView: React.FC = () => {
       messages: [],
     };
 
-  const activeProject =
+  const activeProject: ViviProject =
     projects.find((p) => p.id === activeProjectId) || projects[0];
+
+  // Active file in current project
+  const activeFile = useMemo(() => {
+    if (!activeProject || !activeProject.files || activeProject.files.length === 0) return null;
+    return (
+      activeProject.files.find((f) => f.id === activeProject.activeFileId) ||
+      activeProject.files[0] ||
+      null
+    );
+  }, [activeProject]);
+
+  // Group files into folders and root files for tree view
+  const { folderMap, rootFiles } = useMemo(() => {
+    const fMap: Record<string, ProjectFile[]> = {};
+    const roots: ProjectFile[] = [];
+
+    if (!activeProject || !activeProject.files) return { folderMap: fMap, rootFiles: roots };
+
+    activeProject.files.forEach((file) => {
+      const parts = file.path.split('/');
+      if (parts.length > 1) {
+        const folderName = parts[0];
+        if (!fMap[folderName]) fMap[folderName] = [];
+        fMap[folderName].push(file);
+      } else {
+        roots.push(file);
+      }
+    });
+
+    return { folderMap: fMap, rootFiles: roots };
+  }, [activeProject]);
+
+  // Show transient toast
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage((curr) => (curr === msg ? null : curr));
+    }, 2800);
+  };
 
   // Sync state to localStorage
   useEffect(() => {
@@ -480,7 +882,7 @@ export const ViviView: React.FC = () => {
     return () => clearInterval(interval);
   }, [isThinking]);
 
-  // Auto scroll
+  // Auto scroll chat
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeChat.messages, activeProject?.messages, isThinking]);
@@ -535,53 +937,205 @@ export const ViviView: React.FC = () => {
     }
   };
 
-  // Create new Project
+  // Open new project modal
   const handleCreateProject = () => {
-    const title = prompt('Project Name:', 'My Web App') || 'New Project';
+    setNewProjectName('');
+    setNewProjectTemplate('clicker');
+    setIsNewProjectModalOpen(true);
+  };
+
+  // Confirm project creation with selected template
+  const handleConfirmCreateProject = () => {
+    const title = newProjectName.trim() || 'My Web Project';
     const newId = 'proj_' + Date.now();
-    const newProj: ViviProject = {
-      id: newId,
-      title,
-      description: 'Project started with Vivi',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      htmlCode: `<!DOCTYPE html>
-<html>
+
+    let initialFiles: ProjectFile[] = [];
+
+    if (newProjectTemplate === 'clicker') {
+      initialFiles = DEFAULT_PROJECT_FILES.map((f) => ({ ...f, id: 'f_' + Date.now() + '_' + f.name }));
+    } else if (newProjectTemplate === 'space') {
+      initialFiles = [
+        {
+          id: 'f_space_idx_' + Date.now(),
+          name: 'index.html',
+          path: 'index.html',
+          language: 'html',
+          content: `<!DOCTYPE html>
+<html lang="en">
 <head>
-  <style>
-    body { background: #0a0a0c; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-    .box { text-align: center; padding: 20px; border: 1px solid #333; border-radius: 12px; }
-    button { background: #6366f1; border: none; color: white; padding: 8px 16px; border-radius: 6px; cursor: pointer; margin-top: 10px; }
-  </style>
+  <meta charset="UTF-8">
+  <title>${title}</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="arcade-card">
+    <div class="hud">
+      <div>Shield: <span id="shield">100%</span></div>
+      <div>Score: <span id="score">0</span></div>
+    </div>
+    <canvas id="gameCanvas" width="440" height="480"></canvas>
+    <div class="tip">Arrow keys to move, Space to fire lasers</div>
+  </div>
+  <script src="js/space.js"></script>
+</body>
+</html>`,
+        },
+        {
+          id: 'f_space_css_' + Date.now(),
+          name: 'style.css',
+          path: 'css/style.css',
+          language: 'css',
+          content: `* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #09090b; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+.arcade-card { background: #121217; border: 1px solid #27272a; border-radius: 16px; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+.hud { display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; color: #38bdf8; }
+canvas { background: #08080c; border: 2px solid #272733; border-radius: 10px; }
+.tip { font-size: 11px; color: #71717a; text-align: center; }`,
+        },
+        {
+          id: 'f_space_js_' + Date.now(),
+          name: 'space.js',
+          path: 'js/space.js',
+          language: 'javascript',
+          content: `const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+let score = 0;
+let player = { x: 200, y: 430, w: 32, h: 22 };
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#38bdf8';
+  ctx.fillRect(player.x, player.y, player.w, player.h);
+  requestAnimationFrame(draw);
+}
+draw();
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowLeft') player.x = Math.max(0, player.x - 15);
+  if (e.key === 'ArrowRight') player.x = Math.min(canvas.width - player.w, player.x + 15);
+});`,
+        },
+      ];
+    } else if (newProjectTemplate === 'portfolio') {
+      initialFiles = [
+        {
+          id: 'f_port_idx_' + Date.now(),
+          name: 'index.html',
+          path: 'index.html',
+          language: 'html',
+          content: `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>${title}</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="hero">
+    <h1>${title}</h1>
+    <p>Modern personal showcase with dark aesthetic.</p>
+    <button id="ctaBtn" class="btn">Explore Projects</button>
+  </div>
+  <script src="js/main.js"></script>
+</body>
+</html>`,
+        },
+        {
+          id: 'f_port_css_' + Date.now(),
+          name: 'style.css',
+          path: 'css/style.css',
+          language: 'css',
+          content: `* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #09090b; color: #fafafa; font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+.hero { text-align: center; max-width: 500px; padding: 30px; background: #141418; border: 1px solid #27272a; border-radius: 18px; }
+h1 { font-size: 24px; margin-bottom: 8px; }
+p { color: #a1a1aa; font-size: 13px; margin-bottom: 20px; }
+.btn { background: #fff; color: #000; border: none; padding: 10px 20px; border-radius: 10px; font-weight: 600; cursor: pointer; }`,
+        },
+        {
+          id: 'f_port_js_' + Date.now(),
+          name: 'main.js',
+          path: 'js/main.js',
+          language: 'javascript',
+          content: `document.getElementById('ctaBtn').addEventListener('click', () => {
+  alert('Welcome to ${title}!');
+});`,
+        },
+      ];
+    } else {
+      // Blank Project
+      initialFiles = [
+        {
+          id: 'f_blank_idx_' + Date.now(),
+          name: 'index.html',
+          path: 'index.html',
+          language: 'html',
+          content: `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>${title}</title>
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <div class="box">
     <h2>${title}</h2>
-    <p>Tell Vivi what features or code you want to build!</p>
-    <button onclick="alert('Ready!')">Click Me</button>
+    <p>Tell Vivi what features you want to build!</p>
   </div>
+  <script src="js/main.js"></script>
 </body>
 </html>`,
+        },
+        {
+          id: 'f_blank_css_' + Date.now(),
+          name: 'style.css',
+          path: 'css/style.css',
+          language: 'css',
+          content: `body { background: #09090b; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+.box { text-align: center; padding: 24px; border: 1px solid #27272a; border-radius: 12px; background: #141418; }`,
+        },
+        {
+          id: 'f_blank_js_' + Date.now(),
+          name: 'main.js',
+          path: 'js/main.js',
+          language: 'javascript',
+          content: `console.log('${title} initialized.');`,
+        },
+      ];
+    }
+
+    const newProj: ViviProject = {
+      id: newId,
+      title,
+      description: 'Modular project created with Vivi',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      files: initialFiles,
+      activeFileId: initialFiles[0]?.id || '',
+      openFileIds: initialFiles.map((f) => f.id),
       messages: [
         {
           id: 'p_init_' + Date.now(),
           role: 'model',
-          content: `Project **${title}** initialized! What would you like to build or add first? Describe the functionality or design, and I'll generate the code.`,
+          content: `Project **${title}** initialized with folder structure! What features or code would you like to build?`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         },
       ],
     };
+
     setProjects((prev) => [newProj, ...prev]);
     setActiveProjectId(newId);
     setSidebarTab('projects');
     setShowSidebar(false);
+    setIsNewProjectModalOpen(false);
+    setNewProjectName('');
+    showToast(`Created project "${title}"`);
   };
 
   // Delete project
   const handleDeleteProject = (projId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (projects.length <= 1) {
-      alert('You must have at least one project.');
+      showToast('You must keep at least one project.');
       return;
     }
     const filtered = projects.filter((p) => p.id !== projId);
@@ -589,6 +1143,254 @@ export const ViviView: React.FC = () => {
     if (activeProjectId === projId) {
       setActiveProjectId(filtered[0]?.id || '');
     }
+    showToast('Project deleted');
+  };
+
+  // Download entire project as structured ZIP
+  const handleDownloadZip = async (project: ViviProject) => {
+    try {
+      showToast('Creating project ZIP...');
+      const zip = new JSZip();
+
+      project.files.forEach((file) => {
+        const cleanPath = file.path.replace(/^\/+/, '');
+        zip.file(cleanPath, file.content);
+      });
+
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const safeTitle = (project.title || 'project').toLowerCase().replace(/[^a-z0-9_-]+/g, '-');
+      a.href = url;
+      a.download = `${safeTitle}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast(`Downloaded ${safeTitle}.zip with ${project.files.length} files`);
+    } catch (err) {
+      console.error('Failed to create ZIP:', err);
+      showToast('Failed to bundle ZIP');
+    }
+  };
+
+  // Create new file inside active project
+  const handleCreateFile = (pathInput: string) => {
+    const cleanPath = pathInput.trim().replace(/^\/+/, '');
+    if (!cleanPath || !activeProject) return;
+
+    const existing = activeProject.files.find((f) => f.path.toLowerCase() === cleanPath.toLowerCase());
+    if (existing) {
+      handleOpenFile(existing.id);
+      setIsNewFileModalOpen(false);
+      showToast(`Opened existing file "${cleanPath}"`);
+      return;
+    }
+
+    const parts = cleanPath.split('/');
+    const fileName = parts[parts.length - 1];
+    const lang = inferLanguage(fileName);
+
+    let defaultContent = '';
+    if (lang === 'html') defaultContent = '<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <title>New Page</title>\n</head>\n<body>\n  \n</body>\n</html>\n';
+    else if (lang === 'css') defaultContent = '/* New stylesheet */\n';
+    else if (lang === 'javascript') defaultContent = '// Script logic\n';
+    else if (lang === 'typescript') defaultContent = '// TypeScript logic\n';
+    else if (lang === 'json') defaultContent = '{\n  "name": "module"\n}\n';
+    else if (lang === 'markdown') defaultContent = `# ${fileName}\n\n`;
+
+    const newFile: ProjectFile = {
+      id: 'f_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+      name: fileName,
+      path: cleanPath,
+      language: lang,
+      content: defaultContent,
+    };
+
+    if (parts.length > 1) {
+      setExpandedFolders((prev) => ({ ...prev, [parts[0]]: true }));
+    }
+
+    setProjects((prev) =>
+      prev.map((p) =>
+        p.id === activeProject.id
+          ? {
+              ...p,
+              files: [...p.files, newFile],
+              activeFileId: newFile.id,
+              openFileIds: [...p.openFileIds, newFile.id],
+              updatedAt: Date.now(),
+            }
+          : p
+      )
+    );
+
+    setIsNewFileModalOpen(false);
+    setNewFilePath('');
+    showToast(`Created file "${cleanPath}"`);
+  };
+
+  // Delete file from active project
+  const handleDeleteFile = (fileId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!activeProject) return;
+
+    if (activeProject.files.length <= 1) {
+      showToast('Projects must have at least one file.');
+      return;
+    }
+
+    const fileToDelete = activeProject.files.find((f) => f.id === fileId);
+    const updatedFiles = activeProject.files.filter((f) => f.id !== fileId);
+    const updatedOpenIds = activeProject.openFileIds.filter((id) => id !== fileId);
+
+    let nextActiveId = activeProject.activeFileId;
+    if (nextActiveId === fileId) {
+      nextActiveId = updatedOpenIds[updatedOpenIds.length - 1] || updatedFiles[0]?.id || '';
+    }
+
+    setProjects((prev) =>
+      prev.map((p) =>
+        p.id === activeProject.id
+          ? {
+              ...p,
+              files: updatedFiles,
+              openFileIds: updatedOpenIds.length > 0 ? updatedOpenIds : [nextActiveId],
+              activeFileId: nextActiveId,
+              updatedAt: Date.now(),
+            }
+          : p
+      )
+    );
+
+    showToast(`Deleted ${fileToDelete?.name || 'file'}`);
+  };
+
+  // Confirm rename of file
+  const handleConfirmRename = () => {
+    if (!activeProject || !targetFileId) return;
+    const cleanPath = renameFilePath.trim().replace(/^\/+/, '');
+    if (!cleanPath) return;
+
+    const parts = cleanPath.split('/');
+    const fileName = parts[parts.length - 1];
+    const lang = inferLanguage(fileName);
+
+    setProjects((prev) =>
+      prev.map((p) => {
+        if (p.id !== activeProject.id) return p;
+        return {
+          ...p,
+          updatedAt: Date.now(),
+          files: p.files.map((f) =>
+            f.id === targetFileId ? { ...f, path: cleanPath, name: fileName, language: lang } : f
+          ),
+        };
+      })
+    );
+
+    setIsRenameModalOpen(false);
+    setTargetFileId(null);
+    showToast(`Renamed to "${cleanPath}"`);
+  };
+
+  // Open file into tabs and activate
+  const handleOpenFile = (fileId: string) => {
+    if (!activeProject) return;
+    setProjects((prev) =>
+      prev.map((p) => {
+        if (p.id !== activeProject.id) return p;
+        const openIds = p.openFileIds.includes(fileId) ? p.openFileIds : [...p.openFileIds, fileId];
+        return {
+          ...p,
+          openFileIds: openIds,
+          activeFileId: fileId,
+        };
+      })
+    );
+  };
+
+  // Close tab from tab bar
+  const handleCloseTab = (fileId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!activeProject) return;
+
+    const remainingOpen = activeProject.openFileIds.filter((id) => id !== fileId);
+    let nextActiveId = activeProject.activeFileId;
+
+    if (activeProject.activeFileId === fileId) {
+      const closedIndex = activeProject.openFileIds.indexOf(fileId);
+      if (remainingOpen.length > 0) {
+        const nextIdx = Math.min(closedIndex, remainingOpen.length - 1);
+        nextActiveId = remainingOpen[nextIdx];
+      } else {
+        nextActiveId = '';
+      }
+    }
+
+    setProjects((prev) =>
+      prev.map((p) =>
+        p.id === activeProject.id
+          ? {
+              ...p,
+              openFileIds: remainingOpen,
+              activeFileId: nextActiveId,
+            }
+          : p
+      )
+    );
+  };
+
+  // Edit file content in real time
+  const handleFileContentChange = (newContent: string) => {
+    if (!activeProject || !activeFile) return;
+
+    setProjects((prev) =>
+      prev.map((p) => {
+        if (p.id !== activeProject.id) return p;
+        return {
+          ...p,
+          updatedAt: Date.now(),
+          files: p.files.map((f) => (f.id === activeFile.id ? { ...f, content: newContent } : f)),
+        };
+      })
+    );
+  };
+
+  // Handle Tab key in editor (insert 2 spaces, no focus loss)
+  const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const textarea = e.currentTarget;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const current = textarea.value;
+
+      const nextVal = current.substring(0, start) + '  ' + current.substring(end);
+      handleFileContentChange(nextVal);
+
+      setTimeout(() => {
+        textarea.selectionStart = textarea.selectionEnd = start + 2;
+        updateCursorPosition(textarea);
+      }, 0);
+    }
+  };
+
+  const updateCursorPosition = (textarea: HTMLTextAreaElement) => {
+    const textBefore = textarea.value.substring(0, textarea.selectionStart);
+    const lines = textBefore.split('\n');
+    setEditorCursor({
+      line: lines.length,
+      col: lines[lines.length - 1].length + 1,
+    });
+  };
+
+  // Toggle folder expanded state
+  const toggleFolder = (folderName: string) => {
+    setExpandedFolders((prev) => ({
+      ...prev,
+      [folderName]: !prev[folderName],
+    }));
   };
 
   // File Upload (Reads both images and raw code/text files)
@@ -598,7 +1400,7 @@ export const ViviView: React.FC = () => {
 
     for (const file of Array.from(files) as File[]) {
       if (file.size > 20 * 1024 * 1024) {
-        alert(`${file.name} exceeds 20MB limit.`);
+        showToast(`${file.name} exceeds 20MB limit.`);
         continue;
       }
 
@@ -618,7 +1420,6 @@ export const ViviView: React.FC = () => {
         };
         reader.readAsDataURL(file);
       } else {
-        // Read text/code files
         try {
           const text = await file.text();
           setAttachments((prev) => [
@@ -652,25 +1453,74 @@ export const ViviView: React.FC = () => {
     a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
+    showToast(`Downloaded ${filename}`);
   };
 
   // Apply code to active project
-  const handleApplyToProject = (code: string) => {
+  const handleApplyToProject = (code: string, langHint: string = 'html') => {
     if (!activeProject) return;
-    setProjects((prev) =>
-      prev.map((p) =>
-        p.id === activeProject.id
-          ? { ...p, htmlCode: code, updatedAt: Date.now() }
-          : p
-      )
-    );
-    setProjectWorkspaceTab('preview');
-  };
 
-  // Extract HTML code block from message if present
-  const extractHtmlCode = (text: string): string | null => {
-    const match = text.match(/```(?:html|xml)?\s*([\s\S]*?)```/i);
-    return match ? match[1].trim() : null;
+    const parsed = parseProjectFilesFromResponse(code);
+    if (parsed.length > 0) {
+      setProjects((prev) =>
+        prev.map((p) => {
+          if (p.id !== activeProject.id) return p;
+          const updated = [...p.files];
+          const newOpen = [...p.openFileIds];
+
+          parsed.forEach((pf) => {
+            const idx = updated.findIndex((f) => f.path.toLowerCase() === pf.path.toLowerCase());
+            if (idx !== -1) {
+              updated[idx] = { ...updated[idx], content: pf.content, language: pf.language };
+              if (!newOpen.includes(updated[idx].id)) newOpen.push(updated[idx].id);
+            } else {
+              const nf: ProjectFile = {
+                id: 'f_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+                name: pf.path.split('/').pop() || pf.path,
+                path: pf.path,
+                content: pf.content,
+                language: pf.language,
+              };
+              updated.push(nf);
+              newOpen.push(nf.id);
+            }
+          });
+
+          return { ...p, files: updated, openFileIds: newOpen, updatedAt: Date.now() };
+        })
+      );
+      showToast(`Applied ${parsed.length} file(s) to project`);
+      setPreviewKey((k) => k + 1);
+      return;
+    }
+
+    // Single block application
+    let targetPath = 'index.html';
+    if (langHint === 'css') targetPath = 'css/style.css';
+    else if (langHint === 'javascript' || langHint === 'js') targetPath = 'js/main.js';
+
+    setProjects((prev) =>
+      prev.map((p) => {
+        if (p.id !== activeProject.id) return p;
+        const updated = [...p.files];
+        const existingIdx = updated.findIndex((f) => f.path === targetPath);
+        if (existingIdx !== -1) {
+          updated[existingIdx] = { ...updated[existingIdx], content: code };
+        } else {
+          updated.push({
+            id: 'f_' + Date.now(),
+            name: targetPath.split('/').pop() || targetPath,
+            path: targetPath,
+            content: code,
+            language: inferLanguage(targetPath),
+          });
+        }
+        return { ...p, files: updated, updatedAt: Date.now() };
+      })
+    );
+
+    showToast(`Updated ${targetPath} in project`);
+    setPreviewKey((k) => k + 1);
   };
 
   // Send message
@@ -690,7 +1540,6 @@ export const ViviView: React.FC = () => {
     const currentList = isProjectMode ? activeProject.messages : activeChat.messages;
     const isFirstMessage = currentList.length === 0;
 
-    // Auto title chat
     const updatedTitle =
       !isProjectMode && isFirstMessage && trimmedPrompt
         ? trimmedPrompt.length > 26
@@ -729,10 +1578,13 @@ export const ViviView: React.FC = () => {
         content: m.content,
       }));
 
-      // Extra project context instructions for Vivi
+      // Extra project context instructions for Vivi (multi-file with folder hierarchy)
       let promptToSend = trimmedPrompt;
       if (isProjectMode) {
-        promptToSend = `[Project Context: "${activeProject.title}". Current Code:\n\`\`\`html\n${activeProject.htmlCode.slice(0, 15000)}\n\`\`\`]\n\nUser request: ${trimmedPrompt}`;
+        const fileSummaries = activeProject.files
+          .map((f) => `### File: ${f.path}\n\`\`\`${f.language}\n${f.content.slice(0, 4000)}\n\`\`\``)
+          .join('\n\n');
+        promptToSend = `[Project Context: "${activeProject.title}"]\n${fileSummaries}\n\nUser request: ${trimmedPrompt}`;
       }
 
       const res = await fetch('/api/vivi/chat', {
@@ -761,21 +1613,61 @@ export const ViviView: React.FC = () => {
         generatedImageUrl: data.generatedImageUrl,
       };
 
-      // In project mode: if Vivi generated updated HTML code, auto-update the project code!
+      // In project mode: if Vivi generated updated multi-file project code, auto-update the project files!
       if (isProjectMode) {
-        const extractedCode = extractHtmlCode(data.text);
+        const parsedFiles = parseProjectFilesFromResponse(data.text);
         setProjects((prev) =>
-          prev.map((p) =>
-            p.id === activeProject.id
-              ? {
-                  ...p,
-                  htmlCode: extractedCode || p.htmlCode,
-                  updatedAt: Date.now(),
-                  messages: [...updatedMessages, modelMessage],
+          prev.map((p) => {
+            if (p.id !== activeProject.id) return p;
+
+            if (parsedFiles.length === 0) {
+              return {
+                ...p,
+                updatedAt: Date.now(),
+                messages: [...updatedMessages, modelMessage],
+              };
+            }
+
+            const updatedFiles = [...p.files];
+            const updatedOpenIds = [...p.openFileIds];
+
+            parsedFiles.forEach((pf) => {
+              const existingIdx = updatedFiles.findIndex(
+                (f) => f.path.toLowerCase() === pf.path.toLowerCase()
+              );
+              if (existingIdx !== -1) {
+                updatedFiles[existingIdx] = {
+                  ...updatedFiles[existingIdx],
+                  content: pf.content,
+                  language: pf.language,
+                };
+                if (!updatedOpenIds.includes(updatedFiles[existingIdx].id)) {
+                  updatedOpenIds.push(updatedFiles[existingIdx].id);
                 }
-              : p
-          )
+              } else {
+                const parts = pf.path.split('/');
+                const newFile: ProjectFile = {
+                  id: 'f_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+                  name: parts[parts.length - 1],
+                  path: pf.path,
+                  content: pf.content,
+                  language: pf.language,
+                };
+                updatedFiles.push(newFile);
+                updatedOpenIds.push(newFile.id);
+              }
+            });
+
+            return {
+              ...p,
+              files: updatedFiles,
+              openFileIds: updatedOpenIds,
+              updatedAt: Date.now(),
+              messages: [...updatedMessages, modelMessage],
+            };
+          })
         );
+        setPreviewKey((k) => k + 1);
       } else {
         setChats((prev) =>
           prev.map((c) =>
@@ -844,11 +1736,11 @@ export const ViviView: React.FC = () => {
                 {lang}
               </span>
               <div className="flex items-center space-x-2">
-                {sidebarTab === 'projects' && (lang === 'html' || lang === 'xml') && (
+                {sidebarTab === 'projects' && (
                   <button
-                    onClick={() => handleApplyToProject(code)}
+                    onClick={() => handleApplyToProject(code, lang)}
                     className="flex items-center space-x-1 text-emerald-400 hover:text-emerald-300 transition-colors cursor-pointer text-[10px]"
-                    title="Apply to Project Preview"
+                    title="Apply to Project Workspace"
                   >
                     <Play className="w-3 h-3" />
                     <span>Run in Project</span>
@@ -1440,73 +2332,698 @@ export const ViviView: React.FC = () => {
           </footer>
         </main>
 
-        {/* Right Section: Interactive Project Workspace (when in Project mode) */}
+        {/* Right Section: Multi-File & Multi-Tab Project Workspace (when in Project mode) */}
         {sidebarTab === 'projects' && activeProject && (
           <aside className="flex-1 flex flex-col h-full bg-[#09090b] min-w-0">
             {/* Project Workspace Header */}
-            <div className="h-12 border-b border-[#18181b] px-4 flex items-center justify-between bg-[#0e0e11]">
-              <div className="flex items-center space-x-2 min-w-0">
-                <CodeXml className="w-4 h-4 text-zinc-300" />
-                <span className="text-xs font-semibold text-white truncate">
-                  {activeProject.title}
-                </span>
+            <div className="h-12 border-b border-[#1f1f24] px-3.5 flex items-center justify-between bg-[#0e0e12] select-none">
+              {/* Left: Project title & file count */}
+              <div className="flex items-center space-x-2.5 min-w-0">
+                <button
+                  onClick={() => setIsExplorerOpen(!isExplorerOpen)}
+                  className={`p-1.5 rounded-lg text-zinc-400 hover:text-white transition-colors cursor-pointer ${
+                    isExplorerOpen ? 'bg-[#18181f] text-zinc-200' : 'hover:bg-white/5'
+                  }`}
+                  title={isExplorerOpen ? 'Collapse File Explorer' : 'Expand File Explorer'}
+                >
+                  {isExplorerOpen ? (
+                    <PanelLeftClose className="w-4 h-4" />
+                  ) : (
+                    <PanelLeftOpen className="w-4 h-4" />
+                  )}
+                </button>
+
+                <div className="flex items-center space-x-1.5 min-w-0">
+                  <CodeXml className="w-4 h-4 text-zinc-300 flex-shrink-0" />
+                  <span className="text-xs font-semibold text-white truncate max-w-[150px] sm:max-w-[200px]">
+                    {activeProject.title}
+                  </span>
+                  <span className="text-[10px] text-zinc-500 font-mono px-1.5 py-0.5 rounded bg-[#18181d] border border-zinc-800">
+                    {activeProject.files.length} files
+                  </span>
+                </div>
               </div>
 
-              <div className="flex items-center space-x-1">
+              {/* Center: Mode switcher (Preview, Split, Code) */}
+              <div className="flex items-center bg-[#141418] border border-[#272730] p-0.5 rounded-lg">
                 <button
                   onClick={() => setProjectWorkspaceTab('preview')}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center space-x-1 transition-colors cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium flex items-center space-x-1 transition-all cursor-pointer ${
                     projectWorkspaceTab === 'preview'
-                      ? 'bg-zinc-800 text-white'
+                      ? 'bg-zinc-800 text-white shadow-sm'
                       : 'text-zinc-400 hover:text-white'
                   }`}
+                  title="Full Preview"
                 >
                   <Eye className="w-3.5 h-3.5" />
-                  <span>Preview</span>
+                  <span className="hidden sm:inline">Preview</span>
+                </button>
+
+                <button
+                  onClick={() => setProjectWorkspaceTab('split')}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium flex items-center space-x-1 transition-all cursor-pointer ${
+                    projectWorkspaceTab === 'split'
+                      ? 'bg-zinc-800 text-white shadow-sm'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}
+                  title="Side-by-Side Split View"
+                >
+                  <Columns className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Split</span>
                 </button>
 
                 <button
                   onClick={() => setProjectWorkspaceTab('code')}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center space-x-1 transition-colors cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium flex items-center space-x-1 transition-all cursor-pointer ${
                     projectWorkspaceTab === 'code'
-                      ? 'bg-zinc-800 text-white'
+                      ? 'bg-zinc-800 text-white shadow-sm'
                       : 'text-zinc-400 hover:text-white'
                   }`}
+                  title="Code Editor Full Width"
                 >
                   <Code className="w-3.5 h-3.5" />
-                  <span>Code</span>
+                  <span className="hidden sm:inline">Code</span>
+                </button>
+              </div>
+
+              {/* Right: Actions (New file, Download ZIP, Refresh) */}
+              <div className="flex items-center space-x-1.5">
+                <button
+                  onClick={() => {
+                    setNewFilePath('');
+                    setIsNewFileModalOpen(true);
+                  }}
+                  className="px-2 py-1 rounded-lg bg-[#18181f] hover:bg-[#272730] border border-zinc-800 text-zinc-300 hover:text-white text-xs font-medium flex items-center space-x-1 transition-colors cursor-pointer"
+                  title="Create new file in project"
+                >
+                  <FilePlus className="w-3.5 h-3.5 text-zinc-400" />
+                  <span className="hidden md:inline">File</span>
                 </button>
 
                 <button
-                  onClick={() =>
-                    handleDownloadFile(activeProject.htmlCode, `${activeProject.title.toLowerCase().replace(/\s+/g, '-')}.html`)
-                  }
-                  className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
-                  title="Download HTML Project"
+                  onClick={() => handleDownloadZip(activeProject)}
+                  className="px-2.5 py-1 rounded-lg bg-[#fafafa] hover:bg-zinc-200 text-black text-xs font-semibold flex items-center space-x-1.5 transition-colors cursor-pointer shadow-sm"
+                  title="Download entire project as structured ZIP (preserves folders)"
                 >
-                  <Download className="w-3.5 h-3.5" />
+                  <Archive className="w-3.5 h-3.5 text-black" />
+                  <span>Download ZIP</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setPreviewKey((k) => k + 1);
+                    showToast('Reloaded preview sandbox');
+                  }}
+                  className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                  title="Refresh Live Preview"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
 
-            {/* Project Content: Live Playable Preview or Code View */}
-            <div className="flex-1 overflow-hidden relative">
-              {projectWorkspaceTab === 'preview' ? (
-                <iframe
-                  title="Project Live Preview"
-                  srcDoc={activeProject.htmlCode}
-                  className="w-full h-full border-none bg-white"
-                  sandbox="allow-scripts allow-modals"
-                />
-              ) : (
-                <div className="w-full h-full p-4 overflow-auto font-mono text-xs text-zinc-200 bg-[#09090b] scrollbar-thin">
-                  <pre>{activeProject.htmlCode}</pre>
+            {/* Main Project Viewport */}
+            <div className="flex-1 flex overflow-hidden relative">
+              {/* Full Preview Mode */}
+              {projectWorkspaceTab === 'preview' && (
+                <div className="w-full h-full bg-white relative">
+                  <iframe
+                    key={previewKey}
+                    title="Live Playable Preview"
+                    srcDoc={composePreviewHtml(activeProject.files)}
+                    className="w-full h-full border-none bg-white"
+                    sandbox="allow-scripts allow-modals"
+                  />
+                </div>
+              )}
+
+              {/* Code or Split Mode */}
+              {projectWorkspaceTab !== 'preview' && (
+                <div className="w-full h-full flex overflow-hidden">
+                  {/* Left Column: Collapsible File Explorer */}
+                  {isExplorerOpen && (
+                    <div className="w-52 flex-shrink-0 bg-[#0c0c0f] border-r border-[#1f1f24] flex flex-col select-none">
+                      {/* Explorer Top Toolbar */}
+                      <div className="h-9 px-3 border-b border-[#18181e] flex items-center justify-between text-[11px] font-semibold tracking-wider uppercase text-zinc-400">
+                        <span>Explorer</span>
+                        <div className="flex items-center space-x-1">
+                          <button
+                            onClick={() => {
+                              setNewFilePath('');
+                              setIsNewFileModalOpen(true);
+                            }}
+                            className="p-1 hover:text-white hover:bg-[#18181f] rounded transition-colors cursor-pointer"
+                            title="New File..."
+                          >
+                            <FilePlus className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* File Tree List */}
+                      <div className="flex-1 overflow-y-auto p-1.5 space-y-1 text-xs font-mono scrollbar-thin">
+                        {/* Folders (e.g. css/, js/, assets/) */}
+                        {(Object.entries(folderMap) as [string, ProjectFile[]][]).map(([folderName, filesInFolder]) => {
+                          const isExpanded = expandedFolders[folderName] ?? true;
+                          return (
+                            <div key={folderName} className="space-y-0.5">
+                              {/* Folder Row */}
+                              <div
+                                onClick={() => toggleFolder(folderName)}
+                                className="group flex items-center justify-between px-2 py-1.5 rounded hover:bg-[#18181f] text-zinc-300 hover:text-white cursor-pointer transition-colors"
+                              >
+                                <div className="flex items-center space-x-1.5 min-w-0">
+                                  {isExpanded ? (
+                                    <ChevronDown className="w-3.5 h-3.5 text-zinc-500" />
+                                  ) : (
+                                    <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
+                                  )}
+                                  {isExpanded ? (
+                                    <FolderOpen className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                                  ) : (
+                                    <Folder className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                                  )}
+                                  <span className="font-sans font-medium text-xs truncate">
+                                    {folderName}
+                                  </span>
+                                </div>
+                                <span className="text-[10px] text-zinc-500 group-hover:text-zinc-400">
+                                  {filesInFolder.length}
+                                </span>
+                              </div>
+
+                              {/* Files inside this folder */}
+                              {isExpanded && (
+                                <div className="pl-4 space-y-0.5">
+                                  {filesInFolder.map((file) => {
+                                    const isActive = file.id === activeFile?.id;
+                                    const badge = getFileLanguageLabel(file.language);
+                                    return (
+                                      <div
+                                        key={file.id}
+                                        onClick={() => handleOpenFile(file.id)}
+                                        className={`group flex items-center justify-between px-2 py-1 rounded text-xs cursor-pointer transition-colors ${
+                                          isActive
+                                            ? 'bg-[#18181f] text-white font-medium border-l-2 border-white'
+                                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#121216]'
+                                        }`}
+                                      >
+                                        <div className="flex items-center space-x-1.5 min-w-0 flex-1 mr-1">
+                                          <FileCode
+                                            className="w-3.5 h-3.5 flex-shrink-0"
+                                            style={{ color: badge.color }}
+                                          />
+                                          <span className="truncate">{file.name}</span>
+                                        </div>
+
+                                        <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setTargetFileId(file.id);
+                                              setRenameFilePath(file.path);
+                                              setIsRenameModalOpen(true);
+                                            }}
+                                            className="p-0.5 hover:text-white text-zinc-500"
+                                            title="Rename"
+                                          >
+                                            <Edit2 className="w-3 h-3" />
+                                          </button>
+                                          <button
+                                            onClick={(e) => handleDeleteFile(file.id, e)}
+                                            className="p-0.5 hover:text-rose-400 text-zinc-500"
+                                            title="Delete"
+                                          >
+                                            <Trash2 className="w-3 h-3" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+
+                        {/* Root Files (e.g. index.html, README.md) */}
+                        {rootFiles.map((file) => {
+                          const isActive = file.id === activeFile?.id;
+                          const badge = getFileLanguageLabel(file.language);
+                          return (
+                            <div
+                              key={file.id}
+                              onClick={() => handleOpenFile(file.id)}
+                              className={`group flex items-center justify-between px-2 py-1.5 rounded text-xs cursor-pointer transition-colors ${
+                                isActive
+                                  ? 'bg-[#18181f] text-white font-medium border-l-2 border-white'
+                                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#121216]'
+                              }`}
+                            >
+                              <div className="flex items-center space-x-1.5 min-w-0 flex-1 mr-1">
+                                <FileCode
+                                  className="w-3.5 h-3.5 flex-shrink-0"
+                                  style={{ color: badge.color }}
+                                />
+                                <span className="truncate">{file.name}</span>
+                              </div>
+
+                              <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setTargetFileId(file.id);
+                                    setRenameFilePath(file.path);
+                                    setIsRenameModalOpen(true);
+                                  }}
+                                  className="p-0.5 hover:text-white text-zinc-500"
+                                  title="Rename"
+                                >
+                                  <Edit2 className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={(e) => handleDeleteFile(file.id, e)}
+                                  className="p-0.5 hover:text-rose-400 text-zinc-500"
+                                  title="Delete"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Tree Footer Info */}
+                      <div className="p-2 border-t border-[#18181e] text-[10px] text-zinc-500 font-sans text-center">
+                        Hierarchy preserved in ZIP
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Center Column: Multi-Tab Editor Area */}
+                  <div className="flex-1 flex flex-col min-w-0 bg-[#09090b]">
+                    {/* Top Tab Bar */}
+                    <div className="h-9 bg-[#0c0c0f] border-b border-[#1f1f24] flex items-center overflow-x-auto scrollbar-none select-none">
+                      {activeProject.openFileIds.map((fileId) => {
+                        const file = activeProject.files.find((f) => f.id === fileId);
+                        if (!file) return null;
+                        const isActive = file.id === activeFile?.id;
+                        const badge = getFileLanguageLabel(file.language);
+
+                        return (
+                          <div
+                            key={file.id}
+                            onClick={() => handleOpenFile(file.id)}
+                            className={`group h-full px-3 flex items-center space-x-2 text-xs font-mono cursor-pointer transition-colors border-r border-[#18181f] flex-shrink-0 ${
+                              isActive
+                                ? 'bg-[#141418] text-white font-medium border-t-2 border-t-white'
+                                : 'bg-[#0c0c0f] text-zinc-400 hover:bg-[#111115] hover:text-zinc-200'
+                            }`}
+                          >
+                            <FileCode
+                              className="w-3.5 h-3.5 flex-shrink-0"
+                              style={{ color: badge.color }}
+                            />
+                            <span className="truncate max-w-[120px]">{file.name}</span>
+                            <button
+                              onClick={(e) => handleCloseTab(file.id, e)}
+                              className="p-0.5 rounded text-zinc-500 hover:text-zinc-200 hover:bg-white/10 transition-colors"
+                              title="Close tab"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        );
+                      })}
+
+                      {activeProject.openFileIds.length === 0 && (
+                        <div className="px-3 text-xs text-zinc-500 italic">No files open</div>
+                      )}
+                    </div>
+
+                    {/* Editor Content Area */}
+                    {activeFile ? (
+                      <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+                        {/* Editor with Line Number Gutter */}
+                        <div className="flex-1 flex overflow-hidden relative bg-[#09090b]">
+                          {/* Line Numbers Gutter */}
+                          <div
+                            ref={gutterRef}
+                            className="w-11 py-3 pr-2 text-right text-zinc-600 font-mono text-xs select-none bg-[#09090b] border-r border-[#18181f] overflow-hidden leading-5 flex-shrink-0"
+                          >
+                            {Array.from({ length: activeFile.content.split('\n').length }).map(
+                              (_, i) => (
+                                <div key={i}>{i + 1}</div>
+                              )
+                            )}
+                          </div>
+
+                          {/* Editable Monospaced Textarea */}
+                          <textarea
+                            ref={codeEditorRef}
+                            value={activeFile.content}
+                            onChange={(e) => handleFileContentChange(e.target.value)}
+                            onKeyDown={handleEditorKeyDown}
+                            onScroll={(e) => {
+                              if (gutterRef.current) {
+                                gutterRef.current.scrollTop = e.currentTarget.scrollTop;
+                              }
+                            }}
+                            onKeyUp={(e) => updateCursorPosition(e.currentTarget)}
+                            onClick={(e) => updateCursorPosition(e.currentTarget)}
+                            onSelect={(e) => updateCursorPosition(e.currentTarget)}
+                            spellCheck={false}
+                            className="flex-1 h-full p-3 font-mono text-xs leading-5 text-zinc-100 bg-[#09090b] outline-none resize-none overflow-auto whitespace-pre selection:bg-zinc-800"
+                          />
+                        </div>
+
+                        {/* Editor Status Bar */}
+                        <div className="h-6 bg-[#0c0c0f] border-t border-[#1f1f24] px-3 flex items-center justify-between text-[11px] font-mono text-zinc-400 select-none">
+                          <div className="flex items-center space-x-3">
+                            <span>
+                              Ln {editorCursor.line}, Col {editorCursor.col}
+                            </span>
+                            <span>{activeFile.content.split('\n').length} lines</span>
+                            <span>{(activeFile.content.length / 1024).toFixed(1)} KB</span>
+                          </div>
+
+                          <div className="flex items-center space-x-3 font-sans">
+                            <span className="flex items-center space-x-1 text-emerald-400">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                              <span>Live Auto-Saved</span>
+                            </span>
+                            <span className="uppercase font-mono text-[10px] text-zinc-300 font-semibold px-1 rounded bg-[#18181e] border border-zinc-800">
+                              {getFileLanguageLabel(activeFile.language).label}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-zinc-500">
+                        <FileCode className="w-10 h-10 text-zinc-600 mb-2" />
+                        <p className="text-sm font-medium text-zinc-300">No file selected</p>
+                        <p className="text-xs text-zinc-500 mt-1 mb-4">
+                          Pick a file from the explorer on the left or create a new file
+                        </p>
+                        <button
+                          onClick={() => {
+                            setNewFilePath('');
+                            setIsNewFileModalOpen(true);
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-zinc-800 text-white text-xs font-medium hover:bg-zinc-700 transition-colors cursor-pointer"
+                        >
+                          + New File
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right Column in Split Mode: Live Preview */}
+                  {projectWorkspaceTab === 'split' && (
+                    <div className="w-1/2 flex-shrink-0 border-l border-[#1f1f24] flex flex-col bg-white overflow-hidden relative">
+                      <div className="h-9 px-3 bg-[#0c0c0f] border-b border-[#1f1f24] flex items-center justify-between text-xs text-zinc-400 select-none font-sans">
+                        <div className="flex items-center space-x-1.5">
+                          <Eye className="w-3.5 h-3.5 text-zinc-300" />
+                          <span className="font-semibold text-white">Live Sandbox</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => {
+                              setPreviewKey((k) => k + 1);
+                              showToast('Sandbox refreshed');
+                            }}
+                            className="p-1 hover:text-white text-zinc-400 transition-colors cursor-pointer"
+                            title="Reload sandbox"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex-1 relative bg-white">
+                        <iframe
+                          key={previewKey}
+                          title="Split Live Preview"
+                          srcDoc={composePreviewHtml(activeProject.files)}
+                          className="w-full h-full border-none bg-white"
+                          sandbox="allow-scripts allow-modals"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           </aside>
         )}
       </div>
+
+      {/* New Project Modal */}
+      {isNewProjectModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-[#121217] border border-zinc-800 rounded-2xl p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+              <h3 className="text-sm font-semibold text-white">Create New Web Project</h3>
+              <button
+                onClick={() => setIsNewProjectModalOpen(false)}
+                className="p-1 text-zinc-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-zinc-300 block mb-1">
+                  Project Title
+                </label>
+                <input
+                  type="text"
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                  placeholder="e.g. Rogue Crawler RPG, Weather Dashboard"
+                  className="w-full bg-[#09090c] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-zinc-500"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-zinc-300 block mb-1">
+                  Starter Template
+                </label>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setNewProjectTemplate('clicker')}
+                    className={`p-2.5 rounded-xl border text-left transition-all ${
+                      newProjectTemplate === 'clicker'
+                        ? 'border-white bg-[#1a1a22] text-white font-medium'
+                        : 'border-zinc-800 bg-[#0d0d10] text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    <div>🍠 Yam Clicker</div>
+                    <div className="text-[10px] text-zinc-500 mt-0.5">Game (css/ & js/)</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewProjectTemplate('space')}
+                    className={`p-2.5 rounded-xl border text-left transition-all ${
+                      newProjectTemplate === 'space'
+                        ? 'border-white bg-[#1a1a22] text-white font-medium'
+                        : 'border-zinc-800 bg-[#0d0d10] text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    <div>🚀 Space Defender</div>
+                    <div className="text-[10px] text-zinc-500 mt-0.5">Arcade canvas game</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewProjectTemplate('portfolio')}
+                    className={`p-2.5 rounded-xl border text-left transition-all ${
+                      newProjectTemplate === 'portfolio'
+                        ? 'border-white bg-[#1a1a22] text-white font-medium'
+                        : 'border-zinc-800 bg-[#0d0d10] text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    <div>🌐 Developer Portfolio</div>
+                    <div className="text-[10px] text-zinc-500 mt-0.5">Showcase website</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewProjectTemplate('blank')}
+                    className={`p-2.5 rounded-xl border text-left transition-all ${
+                      newProjectTemplate === 'blank'
+                        ? 'border-white bg-[#1a1a22] text-white font-medium'
+                        : 'border-zinc-800 bg-[#0d0d10] text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    <div>✨ Blank Slate</div>
+                    <div className="text-[10px] text-zinc-500 mt-0.5">Clean multi-file project</div>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end space-x-2 pt-2 border-t border-zinc-800">
+              <button
+                onClick={() => setIsNewProjectModalOpen(false)}
+                className="px-3 py-1.5 rounded-xl text-xs text-zinc-400 hover:text-white transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmCreateProject}
+                className="px-4 py-1.5 rounded-xl bg-white text-black font-semibold text-xs hover:bg-zinc-200 transition-colors cursor-pointer"
+              >
+                Create Project
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* New File Modal */}
+      {isNewFileModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+          <div className="w-full max-w-sm bg-[#121217] border border-zinc-800 rounded-2xl p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+              <h3 className="text-sm font-semibold text-white">Create New File</h3>
+              <button
+                onClick={() => setIsNewFileModalOpen(false)}
+                className="p-1 text-zinc-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-zinc-300 block mb-1">
+                  File Path (subfolders supported)
+                </label>
+                <input
+                  type="text"
+                  value={newFilePath}
+                  onChange={(e) => setNewFilePath(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleCreateFile(newFilePath);
+                  }}
+                  placeholder="e.g. css/theme.css or js/engine.js"
+                  className="w-full bg-[#09090c] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-zinc-500 font-mono"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-1.5 text-[11px]">
+                <span className="text-zinc-500 text-[10px] w-full block">Quick folders:</span>
+                <button
+                  type="button"
+                  onClick={() => setNewFilePath('css/theme.css')}
+                  className="px-2 py-0.5 rounded bg-[#1c1c24] border border-zinc-800 text-zinc-300 hover:text-white"
+                >
+                  css/theme.css
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewFilePath('js/game.js')}
+                  className="px-2 py-0.5 rounded bg-[#1c1c24] border border-zinc-800 text-zinc-300 hover:text-white"
+                >
+                  js/game.js
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewFilePath('about.html')}
+                  className="px-2 py-0.5 rounded bg-[#1c1c24] border border-zinc-800 text-zinc-300 hover:text-white"
+                >
+                  about.html
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewFilePath('README.md')}
+                  className="px-2 py-0.5 rounded bg-[#1c1c24] border border-zinc-800 text-zinc-300 hover:text-white"
+                >
+                  README.md
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end space-x-2 pt-2 border-t border-zinc-800">
+              <button
+                onClick={() => setIsNewFileModalOpen(false)}
+                className="px-3 py-1.5 rounded-xl text-xs text-zinc-400 hover:text-white transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleCreateFile(newFilePath)}
+                className="px-4 py-1.5 rounded-xl bg-white text-black font-semibold text-xs hover:bg-zinc-200 transition-colors cursor-pointer"
+              >
+                Create File
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rename File Modal */}
+      {isRenameModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+          <div className="w-full max-w-sm bg-[#121217] border border-zinc-800 rounded-2xl p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+              <h3 className="text-sm font-semibold text-white">Rename File</h3>
+              <button
+                onClick={() => setIsRenameModalOpen(false)}
+                className="p-1 text-zinc-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-zinc-300 block mb-1">
+                New Path / Name
+              </label>
+              <input
+                type="text"
+                value={renameFilePath}
+                onChange={(e) => setRenameFilePath(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleConfirmRename();
+                }}
+                className="w-full bg-[#09090c] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-zinc-500 font-mono"
+                autoFocus
+              />
+            </div>
+
+            <div className="flex items-center justify-end space-x-2 pt-2 border-t border-zinc-800">
+              <button
+                onClick={() => setIsRenameModalOpen(false)}
+                className="px-3 py-1.5 rounded-xl text-xs text-zinc-400 hover:text-white transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmRename}
+                className="px-4 py-1.5 rounded-xl bg-white text-black font-semibold text-xs hover:bg-zinc-200 transition-colors cursor-pointer"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* In-App Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-5 right-5 z-50 bg-[#141418] border border-zinc-700/80 text-zinc-100 text-xs px-3.5 py-2 rounded-xl shadow-xl flex items-center space-x-2 animate-in fade-in slide-in-from-bottom-2 duration-150">
+          <Sparkles className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
     </div>
   );
 };
